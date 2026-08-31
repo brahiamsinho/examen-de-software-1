@@ -1,0 +1,53 @@
+# DEV configuration: every service below builds its "dev" Dockerfile
+# target and bind-mounts source for live reload. To run a production-like
+# stack instead, change each service's `target:` from `dev` to `prod`,
+# drop the source bind mounts (prod images copy the code in at build
+# time), and supply production-appropriate env values.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    volumes:
+      - ./backend:/app
+    # Real values come from backend/.env (copy it from backend/env.example
+    # — never commit backend/.env).
+    env_file: ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    # Real values come from frontend/.env.local (copy it from
+    # frontend/env.local.example — never commit frontend/.env.local).
+    env_file: ./frontend/.env.local
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

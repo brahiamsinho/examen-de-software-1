@@ -1,0 +1,22 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.sqlite3
+staticfiles/
+.env
+.env.local
+.env.*.local
+.dart_tool/
+.flutter-plugins*
+build/
+*.iml
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS junk
+.DS_Store
+Thumbs.db
