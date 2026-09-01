@@ -37,9 +37,11 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    # daphne must be listed before django.contrib.staticfiles per Channels docs.
+    "daphne",
     "django.contrib.staticfiles",
     # Third-party
-    "rest_framework",
+    "channels",
     "corsheaders",
     # Local (future feature apps live under backend/apps/)
 ]
@@ -101,6 +103,13 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# Argon2 is the recommended/strongest hasher; PBKDF2 (Django's default) is kept
+# as a fallback so existing PBKDF2-hashed passwords still verify.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
+
 # --- i18n / tz ----------------------------------------------------------
 
 LANGUAGE_CODE = "en-us"
@@ -114,14 +123,6 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# --- Django REST Framework -------------------------------------------------
-
-REST_FRAMEWORK = {
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
-    ],
-}
 
 # --- CORS -------------------------------------------------------------
 # The Next.js frontend runs on a different origin, so its URL(s) must be

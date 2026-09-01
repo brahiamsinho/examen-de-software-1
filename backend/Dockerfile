@@ -24,13 +24,14 @@ ENTRYPOINT ["./entrypoint.sh"]
 FROM base AS dev
 
 COPY requirements/dev.txt requirements/dev.txt
+COPY requirements/test.txt requirements/test.txt
 RUN pip install --no-cache-dir -r requirements/dev.txt
 
 # Source is bind-mounted by docker-compose for live reload; no COPY here.
 
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 
-# --- prod: gunicorn -----------------------------------------------------
+# --- prod: daphne (ASGI, required for Channels/websockets) ----------------
 FROM base AS prod
 
 COPY requirements/prod.txt requirements/prod.txt
@@ -40,4 +41,4 @@ COPY . /app
 
 RUN python manage.py collectstatic --noinput
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

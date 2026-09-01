@@ -1,0 +1,78 @@
+schema: spec-driven
+
+context: |
+  Academic exam project (Variante 4): offline-first collaborative CASE tool for UML
+  class diagramming. Manual/voice/image/XMI input converges to a CanonicalUmlModel;
+  generates Spring Boot backend + Next.js frontend + Android (Capacitor) from the model.
+  Target stack (per product-04-next-django.md, NOT yet implemented): Django 5.2 LTS +
+  Django Ninja + Channels/Daphne backend, Next.js App Router + shadcn/ui + Tailwind +
+  Cytoscape.js + Jotai frontend, ONNX Runtime (Qwen3, Moondream) + Vosk local AI.
+  Current repo state is a bare scaffold (Django+DRF, plain Next.js, Flutter mobile)
+  that predates the real exam requirements — see risks. Testing per spec: pytest +
+  pytest-django + hypothesis (backend), Vitest + RTL (frontend), Cypress (E2E) — none
+  installed yet. Work proceeds use-case by use-case, grouped into cycles, per document
+  section 1 and 38, with a real-state document kept separate from the vision doc.
+
+strict_tdd: true # explicit global CLAUDE.md marker ("Strict TDD Mode: enabled");
+  # no test runner exists yet in this repo, so the first use case in each area
+  # (backend/frontend) must scaffold its test runner before/with its first RED test.
+
+testing:
+  backend:
+    runner: pytest (not yet installed; target per spec: pytest + pytest-django + hypothesis)
+    current: none — only Django's default (unused) test scaffolding via manage.py test
+  frontend:
+    runner: Vitest + React Testing Library (not yet installed)
+    current: none — package.json has no test script/deps
+  e2e:
+    runner: Cypress (not yet installed)
+    current: none
+  coverage:
+    available: false
+  quality:
+    backend_linter: none detected (no ruff/flake8/black config found)
+    frontend_linter: eslint (eslint-config-next, flat config eslint.config.mjs)
+    frontend_type_checker: typescript (tsconfig.json, strict TS via Next.js template)
+    formatter: none detected (no prettier config found)
+
+rules:
+  proposal:
+    - Derive use cases from product-04-next-django.md; do not invent scope beyond it.
+    - Group use cases into small cycles per document section 38 (objective, small use
+      cases, acceptance criteria, tests, green build, architecture docs, real-state,
+      explicit tech debt).
+    - Do not copy use-case identifiers from any other project.
+    - Flag any proposal that touches the backend/frontend/mobile stack mismatch
+      (see context) explicitly as a migration decision, not a silent rewrite.
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+    - Every UML/model-related requirement must reference the CanonicalUmlModel as the
+      single convergence point (manual, voice, image, XMI inputs all normalize to it).
+  design:
+    - Include sequence diagrams for realtime/collaboration flows (Django Channels).
+    - Document architecture decisions with rationale in docs/ai/DECISIONS_LOG.md as well
+      as the SDD design artifact (dual documentation is a project convention).
+    - Call out any decision to keep or replace DRF/Flutter/vanilla Next.js scaffolding.
+  tasks:
+    - Group by cycle, use hierarchical numbering.
+    - Keep tasks completable in one session; implement one use case at a time.
+    - First task touching an untested area MUST include test-runner setup
+      (pytest+pytest-django+hypothesis or Vitest+RTL) as part of that unit, not deferred.
+  apply:
+    guidelines:
+      - Follow existing modular-by-default layout: backend/apps/<feature>/,
+        frontend/src/app/, no cross-imports except through the HTTP/WS API contract.
+      - Never hardcode URLs, ports, hosts, or credentials — env vars only
+        (django-environ backend, NEXT_PUBLIC_* frontend).
+      - Update docs/ai/CURRENT_STATE.md and docs/ai/DECISIONS_LOG.md as the real-state
+        document required by product-04-next-django.md section 1.
+    tdd: true
+    test_command: "cd backend && pytest ; cd frontend && npm test"
+  verify:
+    test_command: "cd backend && pytest ; cd frontend && npm test"
+    build_command: "docker compose build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas.
+    - Keep docs/ai/HANDOFF_LATEST.md in sync with the archived change.

@@ -16,6 +16,10 @@ build/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+.atl/
+.agents/
+.codegraph/
+skills-lock.json
 
 # OS junk
 .DS_Store
