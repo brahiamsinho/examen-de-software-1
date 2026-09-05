@@ -41,9 +41,9 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    # Real values come from frontend/.env.local (copy it from
-    # frontend/env.local.example — never commit frontend/.env.local).
-    env_file: ./frontend/.env.local
+    # Real values come from frontend/.env (copy it from
+    # frontend/env.local.example — never commit frontend/.env).
+    env_file: ./frontend/.env
     depends_on:
       - backend
     ports:

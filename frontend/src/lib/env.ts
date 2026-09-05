@@ -12,7 +12,7 @@ function readApiUrl(): string {
   if (!value) {
     throw new Error(
       "NEXT_PUBLIC_API_URL is not set. Copy frontend/env.local.example to " +
-        "frontend/.env.local (or set it in your deployment environment) " +
+        "frontend/.env (or set it in your deployment environment) " +
         "and point it at wherever the Django API is reachable.",
     );
   }

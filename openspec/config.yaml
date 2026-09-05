@@ -4,26 +4,30 @@ context: |
   Academic exam project (Variante 4): offline-first collaborative CASE tool for UML
   class diagramming. Manual/voice/image/XMI input converges to a CanonicalUmlModel;
   generates Spring Boot backend + Next.js frontend + Android (Capacitor) from the model.
-  Target stack (per product-04-next-django.md, NOT yet implemented): Django 5.2 LTS +
-  Django Ninja + Channels/Daphne backend, Next.js App Router + shadcn/ui + Tailwind +
-  Cytoscape.js + Jotai frontend, ONNX Runtime (Qwen3, Moondream) + Vosk local AI.
-  Current repo state is a bare scaffold (Django+DRF, plain Next.js, Flutter mobile)
-  that predates the real exam requirements — see risks. Testing per spec: pytest +
-  pytest-django + hypothesis (backend), Vitest + RTL (frontend), Cypress (E2E) — none
-  installed yet. Work proceeds use-case by use-case, grouped into cycles, per document
-  section 1 and 38, with a real-state document kept separate from the vision doc.
+  Target stack (per product-04-next-django.md): Django 5.2 LTS + Django Ninja +
+  Channels/Daphne backend, Next.js App Router + shadcn/ui + Tailwind + Cytoscape.js +
+  Jotai frontend, ONNX Runtime (Qwen3, Moondream) + Vosk local AI, Flutter mobile
+  client (explicit instructor requirement, independent of the spec's own
+  Capacitor-based Android generation target for generated end-user apps).
+  Current repo state: the stack migration/correction is DONE (Django Ninja + Channels
+  + Daphne + Argon2 + PyJWT on the backend; Tailwind + shadcn/ui + Cytoscape.js +
+  cytoscape-fcose + Jotai on the frontend; pytest + pytest-django + hypothesis and
+  Vitest + RTL both installed and passing one smoke test each). What remains is a
+  correctly-aligned infra skeleton with ZERO domain logic: no CanonicalUmlModel, no
+  canvas, no collaboration, no code generation, no AI/voice/XMI features. Cypress
+  (E2E) is not yet bootstrapped. Work proceeds use-case by use-case, grouped into
+  cycles, per document section 1 and 38, with a real-state document
+  (docs/ai/CURRENT_STATE.md) kept separate from the vision doc.
 
-strict_tdd: true # explicit global CLAUDE.md marker ("Strict TDD Mode: enabled");
-  # no test runner exists yet in this repo, so the first use case in each area
-  # (backend/frontend) must scaffold its test runner before/with its first RED test.
+strict_tdd: true # explicit global CLAUDE.md marker ("Strict TDD Mode: enabled").
 
 testing:
   backend:
-    runner: pytest (not yet installed; target per spec: pytest + pytest-django + hypothesis)
-    current: none — only Django's default (unused) test scaffolding via manage.py test
+    runner: pytest + pytest-django + hypothesis (installed; backend/requirements/test.txt)
+    current: one smoke test (backend/config/tests/test_health.py), passing in Docker
   frontend:
-    runner: Vitest + React Testing Library (not yet installed)
-    current: none — package.json has no test script/deps
+    runner: Vitest + React Testing Library (installed; npm test = "vitest run")
+    current: one smoke test (button.test.tsx), passing
   e2e:
     runner: Cypress (not yet installed)
     current: none
@@ -42,8 +46,6 @@ rules:
       cases, acceptance criteria, tests, green build, architecture docs, real-state,
       explicit tech debt).
     - Do not copy use-case identifiers from any other project.
-    - Flag any proposal that touches the backend/frontend/mobile stack mismatch
-      (see context) explicitly as a migration decision, not a silent rewrite.
   specs:
     - Use Given/When/Then for scenarios.
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
@@ -53,7 +55,6 @@ rules:
     - Include sequence diagrams for realtime/collaboration flows (Django Channels).
     - Document architecture decisions with rationale in docs/ai/DECISIONS_LOG.md as well
       as the SDD design artifact (dual documentation is a project convention).
-    - Call out any decision to keep or replace DRF/Flutter/vanilla Next.js scaffolding.
   tasks:
     - Group by cycle, use hierarchical numbering.
     - Keep tasks completable in one session; implement one use case at a time.
