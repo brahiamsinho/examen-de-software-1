@@ -2,6 +2,18 @@
 
 ## What's done
 
+### SDD Cycle 1: Canonical UML Model, Project Document, Validation Engine (ARCHIVED 2026-09-05)
+
+- **Canonical UML Model (`uml-domain-model`)**: `CanonicalUmlModel` frozen dataclass (alias `UmlModel`) with classes, enumerations, relationships, generation metadata. Supports 8 primitive types (String, Text, Integer, Long, Decimal, Boolean, Date, DateTime) and enumeration references (by id, not name, to survive renames). Multiplicity structured as `(lower: int, upper: int|None)` with parse/format round-trip for UML string syntax.
+- **Project Document (`project-document`)**: `ProjectDocument` envelope wrapping `CanonicalUmlModel`, split into semantic `UmlModel` + visual `DiagramLayout`. Includes UUID identity, opaque `owner_id` (non-empty), revision (increments by 1 per mutation), timestamps. No ORM/persistence this cycle.
+- **Validation Engine (`uml-validation`)**: Single `validate(model) -> ValidationResult` entry point collecting exhaustive diagnostics. 10 fixed-severity rules (8 ERROR, 2 WARNING). ERROR blocks persistence/generation; WARNING never blocks. Diagnostics carry severity, SCREAMING_SNAKE code, message, slash-rooted id-based path, element reference.
+- **Backend**: New Django app `backend/apps/uml_modeling/` with pure Python domain layer (no Django/Ninja/Pydantic imports). One INSTALLED_APPS entry. DB-free, no models/migrations/endpoints. All 23 tasks complete (8 phases, strict TDD). 81 tests pass (80 uml_modeling + 1 pre-existing).
+- **Specs**: Three new capability specs moved to `openspec/specs/` as canonical source of truth: `uml-domain-model/spec.md`, `project-document/spec.md`, `uml-validation/spec.md`.
+- **Change archived**: `openspec/changes/archive/2026-09-05-canonical-uml-model/` contains proposal, design, tasks, verify-report, and delta specs.
+- `docs/ai/` real-state convention updated: `CURRENT_STATE.md`, `ARCHITECTURE.md`, `NEXT_STEPS.md`, `DECISIONS_LOG.md` reflect Cycle-1 completion with 8 proposal decisions (D0-D8) and 9 design decisions (DD1-DD9).
+
+### Prior infrastructure (infra scaffold — Sept 5, commit 9be999a)
+
 - Full top-level layout created: `backend/`, `frontend/`, `mobile/`,
   `docs/ai/`, root `docker-compose.yml`, root `env.example`, `.gitignore`,
   `README.md`.
@@ -37,8 +49,10 @@
 - No git repository initialized anywhere (deliberate, per instructions).
 - No `docker compose up`/build was ever run — the compose file and
   Dockerfiles are untested against a live Docker daemon.
-- No business Django app, no DRF serializers/viewsets, no real
-  frontend UI, no real Flutter screens, no auth — none were in scope.
+- No HTTP/WS API endpoints; Ninja/Pydantic schema adapters deferred.
+- No persistence (Django ORM, migrations); `revision` field exists but concurrency enforcement is tech debt (item 6).
+- No Canvas/Cytoscape.js, Command Bus, Undo/Redo, Auth, Realtime/Channels, Relational mapping, Generators, OpenAPI, Assistant, STT, XMI, Vision (items 4-26, beyond Cycle 1 scope).
+- No Flutter screens beyond scaffold; mobile generation not yet implemented.
 - Env-example files at every level had to be written as `env.example`
   (no leading dot) instead of `.env.example`, because of a sandbox
   restriction — see `DECISIONS_LOG.md`. They need to be manually renamed

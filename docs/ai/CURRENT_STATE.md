@@ -50,17 +50,31 @@ initialized but not yet used for a real cycle.
 ### SDD / planning
 
 - `openspec/` is initialized at the repo root (config + specs + changes
-  directories exist), but **no use-case cycle has been explored or
-  proposed yet**. No proposal, spec, design, or task list exists in
-  `openspec/changes/` beyond the initial scaffold.
+  directories exist). **SDD Cycle 1** (`canonical-uml-model`) has run
+  through explore → propose → spec → design → tasks → apply; `sdd-verify`
+  and `sdd-archive` are the remaining steps for this change.
 
 ### Domain
 
-- `CanonicalUmlModel`, `ProjectDocument`/`DiagramLayout`, the validation
-  engine, `UmlCommand`/Command Bus, the Cytoscape canvas, realtime
-  collaboration, the relational mapper, the Spring Boot generator, the
-  Domain Manifest, the assistant pipeline, and all AI/voice/image/XMI
-  features are all **not started**.
+- **SDD Cycle 1 is implemented** (`backend/apps/uml_modeling/`, change
+  `canonical-uml-model`): `CanonicalUmlModel` (alias `UmlModel`) with
+  classes, enumerations, relationships, and generation metadata;
+  `ProjectDocument`/`DiagramLayout` (identity, opaque `owner_id`, pure
+  revision increment via `with_model`/`with_layout`); and the single
+  validation `engine.validate()` with its full 10-rule Cycle-1 registry
+  (`EMPTY_ELEMENT_NAME`, `DUPLICATE_CLASS_NAME`, `DUPLICATE_ATTRIBUTE_NAME`,
+  `DUPLICATE_ENUMERATION_LITERAL`, `UNKNOWN_ATTRIBUTE_TYPE`,
+  `INVALID_RELATIONSHIP_ENDPOINT`, `INVALID_MULTIPLICITY`,
+  `GENERALIZATION_CYCLE`, `SELF_ASSOCIATION`, `CLASS_WITHOUT_ATTRIBUTES`).
+  This is a pure, DB-free, framework-agnostic domain layer: no
+  `models.py`, no migrations, no urlconf, no Ninja/Pydantic schemas, no
+  persistence, and no auth wiring yet — `owner_id` is a validated-opaque
+  string only. 80 backend tests cover it (TDD, `pytest` + `hypothesis`),
+  with zero regression to the pre-existing health-check smoke test.
+- `UmlCommand`/Command Bus, the Cytoscape canvas, persistence (Django
+  ORM), realtime collaboration, the relational mapper, the Spring Boot
+  generator, the Domain Manifest, the assistant pipeline, and all
+  AI/voice/image/XMI features are **not started**.
 
 ## Pending (SDD Cycle 1 and beyond)
 
@@ -95,6 +109,8 @@ order:
 25. XMI 2.1
 26. Image → UML (Moondream)
 
-SDD Cycle 1 (next immediate step, see `NEXT_STEPS.md`) targets items 1–3
-only: `CanonicalUmlModel`, `ProjectDocument`/`DiagramLayout`, and the
-validation engine.
+SDD Cycle 1 (see `NEXT_STEPS.md`) targeted items 1–3 only:
+`CanonicalUmlModel`, `ProjectDocument`/`DiagramLayout`, and the
+validation engine. Implementation (`sdd-apply`) is complete; `sdd-verify`
+and `sdd-archive` remain before item 4 (`UmlCommand` + Command Bus)
+starts as its own cycle.

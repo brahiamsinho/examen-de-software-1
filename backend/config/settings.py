@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "channels",
     "corsheaders",
     # Local (future feature apps live under backend/apps/)
+    "apps.uml_modeling",
 ]
 
 MIDDLEWARE = [

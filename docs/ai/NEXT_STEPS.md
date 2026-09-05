@@ -11,34 +11,30 @@ tests on backend, smoke test on frontend) before treating it as done in
 `CURRENT_STATE.md`. Cypress (E2E) bootstrap has not been started and
 should follow once the frontend stack settles.
 
-## Immediate next step: SDD Cycle 1
+## SDD Cycle 1 — status: implemented, pending verify/archive
 
 Per the spec's own recommended implementation order
-(`product-04-next-django.md`, section 37, items 1–3), the next actual
-feature work is:
+(`product-04-next-django.md`, section 37, items 1–3), Cycle 1
+(`canonical-uml-model`) covers `CanonicalUmlModel`, `ProjectDocument`/
+`DiagramLayout`, and the validation engine.
 
-1. Run **`sdd-explore`** to investigate and derive concrete use cases for:
-   - `CanonicalUmlModel` — the core UML domain model (classes, attributes,
-     operations, visibility, associations/aggregation/composition/
-     generalization, multiplicity, enumerations, packages);
-   - `ProjectDocument` / `DiagramLayout` — the persistence envelope
-     (UUID, owner, optimistic revision, timestamps) split from purely
-     visual layout data;
-   - the validation engine (single engine, structured diagnostics with
-     severity/code/message/path/element reference) that will later be
-     reused by save, import, collaboration, the assistant, and generation.
-2. Run **`sdd-propose`** once exploration produces clear use cases and
-   acceptance criteria, keeping this first cycle scoped to just those
-   three pieces — do not pull in canvas, persistence wiring, Undo/Redo,
-   auth, or realtime yet; those are separate later cycles per section 37.
-3. Continue through `sdd-spec` → `sdd-design` → `sdd-tasks` → `sdd-apply`
-   → `sdd-verify` → `sdd-archive` for this first cycle, updating
-   `CURRENT_STATE.md` and this file as it progresses.
+- explore → propose → spec → design → tasks → **apply**: done.
+  `backend/apps/uml_modeling/` implements the full domain layer, the
+  `ProjectDocument` envelope, and the 10-rule validation engine, with 80
+  passing backend tests (strict TDD) and zero regression to the
+  pre-existing health-check smoke test.
+- Remaining for this cycle: **`sdd-verify`** (confirm the implementation
+  against `openspec/changes/canonical-uml-model/specs/**` and
+  `design.md`), then **`sdd-archive`**.
+- Deliberately out of scope this cycle (do not pull in yet): canvas,
+  persistence wiring (Django ORM/migrations), Undo/Redo, auth/ownership
+  resolution, or realtime — those are separate later cycles per section 37.
 
 ## After Cycle 1
 
-Following spec section 37's order: canvas (Cytoscape.js) → persistence
-(Django ORM) → Undo/Redo → auth/ownership → realtime (Channels/Daphne) →
+Following spec section 37's order: `UmlCommand` + Command Bus → canvas
+(Cytoscape.js) → persistence (Django ORM) → Undo/Redo →
+auth/ownership → realtime (Channels/Daphne) →
 presence → UML→relational mapping → Spring Boot generator → OpenAPI/Postman
 → Domain Manifest → frontend generator → generic CRUD → assistant pipeline
 → voice/STT → Android (Capacitor) → XMI → image-to-UML. Do not front-load

@@ -33,8 +33,13 @@ this model; every output (canvas rendering, XMI export, relational mapping,
 code generation, Domain Manifest) is derived from it. The canvas is a
 projection, never authoritative.
 
-**Status today**: not implemented. This is the first thing SDD Cycle 1
-targets (see `NEXT_STEPS.md`).
+**Status today**: implemented as a pure, DB-free dataclass model in
+`backend/apps/uml_modeling/domain/` (SDD Cycle 1, change
+`canonical-uml-model`): `CanonicalUmlModel`/`UmlModel`, `UmlClass`,
+`UmlAttribute`/`UmlOperation`/`UmlParameter`, `Enumeration`/
+`EnumerationLiteral`, `Relationship`/`RelationshipEnd`/`Multiplicity`,
+and `generation_metadata`. No package/namespace nesting this cycle (flat
+model root). No persistence yet.
 
 ## `ProjectDocument` / `DiagramLayout` split
 
@@ -47,8 +52,14 @@ Each project is a `ProjectDocument` (UUID, metadata, owner, optimistic
   separate so visual-only changes don't collide with semantic ones and so
   the model can be reused for non-visual purposes (generation, export).
 
-**Status today**: not implemented — planned for early SDD Cycle 1
-(spec order items 1–2).
+**Status today**: implemented as a pure dataclass envelope
+(`backend/apps/uml_modeling/documents.py`, SDD Cycle 1): `ProjectDocument`
+(UUID `id`, `ProjectMetadata`, opaque non-empty `owner_id`, `revision`,
+timestamps) holding one `CanonicalUmlModel` and one `DiagramLayout`,
+with `with_model`/`with_layout` each incrementing `revision` by exactly
+one given an explicit `now`. Shape and pure rules only — no ORM,
+persistence, or auth yet; no optimistic-concurrency enforcement this
+cycle (explicit tech debt).
 
 ## Validation engine
 
@@ -59,8 +70,16 @@ and (when applicable) a reference to the offending model element, so the UI
 can jump from a diagnostic straight to the element. Errors block
 persistence/generation; warnings do not block by default.
 
-**Status today**: not implemented — planned right after the canonical model
-(spec order item 3).
+**Status today**: implemented (`backend/apps/uml_modeling/validation/`,
+SDD Cycle 1): a single `validate(model) -> ValidationResult` entry
+point running the complete, fixed 10-rule Cycle-1 registry
+(`EMPTY_ELEMENT_NAME`, `DUPLICATE_CLASS_NAME`, `DUPLICATE_ATTRIBUTE_NAME`,
+`DUPLICATE_ENUMERATION_LITERAL`, `UNKNOWN_ATTRIBUTE_TYPE`,
+`INVALID_RELATIONSHIP_ENDPOINT`, `INVALID_MULTIPLICITY`,
+`GENERALIZATION_CYCLE`, `SELF_ASSOCIATION`, `CLASS_WITHOUT_ATTRIBUTES`),
+declared as an explicit static tuple in `engine.py` and never
+short-circuiting. Not yet wired to any entry point (HTTP, Channels, XMI,
+assistant) — those callers don't exist yet either.
 
 ## `UmlCommand` / Command Bus / Undo-Redo pipeline
 
