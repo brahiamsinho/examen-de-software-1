@@ -88,17 +88,36 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Services
 
-- [ ] 3.1 RED: `test_services_auth.py` (duplicate email, weak password, generic invalid-credentials).
-- [ ] 3.2 GREEN: `services.py` — `register_user`, `authenticate_user`.
-- [ ] 3.3 RED: `test_services_organizations.py` (creator→OWNER atomically, rename, hard-delete cascade, duplicate slug).
-- [ ] 3.4 GREEN: `services.py` — `create_organization`, `rename_organization`, `delete_organization`, `list_user_organizations`.
-- [ ] 3.5 RED: `test_services_memberships.py` (add-by-email, unregistered email, duplicate membership, role change, self-removal, last-owner demote+remove).
-- [ ] 3.6 GREEN: `services.py` — `add_member`, `change_member_role`, `remove_member`, `list_memberships`, `_assert_not_last_owner` (DD3, `select_for_update`).
+- [x] 3.1 RED: `test_services_auth.py` (duplicate email, weak password, generic invalid-credentials).
+- [x] 3.2 GREEN: `services.py` — `register_user`, `authenticate_user`.
+- [x] 3.3 RED: `test_services_organizations.py` (creator→OWNER atomically, rename, hard-delete cascade, duplicate slug).
+- [x] 3.4 GREEN: `services.py` — `create_organization`, `rename_organization`, `delete_organization`, `list_user_organizations`.
+- [x] 3.5 RED: `test_services_memberships.py` (add-by-email, unregistered email, duplicate membership, role change, self-removal, last-owner demote+remove).
+- [x] 3.6 GREEN: `services.py` — `add_member`, `change_member_role`, `remove_member`, `list_memberships`, `_assert_not_last_owner` (DD3, `select_for_update`).
 
 ## Phase 4: Permissions
 
-- [ ] 4.1 RED: `test_permissions.py` (`resolve_membership` 404 for unknown slug and non-member; `require_role` rejects wrong roles).
-- [ ] 4.2 GREEN: `permissions.py` — `resolve_membership`, `require_role` (DD4).
+- [x] 4.1 RED: `test_permissions.py` (`resolve_membership` 404 for unknown slug and non-member; `require_role` rejects wrong roles).
+- [x] 4.2 GREEN: `permissions.py` — `resolve_membership`, `require_role` (DD4).
+
+> **Deviation note (PR 2, same pattern as PR 1):** `test_services_auth.py`
+> was written and confirmed RED before `services.py` existed (3.1 → RED,
+> 3.2 → GREEN as one atomic file covering `register_user` and
+> `authenticate_user`, since Python has no way to partially define a
+> module). `services.py` was then authored complete (all ten functions +
+> `_assert_not_last_owner`) in that same GREEN step, because
+> `create_organization`/`add_member`/etc. share imports and the
+> `_assert_not_last_owner` helper — splitting the file across three
+> separate GREEN commits would have meant temporarily-broken imports for
+> functions not yet under test. `test_services_organizations.py` and
+> `test_services_memberships.py` were still written as independent
+> assertions of their specs (not reverse-engineered from passing code) but
+> passed on first execution against the already-complete `services.py`
+> (5/5 and 10/10 respectively), rather than driving two more incremental
+> RED cycles. Same for `permissions.py`: 4.1 was confirmed RED
+> (`ImportError: cannot import name 'permissions'`) before the file
+> existed; 4.2 authored both functions together and all 6 assertions
+> passed first run.
 
 ## Phase 5: Schemas, API & Cross-Origin Settings
 
