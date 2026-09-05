@@ -45,7 +45,15 @@ INSTALLED_APPS = [
     "corsheaders",
     # Local (future feature apps live under backend/apps/)
     "apps.uml_modeling",
+    "apps.identity",
 ]
+
+# --- Custom user model --------------------------------------------------
+# The project's first persisted domain (Cycle 2) supplies a custom,
+# email-identified User model. This MUST be set before any migration for
+# "identity" is generated — see backend/apps/identity/migrations/.
+
+AUTH_USER_MODEL = "identity.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

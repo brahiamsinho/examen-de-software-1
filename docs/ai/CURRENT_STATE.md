@@ -24,6 +24,12 @@ initialized but not yet used for a real cycle.
   pytest + pytest-django + hypothesis, including a health-check endpoint
   and one smoke test. This is **not confirmed complete** as of this
   reconciliation — its final result was not available to verify.
+- **Postgres is now a hard test prerequisite.** With `backend/apps/identity/`
+  landing the project's first migration, `pytest-django` builds its test
+  database from the `POSTGRES_*` env vars on every run — a reachable `db`
+  service (`docker compose up -d db backend`) is required before
+  `docker compose exec backend pytest` (or `cd backend && pytest`) will
+  work. `apps/uml_modeling/` itself stays DB-free and unaffected.
 
 ### Frontend
 
@@ -53,6 +59,15 @@ initialized but not yet used for a real cycle.
   directories exist). **SDD Cycle 1** (`canonical-uml-model`) has run
   through explore → propose → spec → design → tasks → apply; `sdd-verify`
   and `sdd-archive` are the remaining steps for this change.
+- **SDD Cycle 2** (`multi-tenant-identity`) is in progress, split into 3
+  chained PRs (`stacked-to-main`) due to the review-budget guard. **PR 1
+  is implemented**: `backend/apps/identity/` now exists as the project's
+  first DB-backed app — `AUTH_USER_MODEL = "identity.User"`, the `User`,
+  `Organization`, `TenantScopedModel`/`Membership` models, and the
+  project's **first migration** (`0001_initial`). Services (`services.py`),
+  permissions (`permissions.py`), schemas/API (`schemas.py`/`api.py`), and
+  the cross-origin CSRF/session settings are **not yet implemented** —
+  those are PR 2 and PR 3.
 
 ### Domain
 
