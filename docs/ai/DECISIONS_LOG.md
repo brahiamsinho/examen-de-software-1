@@ -1,5 +1,54 @@
 # Decisions Log
 
+## 2026-09-05 — Cycle 2 apply: implementation complete (multi-tenant-identity)
+
+`sdd-apply` implemented all tasks from
+`openspec/changes/multi-tenant-identity/tasks.md` in `backend/apps/identity/`,
+across 3 chained PRs (`stacked-to-main`), following design.md's DD1–DD7
+(recorded there, extending the proposal's D1–D7) with strict TDD. 167/167
+backend tests pass (128 baseline + 39 new this PR), zero regression to
+`backend/apps/uml_modeling/` (byte-for-byte unchanged) or `/health`.
+
+- **PR 1**: app skeleton, `AUTH_USER_MODEL = "identity.User"`, `User`/
+  `Organization`/`TenantScopedModel`/`Membership` models, the project's
+  first migration.
+- **PR 2**: `services.py` (all invariants — register/authenticate, org
+  CRUD, membership add/role-change/remove, the shared `_assert_not_last_owner`
+  guard) and `permissions.py` (`resolve_membership`/`require_role`).
+- **PR 3**: `schemas.py`, `api.py` (three routers + centralized exception
+  handling per DD6), the DD2 cross-origin session/CSRF settings block, and
+  `backend/env.example`.
+
+Three deviations from design.md, found only once real HTTP wiring was
+exercised against the actually-installed django-ninja version (full
+detail in `tasks.md`'s Phase 5 note):
+
+1. **No `NinjaAPI(csrf=True)` kwarg.** The installed django-ninja
+   (resolved as 1.7.0 from `requirements/base.txt`'s `>=1.1,<2.0` range)
+   has no `csrf` constructor parameter. CSRF is enforced with equivalent
+   coverage instead: `django_auth` (ninja's session auth) enforces the
+   double-submit check by default for every authenticated unsafe request;
+   the two anonymous unsafe endpoints (`register`, `login`) call
+   `ninja.utils.check_csrf()` explicitly. Proven behaviorally by
+   `test_cross_origin_session.py`.
+2. **Mount-prefix path params need an explicit `Path[str]` annotation.**
+   `org_slug` lives in `memberships_router`'s mount prefix, not in each
+   operation's own relative path; this ninja version does not
+   auto-classify it as a path source (it silently defaulted to "query",
+   producing 422s) the way design.md's "Ninja binds the prefix path
+   parameter" note assumed. Fixed with `ninja.Path[str]`; no behavior
+   change beyond the declared parameter source.
+3. **`email-validator` added as a new dependency.** design.md's schema
+   code block types `email: EmailStr`, which pydantic requires
+   `email-validator` for. The proposal's Affected Areas table states "no
+   new dependency" for `backend/requirements/*`; that line is now
+   inaccurate by this one small, pure-Python package. Kept the design's
+   exact schema shape rather than deviate into hand-rolled validation.
+
+`docs/ai/CURRENT_STATE.md` reflects the full post-cycle state. Success
+criteria from `proposal.md` are met with these three noted, non-blocking
+deviations; `sdd-verify`/`sdd-archive` remain.
+
 ## 2026-09-05 — Cycle 1 apply: implementation complete (canonical-uml-model)
 
 `sdd-apply` implemented all 23 tasks from

@@ -59,15 +59,28 @@ initialized but not yet used for a real cycle.
   directories exist). **SDD Cycle 1** (`canonical-uml-model`) has run
   through explore → propose → spec → design → tasks → apply; `sdd-verify`
   and `sdd-archive` are the remaining steps for this change.
-- **SDD Cycle 2** (`multi-tenant-identity`) is in progress, split into 3
-  chained PRs (`stacked-to-main`) due to the review-budget guard. **PR 1
-  is implemented**: `backend/apps/identity/` now exists as the project's
-  first DB-backed app — `AUTH_USER_MODEL = "identity.User"`, the `User`,
-  `Organization`, `TenantScopedModel`/`Membership` models, and the
-  project's **first migration** (`0001_initial`). Services (`services.py`),
-  permissions (`permissions.py`), schemas/API (`schemas.py`/`api.py`), and
-  the cross-origin CSRF/session settings are **not yet implemented** —
-  those are PR 2 and PR 3.
+- **SDD Cycle 2** (`multi-tenant-identity`) is **fully implemented**
+  across its 3 chained PRs (`stacked-to-main`, review-budget guard):
+  `backend/apps/identity/` — `AUTH_USER_MODEL = "identity.User"`, the
+  `User`, `Organization`, `TenantScopedModel`/`Membership` models and the
+  project's **first migration** (PR 1); `services.py` (all invariants:
+  register/authenticate, org CRUD, membership add/role-change/remove,
+  the shared last-owner guard) and `permissions.py`
+  (`resolve_membership`/`require_role`) (PR 2); `schemas.py`, `api.py`
+  (`auth_router`/`organizations_router`/`memberships_router` mounted in
+  `config/api.py`), and the DD2 cross-origin session/CSRF settings block
+  in `config/settings.py` plus `backend/env.example` (PR 3). 167/167
+  backend tests pass. `sdd-verify`/`sdd-archive` are the remaining steps.
+  Three deviations from design.md were required and are documented in
+  `tasks.md`'s Phase 5 note: (1) the installed django-ninja 1.7 has no
+  `NinjaAPI(csrf=True)` kwarg — CSRF is enforced equivalently via
+  `django_auth`'s built-in check plus an explicit `check_csrf()` call on
+  the two anonymous unsafe endpoints; (2) `org_slug` (a mount-prefix path
+  segment) needed an explicit `Path[str]` annotation per operation,
+  since this ninja version does not auto-detect prefix-only path params;
+  (3) `email-validator` was added as a new, small dependency to support
+  `EmailStr` in the schemas — the proposal's "no new dependency" line is
+  now inaccurate by that one package.
 
 ### Domain
 

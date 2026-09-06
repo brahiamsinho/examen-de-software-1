@@ -121,18 +121,63 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: Schemas, API & Cross-Origin Settings
 
-- [ ] 5.1 Create `schemas.py` (all request/response schemas per design's API Surface table).
-- [ ] 5.2 RED: `test_api_auth.py` (`/auth/csrf`, `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/me`).
-- [ ] 5.3 GREEN: `api.py` — `auth_router`, `register_exception_handlers`; `config/api.py` — `NinjaAPI(csrf=True)`, mount routers.
-- [ ] 5.4 RED: `test_api_organizations.py` (CRUD status codes, 404-not-403 non-member contract).
-- [ ] 5.5 GREEN: `api.py` — `organizations_router`.
-- [ ] 5.6 RED: `test_api_memberships.py` (list/add/role-change/remove, error bodies).
-- [ ] 5.7 GREEN: `api.py` — `memberships_router`.
-- [ ] 5.8 `backend/config/settings.py`: add DD2 cross-origin session/CSRF block (env-driven); update `backend/.env.example` with the 6 documented vars.
-- [ ] 5.9 RED: `test_cross_origin_session.py` (token acquisition, rejection without token, acceptance with `X-CSRFToken`, `SameSite=None ⇒ Secure`).
-- [ ] 5.10 GREEN: confirm 5.9 passes via 5.8.
+- [x] 5.1 Create `schemas.py` (all request/response schemas per design's API Surface table).
+- [x] 5.2 RED: `test_api_auth.py` (`/auth/csrf`, `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/me`).
+- [x] 5.3 GREEN: `api.py` — `auth_router`, `register_exception_handlers`; `config/api.py` mounts routers (see deviation note: `NinjaAPI(csrf=True)` does not exist on the installed django-ninja 1.7 — CSRF is enforced equivalently, see below).
+- [x] 5.4 RED: `test_api_organizations.py` (CRUD status codes, 404-not-403 non-member contract).
+- [x] 5.5 GREEN: `api.py` — `organizations_router`.
+- [x] 5.6 RED: `test_api_memberships.py` (list/add/role-change/remove, error bodies).
+- [x] 5.7 GREEN: `api.py` — `memberships_router`.
+- [x] 5.8 `backend/config/settings.py`: add DD2 cross-origin session/CSRF block (env-driven); created `backend/env.example` (docker-compose.yml's referenced filename — no `.env.example` convention existed anywhere in the repo yet) documenting all env vars including the 6 new DD2 ones and the deployment matrix.
+- [x] 5.9 RED: `test_cross_origin_session.py` (token acquisition, rejection without token, acceptance with `X-CSRFToken`, `SameSite=None ⇒ Secure`).
+- [x] 5.10 GREEN: confirm 5.9 passes via 5.8.
+
+> **Deviation note (PR 3, discovered during apply):** design.md's exact API
+> Surface code block specifies `NinjaAPI(csrf=True)`. The installed
+> django-ninja version resolved from `requirements/base.txt`'s
+> `>=1.1,<2.0` range is **1.7.0**, whose `NinjaAPI.__init__` has no `csrf`
+> kwarg at all (confirmed via `inspect.signature`). In this version, CSRF
+> enforcement is delegated entirely to auth classes: `ninja.security.
+> SessionAuth` (aliased `django_auth`) enforces the double-submit check by
+> default (`csrf=True` is its own constructor default) for every
+> authenticated, unsafe-method request. `organizations_router` and
+> `memberships_router` are mounted with `Router(auth=django_auth)`;
+> `/auth/logout` and `/auth/me` use `auth=django_auth` explicitly. The two
+> genuinely anonymous unsafe endpoints (`POST /auth/register`,
+> `POST /auth/login`) have no auth class for ninja to hook CSRF into, so
+> they call `ninja.utils.check_csrf(request)` directly and return its
+> `HttpResponseForbidden` verbatim when validation fails — functionally
+> identical to design.md's stated intent ("anonymous POST /auth/register
+> and POST /auth/login are CSRF-protected too") without the nonexistent
+> kwarg. `test_cross_origin_session.py` proves this behaviorally (token
+> acquisition, 403 without token, 201 with the correct `X-CSRFToken`
+> header, and a 403 on an authenticated unsafe request without a token).
+>
+> Second deviation: `org_slug` lives in `memberships_router`'s *mount
+> prefix* (`/orgs/{org_slug}/members`), not in each operation's own
+> relative path string. The installed ninja version's `ViewSignature` only
+> derives `path_params_names` from the operation's own registered path, so
+> it does not auto-classify a prefix-only path segment as a "path" source
+> the way design.md's "Ninja binds the prefix path parameter" note
+> assumes — it silently defaulted to "query", producing 422s. Fixed by
+> annotating `org_slug: Path[str]` (ninja's explicit `Path` type) on every
+> `memberships_router` operation; Django's URL resolver already supplies
+> the value from the mounted prefix as a view kwarg regardless of this
+> per-operation path model, so the fix is additive and changes no
+> behavior other than the parameter's declared source.
+>
+> Third: design's exact schema code block types `email: EmailStr`, which
+> requires the `email-validator` package (a `pydantic[email]` transitive
+> extra) that was not installed and not listed in `requirements/base.txt`.
+> The proposal's Affected Areas table states "no new dependency", which
+> is now inaccurate by one small, pure-Python package. Added
+> `email-validator>=2.1,<3.0` to `requirements/base.txt` and installed it
+> in the running container rather than deviate from the design's exact,
+> explicitly-requested schema shape (hand-rolling email validation would
+> have been the larger deviation). Flagged as a risk in the apply report
+> for the archiving decision.
 
 ## Phase 6: Cleanup
 
-- [ ] 6.1 `rg "\.unscoped\(\)"` audit — confirm `resolve_membership` is the sole call site.
-- [ ] 6.2 Update `docs/ai/CURRENT_STATE.md`: first migration, `AUTH_USER_MODEL` swap, Postgres test-db prerequisite.
+- [x] 6.1 `rg "\.unscoped\(\)"` audit — confirm `resolve_membership` is the sole call site. Result: exactly 3 files match under `backend/apps/identity/` — `models.py` (the method's own definition + internal use inside `for_organization`), `permissions.py` (`resolve_membership`, the sole production call site), and `tests/test_tenant_scoping.py` (test coverage). No other production call site exists.
+- [x] 6.2 Update `docs/ai/CURRENT_STATE.md`: first migration, `AUTH_USER_MODEL` swap, Postgres test-db prerequisite, and PR 3 completion (this cycle is now fully implemented).
