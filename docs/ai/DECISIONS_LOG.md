@@ -1,5 +1,88 @@
 # Decisions Log
 
+## 2026-09-06 — Cycle 3 apply: implementation complete (frontend-auth-integration)
+
+`sdd-apply` implemented all tasks from
+`openspec/changes/frontend-auth-integration/tasks.md`, across 3 chained PRs
+(`stacked-to-main`, mirroring Cycle 2's split), following design.md's DD1–DD7
+(extending the proposal's D1–D8) with strict TDD. 67/67 frontend tests pass,
+`npm run lint` clean, `next build` succeeds, `backend/` byte-for-byte
+unchanged across all 3 PRs.
+
+- **PR 1** (Phase 0–2): `frontend/env.local.example`; `lib/api.ts` rewritten
+  as the credentialed CSRF-aware transport seam (D3); domain clients
+  `lib/auth.ts`/`lib/organizations.ts`.
+- **PR 2** (Phase 3–5): Jotai state (`state/session.ts`, `state/organizations.ts`,
+  D5); `SessionGuard` (D1/D4) and `(auth)`/`(app)` route-group layouts (D2);
+  `LoginForm`/`RegisterForm` and their routes.
+- **PR 3** (Phase 6–8, this entry): the organization panel (`OrgSwitcher`,
+  `OrgEmptyState`, `CreateOrgForm`, `AppTopbar`, `/dashboard`); the
+  session-aware landing navbar (proposal Q3); full-suite verification and
+  this doc sync.
+
+Deviations from design.md/tasks.md, documented inline in `tasks.md` per
+phase, summarized here:
+
+1. **`lib/auth.ts` exports `fetchMe()`, object-arg signatures (PR1, Phase 2).**
+   design.md's "Interfaces" section (the literal exported TS contract) was
+   followed over tasks.md's looser prose (`getMe()`, positional args):
+   `register(input)`, `login(input)`, `fetchMe()`, `createOrganization(input)`
+   with `slug` **required** — the backend's `OrganizationIn` schema has no
+   slug default, so tasks.md's `createOrganization(name)` shorthand cannot
+   construct a valid request body against the real backend.
+2. **Route-group layouts get no `LayoutRoutes` entry at all (PR2, Phase
+   4.1).** DD4 predicted both `(auth)/layout.tsx` and `(app)/layout.tsx`
+   would key on `"/"` in the generated `.next/types/routes.d.ts`; the actual
+   generated shape after adding both groups is stricter — route groups
+   don't appear in that type at all. DD4's conclusion (explicit
+   `{children: React.ReactNode}` typing) still holds, but for a stronger
+   reason than originally stated.
+3. **`/login` needs a `<Suspense>` boundary (PR2, Phase 5.5).** `LoginForm`
+   calls `useSearchParams()`; Next's production build fails without a
+   wrapping `Suspense` boundary on a page that calls it from a Client
+   Component. Not called out in design.md — discovered via the mandatory
+   `frontend/AGENTS.md` doc-gate read, not from memory.
+4. **`AppTopbar`/`(app)/layout.tsx` wiring deferred from PR2 to PR3 (Phase
+   4.7/5.6).** `AppTopbar` (the only logout affordance, task 5.6) didn't
+   exist until Phase 6, so `(app)/layout.tsx` temporarily rendered
+   `<SessionGuard>{children}</SessionGuard>` only in PR2; PR3 completed the
+   originally intended `<SessionGuard><AppTopbar/>{children}</SessionGuard>`
+   tree and picked up 5.6's deferred logout test as 6.7.
+5. **`OrgSwitcher`/`CreateOrgForm` made purely presentational (PR3, Phase
+   6.1/6.5).** Both were designed self-contained (owning their own
+   `useOrganizations()` call) in tasks.md's prose, but `AppTopbar` and
+   `app/(app)/dashboard/page.tsx` are siblings under `(app)/layout.tsx` (not
+   parent/child), so two self-contained hook instances would each fire an
+   independent `listOrganizations()` GET on every dashboard visit. Both
+   components now take `organizations`/`activeSlug`/`onCreate`/`onSelect` as
+   props from their container instead (container-presentational split),
+   collapsing 3 potential hook instances down to 2 (one per container,
+   architecturally unavoidable given the sibling layout). The corresponding
+   unit tests moved from hook-mocking/localStorage-integration style to
+   plain prop-driven assertions; the localStorage persistence and
+   stale-slug-fallback behavior stay covered by Phase 3's
+   `state/__tests__/organizations.test.ts`, and the full "create → appears
+   in list → becomes active without refetch" scenario is proven end-to-end
+   in `app/(app)/dashboard/__tests__/page.test.tsx`.
+6. **Role label "Lector", not "Visualizador" (PR3, Phase 6.2).** proposal.md
+   Q2 already establishes "Propietario / Editor / Lector" as the Spanish
+   role-label convention; `OrgSwitcher`'s `ROLE_LABELS` was corrected to
+   match rather than introduce a second, inconsistent translation for
+   `VIEWER`.
+7. **`Navbar.tsx` became a Client Component (PR3, Phase 7.2).** Reading
+   `useSession()` to show "Ir al panel" vs. "Iniciar sesión"/"Registrarse"
+   requires `"use client"`; confirmed the pre-existing, un-mocked
+   `app/__tests__/page.test.tsx` (`Home` page test, which renders `<Navbar/>`
+   without stubbing `fetch`) still passes — the real `fetchMe()` call
+   rejects harmlessly into `useSession()`'s `error` state after the test's
+   synchronous assertions already ran, no regression.
+
+`docs/ai/CURRENT_STATE.md` reflects the full post-cycle state, including the
+manual smoke checklist (real cross-origin cookie flow, task 8.5) not yet run
+against a deployed cross-domain origin. Success criteria from `proposal.md`
+are met with these seven noted, non-blocking deviations;
+`sdd-verify`/`sdd-archive` remain.
+
 ## 2026-09-06 — Cycle 2 follow-up: split `identity` into `users` + `organizations`
 
 Pre-merge, `backend/apps/identity/` was refactored into two apps —

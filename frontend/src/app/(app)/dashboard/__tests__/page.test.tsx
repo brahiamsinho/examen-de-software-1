@@ -1,0 +1,74 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { Provider } from "jotai";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import DashboardPage from "@/app/(app)/dashboard/page";
+import * as orgsLib from "@/lib/organizations";
+
+/**
+ * Container: owns the single `useOrganizations()` instance for this route
+ * and wires its `createOrganization` down into `CreateOrgForm` as
+ * `onCreate` (task 6.9's empty-state vs. populated branching, plus the
+ * end-to-end "appears in the list / becomes active without a manual
+ * refetch" scenario from task 6.5 — `CreateOrgForm.test.tsx` itself only
+ * proves the prop is called correctly, since it no longer owns the hook).
+ */
+vi.mock("@/lib/organizations", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/organizations")>("@/lib/organizations");
+  return { ...actual, listOrganizations: vi.fn(), createOrganization: vi.fn() };
+});
+
+function renderPage() {
+  return render(
+    <Provider>
+      <DashboardPage />
+    </Provider>,
+  );
+}
+
+describe("DashboardPage", () => {
+  beforeEach(() => {
+    vi.mocked(orgsLib.listOrganizations).mockReset();
+    vi.mocked(orgsLib.createOrganization).mockReset();
+  });
+
+  it("renders the empty state and the creation form when there are no organizations", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Crea tu primera organización" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Crear organización" })).toBeInTheDocument();
+  });
+
+  it("renders the active org detail and the creation form when organizations exist", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Crea tu primera organización" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Crear organización" })).toBeInTheDocument();
+  });
+
+  it("creating an organization from the empty state shows it as active without a manual refetch", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+    const gamma = { id: "3", name: "Gamma", slug: "gamma", plan: "free", my_role: "OWNER" as const };
+    vi.mocked(orgsLib.createOrganization).mockResolvedValueOnce(gamma);
+
+    renderPage();
+    await screen.findByRole("heading", { name: "Crea tu primera organización" });
+
+    fireEvent.change(screen.getByLabelText("Nombre de la organización"), {
+      target: { value: "Gamma" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Crear organización" }));
+
+    expect(await screen.findByRole("heading", { name: "Gamma" })).toBeInTheDocument();
+    expect(orgsLib.listOrganizations).toHaveBeenCalledOnce();
+  });
+});

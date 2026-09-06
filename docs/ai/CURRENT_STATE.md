@@ -41,6 +41,37 @@ initialized but not yet used for a real cycle.
   confirmed complete** as of this reconciliation — its final result was
   not available to verify.
 
+- **SDD Cycle 3** (`frontend-auth-integration`) is **fully implemented**
+  across its 3 chained PRs (`stacked-to-main`): a credentialed, CSRF-aware
+  transport seam (`lib/api.ts` — `credentials: "include"` on every request,
+  automatic CSRF priming/retry, typed `ApiError`/`NetworkError`); domain
+  clients `lib/auth.ts` (`register`/`login`/`logout`/`fetchMe`) and
+  `lib/organizations.ts` (`listOrganizations`/`createOrganization`), one
+  module per backend Django app; Jotai session/organization state
+  (`state/session.ts`'s `useSession()` discriminated union
+  `loading|authenticated|anonymous|error`, `state/organizations.ts`'s
+  `useOrganizations()` with `localStorage`-persisted active org); a
+  `SessionGuard` Client Component gating the `(app)` route group
+  (`/dashboard`), with `(auth)` hosting `/login`/`/register`; the
+  organization panel (`OrgSwitcher`, `OrgEmptyState`, `CreateOrgForm`,
+  `AppTopbar` with the app's only logout affordance); and a session-aware
+  landing navbar ("Iniciar sesión"/"Registrarse" when anonymous, "Ir al
+  panel" when authenticated). 67/67 frontend tests pass, `npm run lint`
+  clean, `next build` succeeds (`/`, `/login`, `/register`, `/dashboard`
+  all prerender as static `○`), `backend/` byte-for-byte unchanged.
+  `sdd-verify`/`sdd-archive` are the remaining steps. Deviations from
+  design.md are documented inline in `tasks.md` (Phase 2, 4.1, 5.5, 6.1,
+  6.5, 7.2) — most notably: `lib/auth.ts` exports `fetchMe()` (not
+  `getMe()`) with object-arg signatures, matching design.md's authoritative
+  "Interfaces" contract over tasks.md's looser prose; `OrgSwitcher` and
+  `CreateOrgForm` were made purely presentational (props, not their own
+  `useOrganizations()` call) to avoid duplicate `listOrganizations()`
+  fetches between the sibling `AppTopbar`/`dashboard/page.tsx` containers
+  under `(app)/layout.tsx` — a small remaining duplicate-fetch tradeoff
+  (exactly 2 `useOrganizations()` instances per dashboard visit, one per
+  container) is accepted as low-risk since the request is an idempotent GET
+  converging on the same shared `organizationsAtom`.
+
 ### Mobile
 
 - `mobile/` is a bare Flutter scaffold (default counter-app template plus
@@ -48,6 +79,30 @@ initialized but not yet used for a real cycle.
   anything domain-specific for the CASE tool. This is the instructor-
   mandated real Flutter client for the main tool (see `PROJECT_VISION.md`
   and `ARCHITECTURE.md`) — still to be designed and built out.
+
+### Manual smoke checklist — Cycle 3 real cross-origin cookie flow (not automated)
+
+Unit tests stub `fetch` at the module boundary (proposal D8); no MSW, no real HTTP.
+This checklist is the deferred proof for the real browser session-cookie round trip,
+per design.md's Testing Strategy and proposal Risk table. Run with the backend at
+`http://localhost:8000` and the frontend at `http://localhost:3000`:
+
+1. **Register → reload → still authenticated.** Visit `/register`, submit a unique
+   email + password, land on `/dashboard` authenticated. Reload the page: `useSession()`
+   re-fetches `GET /api/auth/me` and the session stays authenticated (no bounce to
+   `/login`) — proves the `HttpOnly` session cookie survives a hard reload.
+2. **Logout → `/`.** From the panel, click "Cerrar sesión". Confirm the request hits
+   `POST /api/auth/logout`, the client session clears, and the browser lands on `/`
+   (proposal Q4 — a deliberate logout is an exit, not a prelude to `/login`).
+3. **Backend stopped + load `/dashboard` → retry panel, not `/login`.** Stop the
+   backend container, then visit `/dashboard` directly. `GET /api/auth/me` fails as a
+   network error, not a `401` — confirm the guard renders the retry panel ("No pudimos
+   verificar tu sesión...") and does **not** redirect to `/login` (DD5's "an outage must
+   not resolve to anonymous").
+
+Not yet run against a real deployed cross-domain origin (`app.example.com` →
+`api.example.com`) — the CSRF body-token fallback path (DD2) is unverified beyond the
+cookie fast path exercised by local dev (proposal's Open Question 1 in design.md).
 
 ### End-to-end testing
 
