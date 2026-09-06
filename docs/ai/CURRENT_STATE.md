@@ -24,8 +24,8 @@ initialized but not yet used for a real cycle.
   pytest + pytest-django + hypothesis, including a health-check endpoint
   and one smoke test. This is **not confirmed complete** as of this
   reconciliation — its final result was not available to verify.
-- **Postgres is now a hard test prerequisite.** With `backend/apps/identity/`
-  landing the project's first migration, `pytest-django` builds its test
+- **Postgres is now a hard test prerequisite.** With `backend/apps/users/` and
+  `backend/apps/organizations/` landing the project's first migrations, `pytest-django` builds its test
   database from the `POSTGRES_*` env vars on every run — a reachable `db`
   service (`docker compose up -d db backend`) is required before
   `docker compose exec backend pytest` (or `cd backend && pytest`) will
@@ -60,16 +60,19 @@ initialized but not yet used for a real cycle.
   through explore → propose → spec → design → tasks → apply; `sdd-verify`
   and `sdd-archive` are the remaining steps for this change.
 - **SDD Cycle 2** (`multi-tenant-identity`) is **fully implemented**
-  across its 3 chained PRs (`stacked-to-main`, review-budget guard):
-  `backend/apps/identity/` — `AUTH_USER_MODEL = "identity.User"`, the
-  `User`, `Organization`, `TenantScopedModel`/`Membership` models and the
-  project's **first migration** (PR 1); `services.py` (all invariants:
-  register/authenticate, org CRUD, membership add/role-change/remove,
-  the shared last-owner guard) and `permissions.py`
-  (`resolve_membership`/`require_role`) (PR 2); `schemas.py`, `api.py`
-  (`auth_router`/`organizations_router`/`memberships_router` mounted in
-  `config/api.py`), and the DD2 cross-origin session/CSRF settings block
-  in `config/settings.py` plus `backend/env.example` (PR 3). 167/167
+  across its 3 chained PRs (`stacked-to-main`, review-budget guard), and
+  was subsequently split from a single `apps/identity/` app into two
+  apps per Django's one-app-per-domain convention:
+  `backend/apps/users/` (`AUTH_USER_MODEL = "users.User"`, the `User`
+  model, `register_user`/`authenticate_user` services, `auth_router`) and
+  `backend/apps/organizations/` (`Organization`, `TenantScopedModel`/
+  `Membership` models, the tenancy/membership services and
+  `_assert_not_last_owner` guard, `permissions.py`
+  (`resolve_membership`/`require_role`), `organizations_router`/
+  `memberships_router`) — the project's **first migrations** (PR 1);
+  services + permissions (PR 2); schemas, routers mounted in
+  `config/api.py`, and the DD2 cross-origin session/CSRF settings block
+  in `config/settings.py` plus `backend/env.example` (PR 3). 168/168
   backend tests pass. `sdd-verify`/`sdd-archive` are the remaining steps.
   Three deviations from design.md were required and are documented in
   `tasks.md`'s Phase 5 note: (1) the installed django-ninja 1.7 has no

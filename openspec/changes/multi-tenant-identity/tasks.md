@@ -20,16 +20,16 @@ Chain strategy: stacked-to-main
 
 | Unit | Goal | Likely PR | Focused test command | Runtime harness | Rollback boundary |
 |------|------|-----------|----------------------|-----------------|-------------------|
-| 1 | App skeleton, `AUTH_USER_MODEL`, models, first migration | PR 1 | `cd backend && pytest apps/identity/tests/test_apps.py apps/identity/tests/test_models_*.py apps/identity/tests/test_tenant_scoping.py apps/identity/tests/test_isolation_contract.py` | `python manage.py migrate` against empty Postgres `db` service | `migrate identity zero`; drop `apps.identity` from `INSTALLED_APPS` + revert `AUTH_USER_MODEL` |
-| 2 | Services + permissions (invariants, no HTTP) | PR 2 | `cd backend && pytest apps/identity/tests/test_services_*.py apps/identity/tests/test_permissions.py` | N/A — pure service-layer unit tests, no server needed | Revert `services.py`/`permissions.py`; PR 1 models remain valid standalone |
-| 3 | Schemas, API routers, CSRF/session settings | PR 3 | `cd backend && pytest apps/identity/tests/test_api_*.py apps/identity/tests/test_cross_origin_session.py` | `python manage.py runserver` + `curl` against `/api/auth/csrf`, `/api/orgs` | Unmount routers in `config/api.py`; leaves schema/DB intact per design's stated safe partial rollback |
+| 1 | App skeleton, `AUTH_USER_MODEL`, models, first migration | PR 1 | `cd backend && pytest apps/users/tests/test_apps.py apps/users/tests/test_models_*.py apps/organizations/tests/test_models_*.py apps/organizations/tests/test_tenant_scoping.py apps/organizations/tests/test_isolation_contract.py` | `python manage.py migrate` against empty Postgres `db` service | `migrate organizations zero` then `migrate users zero`; drop `apps.users`/`apps.organizations` from `INSTALLED_APPS` + revert `AUTH_USER_MODEL` |
+| 2 | Services + permissions (invariants, no HTTP) | PR 2 | `cd backend && pytest apps/users/tests/test_services_*.py apps/organizations/tests/test_services_*.py apps/organizations/tests/test_permissions.py` | N/A — pure service-layer unit tests, no server needed | Revert `services.py`/`permissions.py` in both apps; PR 1 models remain valid standalone |
+| 3 | Schemas, API routers, CSRF/session settings | PR 3 | `cd backend && pytest apps/users/tests/test_api_*.py apps/users/tests/test_cross_origin_session.py apps/organizations/tests/test_api_*.py` | `python manage.py runserver` + `curl` against `/api/auth/csrf`, `/api/orgs` | Unmount routers in `config/api.py`; leaves schema/DB intact per design's stated safe partial rollback |
 
 ## Phase 0: App Skeleton & `AUTH_USER_MODEL` Wiring (blocks all migrations)
 
-- [x] 0.1 Create `backend/apps/identity/__init__.py` (empty).
-- [x] 0.2 Create `backend/apps/identity/apps.py`: `IdentityConfig(AppConfig)`, `name="apps.identity"`, `label="identity"`.
-- [x] 0.3 `backend/config/settings.py`: add `"apps.identity"` to `INSTALLED_APPS` and set `AUTH_USER_MODEL = "identity.User"`.
-- [x] 0.4 RED: `tests/test_apps.py` — app registered, label exactly `identity`.
+- [x] 0.1 Create `backend/apps/users/__init__.py` and `backend/apps/organizations/__init__.py` (empty).
+- [x] 0.2 Create `backend/apps/users/apps.py`: `UsersConfig(AppConfig)`, `name="apps.users"`, `label="users"`; create `backend/apps/organizations/apps.py`: `OrganizationsConfig(AppConfig)`, `name="apps.organizations"`, `label="organizations"`.
+- [x] 0.3 `backend/config/settings.py`: add `"apps.users"` and `"apps.organizations"` to `INSTALLED_APPS` and set `AUTH_USER_MODEL = "users.User"`.
+- [x] 0.4 RED: `apps/users/tests/test_apps.py` and `apps/organizations/tests/test_apps.py` — each app registered, labels exactly `users` and `organizations`.
 - [x] 0.5 GREEN: confirm 0.4 passes via 0.1–0.3.
 
 ## Phase 1: Test Infrastructure
@@ -40,7 +40,7 @@ Chain strategy: stacked-to-main
 ## Phase 2: Models & First Migration
 
 - [x] 2.1 Create `constants.py` (`Role`, `Plan` `TextChoices`).
-- [x] 2.2 Create `errors.py` (`IdentityError` + all 8 subclasses with `code`).
+- [x] 2.2 Create `apps/users/errors.py` (`UserError` + its subclasses with `code`) and `apps/organizations/errors.py` (`OrganizationError` + its subclasses with `code`).
 - [x] 2.3 RED: `test_models_user.py` (CI email uniqueness, Argon2 hash, `USERNAME_FIELD`, no `username`, manager methods).
 - [x] 2.4 GREEN: `models.py` — `UserManager`, `User` (UUID pk, `Lower("email")` constraint per DD7).
 - [x] 2.5 RED: `test_models_organization.py` (slug uniqueness, `plan` default `STARTER`, UUID pk).
@@ -51,7 +51,7 @@ Chain strategy: stacked-to-main
 - [x] 2.10 GREEN: `models.py` — `Membership(TenantScopedModel)`.
 - [x] 2.11 RED: `test_isolation_contract.py` (enumerate `TenantScopedModel` subclasses).
 - [x] 2.12 GREEN: confirm 2.11 passes against current model set.
-- [x] 2.13 Run `makemigrations identity`; hand-review `0001_initial.py` (Lower-email constraint, `(user,organization)` unique, `(organization,role)` index, swappable dependency).
+- [x] 2.13 Run `makemigrations users organizations`; hand-review both `0001_initial.py` files (Lower-email constraint, `(user,organization)` unique, `(organization,role)` index, swappable dependency).
 - [x] 2.14 `migrate` against empty Postgres; document the `db` service prerequisite in `docs/ai/CURRENT_STATE.md`.
 
 > **Deviation note (PR 1, discovered during apply):** tasks 0.4/0.5 assumed
@@ -60,7 +60,7 @@ Chain strategy: stacked-to-main
 > `django.contrib.admin`, which unconditionally imports
 > `django.contrib.auth.admin` → `get_user_model()` at import time — so
 > **any** test run (even one that touches no DB) raises
-> `ImproperlyConfigured` once `AUTH_USER_MODEL = "identity.User"` is set
+> `ImproperlyConfigured` once `AUTH_USER_MODEL = "users.User"` is set
 > without a concrete `User` model existing. This confirms, more strictly
 > than tasks.md's phase split implies, design.md's own rollout note that
 > steps 1–2 and 3–4 "must be one commit." Practical effect on this PR's
@@ -179,5 +179,5 @@ Chain strategy: stacked-to-main
 
 ## Phase 6: Cleanup
 
-- [x] 6.1 `rg "\.unscoped\(\)"` audit — confirm `resolve_membership` is the sole call site. Result: exactly 3 files match under `backend/apps/identity/` — `models.py` (the method's own definition + internal use inside `for_organization`), `permissions.py` (`resolve_membership`, the sole production call site), and `tests/test_tenant_scoping.py` (test coverage). No other production call site exists.
+- [x] 6.1 `rg "\.unscoped\(\)"` audit — confirm `resolve_membership` is the sole call site. Result: exactly 3 files match under `backend/apps/organizations/` — `models.py` (the method's own definition + internal use inside `for_organization`), `permissions.py` (`resolve_membership`, the sole production call site), and `tests/test_tenant_scoping.py` (test coverage). No other production call site exists.
 - [x] 6.2 Update `docs/ai/CURRENT_STATE.md`: first migration, `AUTH_USER_MODEL` swap, Postgres test-db prerequisite, and PR 3 completion (this cycle is now fully implemented).

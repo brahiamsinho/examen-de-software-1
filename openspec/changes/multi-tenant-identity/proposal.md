@@ -78,17 +78,19 @@ None. `project-document`'s requirements are intentionally untouched; the reconci
 
 ## Resolved Decisions
 
-**D1 — One new app, `backend/apps/identity/`.** Not two apps (`accounts/` + `organizations/`).
-Rationale: `Membership` is the join between `User` and `Organization`, so splitting them
-creates a bidirectional dependency between two migration graphs for what is a single bounded
-context (*who you are* and *which tenant you act inside*). A custom `AUTH_USER_MODEL` also has
-to exist before the project's first `migrate`; keeping it in one app keeps that ordering
-trivially correct. The app is kept architecturally separate from `uml_modeling/` and is
-explicitly **allowed** to depend on `django.contrib.auth` and the ORM — the Cycle-1 AST test
-forbidding those imports guards `apps/uml_modeling/domain/` only, and must not be widened to
-this app. Per D7 of Cycle 1, intra-backend imports stay acyclic and one-directional:
-`identity` may later be imported by a project-persistence app; `uml_modeling.domain` imports
-nothing and must keep importing nothing.
+**D1 — Two new apps, `backend/apps/users/` and `backend/apps/organizations/`.** Originally
+implemented as one app (`identity/`), then split pre-merge per the project owner's explicit
+preference for Django's one-app-per-domain convention — see the follow-up note in
+`docs/ai/DECISIONS_LOG.md`. `Membership` is the join between `User` and `Organization`, living
+in `organizations/` with a plain FK to `AUTH_USER_MODEL`; this keeps a one-directional dependency
+(`organizations` depends on `users`, never the reverse) rather than a bidirectional one. A custom
+`AUTH_USER_MODEL` also has to exist before the project's first `migrate`; both apps' migrations
+land together so that ordering stays trivially correct. Both apps are kept architecturally
+separate from `uml_modeling/` and are explicitly **allowed** to depend on `django.contrib.auth`
+and the ORM — the Cycle-1 AST test forbidding those imports guards `apps/uml_modeling/domain/`
+only, and must not be widened to these apps. Per D7 of Cycle 1, intra-backend imports stay
+acyclic and one-directional: `users`/`organizations` may later be imported by a
+project-persistence app; `uml_modeling.domain` imports nothing and must keep importing nothing.
 
 **D2 — Session authentication, not JWT (fixed by the user).** `django.contrib.auth` sessions
 with a custom `User`, exposed through Django Ninja's `django_auth`. Rationale: it is the
@@ -142,7 +144,7 @@ describes and this cycle defers. `(user, organization)` is unique together.
 `USERNAME_FIELD = "email"`, unique and case-insensitively normalized, and no `username` field.
 Rationale: registration, login, and member-add are all email-driven in the product surface
 already designed; keeping a vestigial `username` would create a second identity users must
-learn and a second uniqueness rule to defend. `AUTH_USER_MODEL = "identity.User"` is set in the
+learn and a second uniqueness rule to defend. `AUTH_USER_MODEL = "users.User"` is set in the
 same commit as the first migration — this project has **no migrations at all yet**, which is
 the one moment where a custom user model costs nothing.
 
@@ -155,28 +157,37 @@ policy would be speculative and is a cycle of its own.
 
 ## Approach
 
-One new Django app, `backend/apps/identity/`, containing the project's first `models.py` and
-first migration.
+Two new Django apps, `backend/apps/users/` and `backend/apps/organizations/`, containing the
+project's first `models.py` files and first migrations.
 
 ```
-backend/apps/identity/
+backend/apps/users/
 ├── apps.py
-├── models.py           # User (+ UserManager), Organization, Membership,
-│                       # TenantScopedModel (abstract), Role/Plan TextChoices
+├── models.py           # User (+ UserManager)
+├── migrations/0001_initial.py
+├── schemas.py          # RegisterIn, LoginIn, UserOut, CsrfOut
+├── services.py         # register_user, authenticate_user — invariants live here, not in views
+├── api.py              # auth_router
+└── tests/
+
+backend/apps/organizations/
+├── apps.py
+├── constants.py        # Role/Plan TextChoices
+├── models.py           # Organization, Membership, TenantScopedModel (abstract)
 ├── migrations/0001_initial.py
 ├── schemas.py          # Ninja/Pydantic request+response schemas
-├── services.py         # register_user, create_organization, add_member,
-│                       # change_role, remove_member — invariants live here, not in views
+├── services.py         # create_organization, add_member, change_member_role,
+│                       # remove_member — invariants live here, not in views
 ├── permissions.py      # resolve_membership(request, org_slug), role requirements
-├── api.py              # auth_router, organizations_router, memberships_router
+├── api.py              # organizations_router, memberships_router
 └── tests/
 ```
 
-- `config/settings.py` gains `apps.identity` in `INSTALLED_APPS`, `AUTH_USER_MODEL`, and the
-  cross-origin session settings required for a cookie session shared with a Next.js app on
-  another origin: `CORS_ALLOW_CREDENTIALS`, `CSRF_TRUSTED_ORIGINS`, `SESSION_COOKIE_SAMESITE`,
-  and `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` — all env-driven, never hardcoded, per the
-  existing project convention.
+- `config/settings.py` gains `apps.users` and `apps.organizations` in `INSTALLED_APPS`,
+  `AUTH_USER_MODEL`, and the cross-origin session settings required for a cookie session shared
+  with a Next.js app on another origin: `CORS_ALLOW_CREDENTIALS`, `CSRF_TRUSTED_ORIGINS`,
+  `SESSION_COOKIE_SAMESITE`, and `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` — all env-driven,
+  never hardcoded, per the existing project convention.
 - `config/api.py` mounts the routers on the existing `NinjaAPI` beside `/health`.
 - Business invariants (last-owner, unique membership, self-removal, role changes) live in
   `services.py` and are unit-tested independently of HTTP, so the later Channels and
@@ -197,10 +208,11 @@ than deferring it.
 
 | Area | Impact | Description |
 |---|---|---|
-| `backend/apps/identity/` | New | Entire cycle deliverable: models, migration, services, schemas, routers, tests |
-| `backend/apps/identity/migrations/0001_initial.py` | New | The project's **first** migration |
+| `backend/apps/users/` | New | Entire cycle deliverable (user slice): model, migration, services, schemas, router, tests |
+| `backend/apps/organizations/` | New | Entire cycle deliverable (tenancy slice): models, migration, services, permissions, schemas, routers, tests |
+| `backend/apps/users/migrations/0001_initial.py`, `backend/apps/organizations/migrations/0001_initial.py` | New | The project's **first** migrations |
 | `backend/config/settings.py` | Modified | `INSTALLED_APPS`, `AUTH_USER_MODEL`, session/CSRF/CORS-credential settings (env-driven) |
-| `backend/config/api.py` | Modified | Mount the identity routers on the existing `NinjaAPI` |
+| `backend/config/api.py` | Modified | Mount the users/organizations routers on the existing `NinjaAPI` |
 | `backend/apps/uml_modeling/` | Untouched | Stays DB-free and auth-free; its AST import guard is not widened |
 | `backend/requirements/*` | Untouched | No new dependency |
 | `docker-compose.yml`, `.env` | Verify only | Confirm the `db` service is reachable for `migrate` and DB-backed tests |
@@ -227,9 +239,10 @@ Rollback is more expensive than Cycle 1's because this cycle introduces schema, 
 staged:
 
 1. **Before the first deploy with real data** (the expected case): `python manage.py migrate
-   identity zero`, then `git revert` the cycle commits and drop the `apps.identity` /
-   `AUTH_USER_MODEL` lines from `settings.py`. Because this is the project's first migration
-   and `uml_modeling` has no models, no other table depends on `identity`, so nothing cascades.
+   organizations zero` then `migrate users zero`, then `git revert` the cycle commits and drop
+   the `apps.users` / `apps.organizations` / `AUTH_USER_MODEL` lines from `settings.py`. Because
+   these are the project's first migrations and `uml_modeling` has no models, no other table
+   depends on `users`/`organizations`, so nothing cascades.
 2. **After data exists**: reverting `AUTH_USER_MODEL` is not safely reversible in place —
    recovery is to restore the Postgres volume from a dump taken before the first `migrate`. A
    pre-migration dump MUST therefore be part of the first deployment step.
@@ -288,7 +301,7 @@ staged:
       path without the explicit `.unscoped()` escape hatch.
 - [ ] `Organization.plan` round-trips one of `STARTER` / `TEAM` / `ENTERPRISE` and provably
       gates nothing.
-- [ ] `AUTH_USER_MODEL` points at `identity.User`, and `python manage.py migrate` applies
+- [ ] `AUTH_USER_MODEL` points at `users.User`, and `python manage.py migrate` applies
       cleanly from an empty database.
 - [ ] `backend/apps/uml_modeling/` is byte-for-byte unchanged and its domain-purity import test
       still passes.

@@ -1,5 +1,22 @@
 # Decisions Log
 
+## 2026-09-06 — Cycle 2 follow-up: split `identity` into `users` + `organizations`
+
+Pre-merge, `backend/apps/identity/` was refactored into two apps —
+`backend/apps/users/` (`User`, `UserManager`, `register_user`/
+`authenticate_user`, `auth_router`) and `backend/apps/organizations/`
+(`Organization`, `Membership`, `TenantScopedModel`, the tenancy/membership
+services, `permissions.py`, `organizations_router`/`memberships_router`) —
+at the project owner's explicit request, per Django's one-app-per-domain
+convention. `AUTH_USER_MODEL` is now `"users.User"`; `INSTALLED_APPS` lists
+both apps in place of `apps.identity`. Done before any real deployment (no
+migration or data cost), so this is a rename/split, not a runtime migration.
+168/168 backend tests pass (the app-registration test split into two,
++1 net). `openspec/changes/multi-tenant-identity/{proposal,design,tasks}.md`
+and their specs were updated to reference the new module paths; the
+2026-09-05 entry below is left as the historical record of that PR's
+original (single-app) implementation.
+
 ## 2026-09-05 — Cycle 2 apply: implementation complete (multi-tenant-identity)
 
 `sdd-apply` implemented all tasks from
