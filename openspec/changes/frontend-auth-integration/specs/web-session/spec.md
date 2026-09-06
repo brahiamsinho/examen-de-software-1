@@ -12,9 +12,12 @@ session-cookie backend without ever silently sending anonymous requests.
 
 The system MUST send `credentials: "include"` on every API request. The system MUST prime the
 CSRF cookie via `GET /api/auth/csrf` only when the `csrftoken` cookie is absent, and MUST attach
-the current `X-CSRFToken` header value (read from `document.cookie`, never cached) on unsafe
-methods. The system MUST normalize failed responses into a typed `ApiError {status, code,
-detail}`.
+the current `X-CSRFToken` header value on unsafe methods. The token value comes from
+`document.cookie` when readable, and otherwise from a module-level cache populated by the priming
+response body — required because the deployed topology serves the app and the API from different
+domains, where JS on the app domain cannot read a cookie scoped to the API domain. The cache is
+invalidated after login/logout and re-primed automatically, once, on a `403` CSRF failure. The
+system MUST normalize failed responses into a typed `ApiError {status, code, detail}`.
 
 #### Scenario: Credentialed request succeeds
 

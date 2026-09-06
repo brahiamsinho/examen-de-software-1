@@ -77,11 +77,30 @@ phase, summarized here:
    rejects harmlessly into `useSession()`'s `error` state after the test's
    synchronous assertions already ran, no regression.
 
+8. **`app/(app)/dashboard/page.tsx` is a full Client Component, not the
+   Server-Component-shell pattern (PR3, Phase 6.6; found by `sdd-verify`,
+   backfilled here).** design.md's DD3 and File Architecture table describe
+   every `(app)` page as a thin static server shell delegating to client
+   children, the pattern `(auth)/login/page.tsx` and
+   `(auth)/register/page.tsx` follow. `dashboard/page.tsx` instead needs
+   `useOrganizations()` directly to own the container half of Phase 6's
+   container-presentational split (deviation 5 above), so it is `"use
+   client"` end to end. This is not a security regression — a fully
+   client-rendered page never puts protected data in the server-rendered RSC
+   payload at all, which is stricter than the intended pattern, not weaker —
+   and it does not break any spec scenario (17/17 still pass). It is,
+   however, the precedent for any future `(app)` page: reach for the
+   Server-Component-shell pattern by default, and only fall back to a full
+   Client Component when the page's own data (not a child's) is needed
+   before render, as here.
+
 `docs/ai/CURRENT_STATE.md` reflects the full post-cycle state, including the
 manual smoke checklist (real cross-origin cookie flow, task 8.5) not yet run
 against a deployed cross-domain origin. Success criteria from `proposal.md`
-are met with these seven noted, non-blocking deviations;
-`sdd-verify`/`sdd-archive` remain.
+are met with these eight noted, non-blocking deviations. `sdd-verify` ran
+(`pass_with_warnings`, 0 CRITICAL) and flagged deviation 8 above plus a stale
+`web-session/spec.md` line describing the pre-DD2 cookie-only CSRF reading,
+both fixed in this same pass; `sdd-archive` remains.
 
 ## 2026-09-06 — Cycle 2 follow-up: split `identity` into `users` + `organizations`
 
