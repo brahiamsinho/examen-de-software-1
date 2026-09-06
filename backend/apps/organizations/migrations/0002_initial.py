@@ -36,6 +36,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='membership',
-            constraint=models.UniqueConstraint(fields=('user', 'organization'), name='identity_membership_user_org_uniq'),
+            constraint=models.UniqueConstraint(fields=('user', 'organization'), name='organizations_membership_user_org_uniq'),
         ),
     ]

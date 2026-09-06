@@ -62,7 +62,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(Lower("email"), name="identity_user_email_ci_unique"),
+            models.UniqueConstraint(Lower("email"), name="users_user_email_ci_unique"),
         ]
 
     def __str__(self) -> str:

@@ -90,7 +90,7 @@ class Membership(TenantScopedModel):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "organization"], name="identity_membership_user_org_uniq"
+                fields=["user", "organization"], name="organizations_membership_user_org_uniq"
             ),
         ]
         indexes = [

@@ -536,9 +536,12 @@ Ordering, which matters and must not be reordered:
    `AUTH_USER_MODEL = "users.User"` — both before any `makemigrations` run.
 3. Write `apps/users/models.py` (`User`) then `apps/organizations/models.py` (`Organization`,
    `TenantScopedModel`, `Membership`), since `Membership.user` is a FK to `AUTH_USER_MODEL`.
-4. `python manage.py makemigrations users organizations` → one `0001_initial.py` per app; review
-   both by hand for the `Lower("email")` constraint (`users`), the `(user, organization)` unique
-   constraint and `swappable_dependency` handling (`organizations`).
+4. `python manage.py makemigrations users organizations` → one `0001_initial.py` for `users`; for
+   `organizations`, Django emits `0001_initial.py` + `0002_initial.py` because `Organization.members`
+   (M2M `through=Membership`) and `Membership.organization` (FK) form a circular in-app dependency
+   that a single migration file cannot express — standard Django behavior, not a bug. Review both
+   apps' migrations by hand for the `Lower("email")` constraint (`users`), the `(user, organization)`
+   unique constraint and `swappable_dependency` handling (`organizations`).
 5. `python manage.py migrate` against an empty database.
 
 Steps 1–2 must be one commit with step 3–4; a `makemigrations` run before `AUTH_USER_MODEL` is set

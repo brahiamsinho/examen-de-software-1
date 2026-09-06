@@ -8,7 +8,7 @@ from django.test import RequestFactory
 from apps.organizations import permissions
 from apps.organizations.constants import Role
 from apps.organizations.errors import RoleNotAllowedError
-from apps.organizations.tests.factories import make_org_with_roles
+from apps.organizations.tests.factories import make_membership, make_org_with_roles, make_organization
 from apps.users.tests.factories import make_user
 
 
@@ -40,6 +40,35 @@ class TestResolveMembership:
 
         with pytest.raises(Http404):
             permissions.resolve_membership(request, org.slug)
+
+    def test_resolves_strictly_from_the_path_slug_regardless_of_other_membership(self):
+        """tenant-isolation spec, 'Tenant Key in the URL Path': the org is
+        resolved strictly from the URL path segment. A user who belongs to
+        two organizations must always get back the path's organization, no
+        matter which of the two org_slugs is resolved first.
+        """
+        user = make_user()
+        org_a = make_organization(owner=user)
+        org_b = make_organization()
+        make_membership(organization=org_b, user=user, role=Role.VIEWER)
+
+        # Resolve org_b first, then org_a - order must not affect the result.
+        request_b = RequestFactory().get(f"/api/orgs/{org_b.slug}")
+        request_b.user = user
+        membership_b = permissions.resolve_membership(request_b, org_b.slug)
+        assert membership_b.organization_id == org_b.id
+        assert membership_b.role == Role.VIEWER
+
+        request_a = RequestFactory().get(f"/api/orgs/{org_a.slug}")
+        request_a.user = user
+        membership_a = permissions.resolve_membership(request_a, org_a.slug)
+        assert membership_a.organization_id == org_a.id
+        assert membership_a.role == Role.OWNER
+
+        # And the reverse order gives the same, non-leaking result.
+        membership_a_again = permissions.resolve_membership(request_a, org_a.slug)
+        assert membership_a_again.organization_id == org_a.id
+        assert membership_a_again.role == Role.OWNER
 
 
 @pytest.mark.django_db

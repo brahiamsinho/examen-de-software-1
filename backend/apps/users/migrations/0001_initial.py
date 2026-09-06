@@ -37,6 +37,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='user',
-            constraint=models.UniqueConstraint(django.db.models.functions.text.Lower('email'), name='identity_user_email_ci_unique'),
+            constraint=models.UniqueConstraint(django.db.models.functions.text.Lower('email'), name='users_user_email_ci_unique'),
         ),
     ]

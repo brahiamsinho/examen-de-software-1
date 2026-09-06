@@ -50,6 +50,21 @@ class TestRegister:
         assert response.status_code == 400
         assert response.json()["code"] == "password_invalid"
 
+    def test_registration_does_not_auto_create_an_organization(self, auth_client):
+        """user-authentication spec, 'No Auto-Created Organization': a freshly
+        registered user legitimately belongs to zero organizations.
+        """
+        response = auth_client.post(
+            "/api/auth/register",
+            data={"email": "noorg@example.com", "password": "a-strong-pass-0", "full_name": "No Org"},
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+
+        orgs_response = auth_client.get("/api/orgs")
+        assert orgs_response.status_code == 200
+        assert orgs_response.json() == []
+
 
 @pytest.mark.django_db
 class TestLogin:
