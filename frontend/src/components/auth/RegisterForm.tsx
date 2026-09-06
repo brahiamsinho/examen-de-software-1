@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { ApiError } from "@/lib/api";
 import { register } from "@/lib/auth";
 import { sessionAtom } from "@/state/session";
@@ -44,9 +46,11 @@ export function RegisterForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="register-full-name">Nombre completo</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="register-full-name" className="text-sm font-medium">
+          Nombre completo
+        </label>
+        <Input
           id="register-full-name"
           type="text"
           autoComplete="name"
@@ -55,9 +59,11 @@ export function RegisterForm() {
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="register-email">Correo electrónico</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="register-email" className="text-sm font-medium">
+          Correo electrónico
+        </label>
+        <Input
           id="register-email"
           type="email"
           autoComplete="email"
@@ -67,11 +73,12 @@ export function RegisterForm() {
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="register-password">Contraseña</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="register-password" className="text-sm font-medium">
+          Contraseña
+        </label>
+        <PasswordInput
           id="register-password"
-          type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}

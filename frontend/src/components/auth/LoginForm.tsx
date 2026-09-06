@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { safe } from "@/lib/next-path";
 import { login } from "@/lib/auth";
 import { sessionAtom } from "@/state/session";
@@ -42,9 +44,11 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="login-email">Correo electrónico</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="login-email" className="text-sm font-medium">
+          Correo electrónico
+        </label>
+        <Input
           id="login-email"
           type="email"
           autoComplete="email"
@@ -54,11 +58,12 @@ export function LoginForm() {
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="login-password">Contraseña</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="login-password" className="text-sm font-medium">
+          Contraseña
+        </label>
+        <PasswordInput
           id="login-password"
-          type="password"
           autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
