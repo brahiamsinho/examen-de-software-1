@@ -28,6 +28,13 @@ services:
     # Real values come from backend/.env (copy it from backend/env.example
     # — never commit backend/.env).
     env_file: ./backend/.env
+    environment:
+      # Takes precedence over env_file. The frontend's server-side session
+      # check (ssr-protected-routes) now sends requests with
+      # `Host: backend:8000` — Django's CommonMiddleware rejects any Host
+      # not in ALLOWED_HOSTS, so the Compose service name must be included
+      # alongside whatever backend/.env sets for browser-facing access.
+      ALLOWED_HOSTS: localhost,127.0.0.1,backend
     depends_on:
       db:
         condition: service_healthy
@@ -44,6 +51,12 @@ services:
     # Real values come from frontend/.env (copy it from
     # frontend/env.local.example — never commit frontend/.env).
     env_file: ./frontend/.env
+    environment:
+      # Takes precedence over env_file. Inside the frontend container
+      # `localhost` is the container itself, so the Next.js server process
+      # must reach the API via the Compose service name instead
+      # (ssr-protected-routes design.md DD5).
+      INTERNAL_API_URL: http://backend:8000
     depends_on:
       - backend
     ports:

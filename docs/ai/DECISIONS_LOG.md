@@ -1,5 +1,73 @@
 # Decisions Log
 
+## 2026-09-06 — Cycle 5 apply: implementation complete (ssr-protected-routes)
+
+`sdd-apply` implemented all 19 tasks (Phases 1–8) from
+`openspec/changes/ssr-protected-routes/tasks.md`, following design.md's
+DD1–DD8 (extending proposal.md's D1–D8) with strict TDD, single PR,
+frontend-only. 102/102 frontend tests pass (15 new), `backend/`
+byte-for-byte unchanged, no new migration.
+
+**D1–D8 summary** (full rationale in `proposal.md`): server-side route
+protection closes the gap where `SessionGuard`'s client-only gate let an
+anonymous or invalid-session direct/no-JS request receive protected RSC
+markup before any client script ran (D1/D2). Implemented as one new module
+(`lib/server-session.ts`, D1) rather than Next middleware/`proxy.ts` (D1
+rejects it — Edge runtime can't reach the session backend without another
+network hop) or duplicating logic per page (D1 also rejects per-page checks
+as drift-prone). `SessionGuard` stays untouched (D4) — server-side validity
+checking is additive defense-in-depth, not a replacement for the client
+skeleton/error/retry UX. Non-`401`/`403` failures (5xx, network errors)
+throw and are caught at the gate, rendering normally instead of redirecting
+(D2 — an outage must never be misread as a logout).
+
+**DV1–DV5** (design.md's own deviation table, confirmed exactly as
+designed): (1) `requireUser(nextPath: string)` takes an explicit required
+parameter — Next 16 has no server-side pathname API, so the proposal's
+implied path-derivation is impossible; each route group passes its own
+canonical literal. (2) `requireUser` catches `getServerUser`'s throw and
+returns `null` rather than propagating it — an uncaught throw would hit
+Next's error boundary (no `error.tsx` exists) and produce a 500, contradicting
+the "falls through to render normally" spec scenario. (3) Added
+`lib/__tests__/env.test.ts` (2 cases) — not in the proposal's Affected
+Areas, but `internalApiUrl` is evaluated at import time and cannot be
+exercised from `server-session.test.ts` (which mocks `@/lib/env` wholesale).
+(4) `(app)/layout.tsx`'s docblock needed a rewrite, not just "one line" —
+its prior text asserting "no server session exists" became false. (5) The
+spec delta's scenario count differs from D7's "all four existing
+scenarios" miscount — harmless, already identified by `sdd-spec`.
+
+**Two findings discovered only during Phase 6's mandatory manual
+verification** (`docker compose up` + the DD8 8-step `curl` checklist),
+not anticipated by design.md, both documented in `tasks.md` Phase 6 and
+`CURRENT_STATE.md`:
+
+1. **`ALLOWED_HOSTS` gap.** Django's `CommonMiddleware` rejected the
+   `Host: backend:8000` header the frontend container's server-side fetch
+   sends inside the Docker network (`400 Bad Request`), which `getServerUser`
+   correctly treated as a 5xx-class failure and silently degraded to the
+   client-retry fallback — never crashing, but also never proving the
+   redirect path. Fixed by adding `ALLOWED_HOSTS: localhost,127.0.0.1,backend`
+   to `docker-compose.yml`'s `backend.environment` (same precedence-over-
+   `env_file` pattern DD5 already establishes for the frontend's
+   `INTERNAL_API_URL`), and documenting the requirement in
+   `backend/env.example`.
+2. **DD8's literal body-emptiness check doesn't hold, but the spec
+   requirement it stands in for does.** design.md's Technical Approach
+   claims "nothing has flushed when the gate throws"; verified against both
+   `next dev` and a real `next build && next start` production run that
+   Next.js 16.3.3 always streams a small inert `<html id="__next_error__">`
+   shell alongside a `redirect()`-triggered 307 (a `NEXT_REDIRECT` error
+   digest + dev-mode stack trace, consumed by the client router in a real
+   browser). It contains zero dashboard/org data and zero `AppTopbar`/
+   `SessionGuard`-authenticated markup, so the actual spec scenario ("the
+   response body contains no protected-route markup") holds — but DD8's
+   `rg -c "<html" body.txt` check, taken literally, does not. Not silently
+   passed: recorded here and in `tasks.md` for `sdd-verify`/a future design
+   correction to weigh.
+
+`sdd-verify`/`sdd-archive` are the remaining steps.
+
 ## 2026-09-06 — Cycle 4 apply: implementation complete (tenant-aware-registration-login)
 
 `sdd-apply` implemented all 23 tasks (Phases 1–9) from

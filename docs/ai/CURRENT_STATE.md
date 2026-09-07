@@ -83,6 +83,54 @@ initialized but not yet used for a real cycle.
   container) is accepted as low-risk since the request is an idempotent GET
   converging on the same shared `organizationsAtom`.
 
+- **SDD Cycle 5** (`ssr-protected-routes`) is **fully implemented**, single
+  PR, frontend-only (`backend/` byte-for-byte unchanged): `(app)/layout.tsx`
+  and `(gate)/layout.tsx` are now `async` Server Components that `await
+  requireUser(nextPath)` (new `lib/server-session.ts`) as their first
+  statement, before any protected markup can be emitted — a session cookie's
+  *validity*, not merely its presence, is checked server-side on every
+  direct/no-JS request, closing the gap where `SessionGuard`'s client-only
+  gate let an anonymous `curl`/deep-link request receive the full RSC
+  payload. `getServerUser()` (React `cache()`-wrapped) forwards the whole
+  cookie jar verbatim to `GET {internalApiUrl}/api/auth/me` with
+  `cache: "no-store"`; `200` → `User`, `401`/`403` → `null` (redirect to
+  `/login?next=<safe(nextPath)>`), anything else (5xx, network failure) →
+  throws, caught by `requireUser` and treated as "render normally, let
+  `SessionGuard`'s client retry state own it" — an outage is never
+  misread as a logout. New `lib/env.ts::internalApiUrl` (falls back to
+  `apiUrl`) lets the frontend container reach `backend:8000` instead of
+  `localhost:8000` (which is the container itself). `SessionGuard.tsx` and
+  its test are byte-for-byte untouched — this is additive server-side
+  defense-in-depth, not a replacement for the existing client-side skeleton/
+  error/retry UX. 102/102 frontend tests pass (15 new: 13 in
+  `server-session.test.ts`, 2 in `env.test.ts`), zero regressions.
+  **Deployment precondition**: the browser must send the Django `sessionid`
+  cookie to the Next.js origin — true for localhost and same-parent-domain
+  deploys, false for a split `app.x.com`/`api.y.com` deployment (every
+  authenticated user would bounce to `/login`). **Deviation found during
+  manual verification, not anticipated by design.md**: `docker-compose.yml`'s
+  `backend` service needed `ALLOWED_HOSTS` to additionally include `backend`
+  (the Compose service name) — Django's `CommonMiddleware` otherwise rejects
+  the `Host: backend:8000` header the frontend container's server-side fetch
+  sends, returning `400 Bad Request` for every `/api/auth/me` call from
+  inside the Docker network (misread by `getServerUser` as a 5xx-class
+  failure, so it degraded silently to the client-retry fallback rather than
+  the intended redirect — sd-apply added `backend.environment.ALLOWED_HOSTS`
+  to `docker-compose.yml` and updated `backend/env.example` to document it).
+  A second finding: design.md's Technical Approach claims the 307 response
+  has nothing flushed to the body ("nothing has flushed when the gate
+  throws"); verified against the real running stack (both `next dev` and a
+  `next build && next start` production run) that Next.js 16.3.3 actually
+  streams a small inert `<html id="__next_error__">` document shell
+  alongside every `redirect()`-triggered 307 — it carries a `NEXT_REDIRECT`
+  error digest and dev-mode stack trace, never dashboard/org data or
+  `AppTopbar`/`SessionGuard`-authenticated markup, so the underlying spec
+  requirement ("the response body contains no protected-route markup")
+  still holds, but DD8's literal `rg -c "<html" body.txt` verification
+  command does not — see `openspec/changes/ssr-protected-routes/tasks.md`
+  Phase 6 for the full 8-step manual verification transcript.
+  `sdd-verify`/`sdd-archive` are the remaining steps.
+
 - **SDD Cycle 4** (`tenant-aware-registration-login`) is **fully
   implemented**, single PR: `LoginForm.tsx` now resolves the caller's
   organizations via `listOrganizations()` directly (never

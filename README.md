@@ -40,6 +40,19 @@ mobile runs on the host/emulator.
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
 
+## Session auth deployment note
+
+Protected frontend routes (`/dashboard`, `/select-organization`) are
+validated **server-side** on every request, not only client-side: the
+Next.js server itself calls the Django API (`INTERNAL_API_URL`, defaulting
+to `http://backend:8000` inside Docker Compose) to check the session cookie
+before rendering. This only works when the browser sends the Django
+`sessionid` cookie to the Next.js origin — true for `localhost` and any
+same-parent-domain deploy. A split-domain deployment (frontend and backend
+on unrelated domains) would bounce every authenticated user to `/login`;
+see `docs/ai/ARCHITECTURE.md`'s "Route protection" section before deploying
+that way.
+
 ## Backend management commands
 
 Run any `manage.py` command inside the running `backend` container:

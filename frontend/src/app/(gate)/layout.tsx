@@ -1,4 +1,5 @@
 import { SessionGuard } from "@/components/auth/SessionGuard";
+import { requireUser } from "@/lib/server-session";
 
 /**
  * `(gate)` route group (design.md DD4, DV4): a one-time post-login gate.
@@ -9,8 +10,13 @@ import { SessionGuard } from "@/components/auth/SessionGuard";
  * for the same reason `(auth)`/`(app)` do: route groups don't appear in the
  * URL, so `.next/types/routes.d.ts` keys every root-level group layout on
  * `"/"`.
+ *
+ * `await requireUser("/select-organization")` (ssr-protected-routes D2)
+ * mirrors `(app)/layout.tsx`'s server-side session check.
  */
-export default function GateLayout({ children }: { children: React.ReactNode }) {
+export default async function GateLayout({ children }: { children: React.ReactNode }) {
+  await requireUser("/select-organization");
+
   return (
     <SessionGuard>
       <div className="flex min-h-svh items-center justify-center bg-background px-4">
