@@ -38,5 +38,16 @@ PYEOF
 echo "Applying database migrations..."
 python manage.py migrate --noinput
 
+if python -c "
+import django, os, sys
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
+from django.conf import settings
+sys.exit(0 if settings.DEBUG else 1)
+"; then
+    echo "DEBUG is on: seeding demo data..."
+    python manage.py seed_demo
+fi
+
 echo "Starting: $@"
 exec "$@"

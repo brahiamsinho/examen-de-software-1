@@ -1,7 +1,12 @@
+"use client";
+
+import Link from "next/link";
+
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NavLogo } from "@/components/landing/NavLogo";
 import { brandGradient } from "@/components/landing/gradients";
+import { useSession } from "@/state/session";
 
 const navLinks = [
   { href: "#producto", label: "Producto" },
@@ -9,7 +14,19 @@ const navLinks = [
   { href: "#precios", label: "Precios" },
 ];
 
+const authLinkClassName = cn(buttonVariants({ variant: "ghost" }), "h-auto px-[14px] py-2");
+
+/**
+ * The one place outside `(app)`'s `SessionGuard` that reads session state
+ * (proposal Q3; design.md's Phase 7 note). `loading`/`error`/`anonymous` all
+ * render the logged-out pair of links — a public landing page defaults to
+ * the safe, unauthenticated view rather than flashing "Ir al panel" only
+ * once `useSession()` resolves.
+ */
 export function Navbar() {
+  const session = useSession();
+  const authenticated = session.status === "authenticated";
+
   return (
     <header className="sticky top-0 z-20 flex justify-center border-b border-border bg-background/85 backdrop-blur">
       <div className="flex w-full max-w-[1160px] flex-wrap items-center justify-between gap-6 px-6 py-4">
@@ -27,9 +44,20 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-[10px]">
-          <a href="#" className={cn(buttonVariants({ variant: "ghost" }), "h-auto px-[14px] py-2")}>
-            Iniciar sesión
-          </a>
+          {authenticated ? (
+            <Link href="/dashboard" className={authLinkClassName}>
+              Ir al panel
+            </Link>
+          ) : (
+            <>
+              <Link href="/login" className={authLinkClassName}>
+                Iniciar sesión
+              </Link>
+              <Link href="/register" className={authLinkClassName}>
+                Registrarse
+              </Link>
+            </>
+          )}
           <a
             href="#precios"
             className={cn(

@@ -45,7 +45,16 @@ INSTALLED_APPS = [
     "corsheaders",
     # Local (future feature apps live under backend/apps/)
     "apps.uml_modeling",
+    "apps.users",
+    "apps.organizations",
 ]
+
+# --- Custom user model --------------------------------------------------
+# The project's first persisted domain (Cycle 2) supplies a custom,
+# email-identified User model. This MUST be set before any migration for
+# "users" is generated — see backend/apps/users/migrations/.
+
+AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -130,3 +139,19 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # explicitly allow-listed via the CORS_ALLOWED_ORIGINS env var.
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+
+# --- Session / CSRF (cross-origin cookie session with the Next.js frontend) ---
+# design.md DD2. Local dev (different ports, same site) needs SameSite=Lax
+# and no HTTPS; a deployed, different-domain frontend needs SameSite=None,
+# which browsers reject without Secure — both flip together via env vars.
+# Nothing here is hardcoded, per this file's stated convention.
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+CORS_ALLOW_CREDENTIALS = env.bool("CORS_ALLOW_CREDENTIALS", default=True)
+
+SESSION_COOKIE_SAMESITE = env("SESSION_COOKIE_SAMESITE", default="Lax")
+CSRF_COOKIE_SAMESITE = env("CSRF_COOKIE_SAMESITE", default="Lax")
+SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=not DEBUG)
+
+SESSION_COOKIE_HTTPONLY = True   # JS never needs the session cookie
+CSRF_COOKIE_HTTPONLY = False     # the frontend MUST read csrftoken to echo it back

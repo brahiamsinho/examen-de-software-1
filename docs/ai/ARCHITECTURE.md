@@ -109,6 +109,32 @@ hashing.
 workstream at the time of writing (not yet confirmed complete — see
 `CURRENT_STATE.md`).
 
+### Route protection: server-side + client-side, both layers
+
+Session auth is Django's own `HttpOnly` cookie (`sessionid`), never a
+frontend-visible token. Two independent layers enforce protected routes,
+neither replacing the other (`ssr-protected-routes`, `frontend-auth-integration`):
+
+- **Server-side** (`frontend/src/lib/server-session.ts`): the `(app)` and
+  `(gate)` route-group layouts `await requireUser(nextPath)` before
+  rendering anything, validating session *validity* (a real
+  `GET /api/auth/me` call), not merely cookie presence, on every
+  direct/no-JS request. An anonymous or invalid session never reaches
+  protected markup; a backend outage renders normally instead of
+  redirecting (an outage must never be misread as a logout).
+- **Client-side** (`SessionGuard`): owns the loading skeleton, the
+  error/retry UI for a failed session check, and mid-session expiry —
+  none of which a navigation-time server check can observe.
+
+**Deployment precondition**: the server-side check works only when the
+browser sends the Django `sessionid` cookie to the Next.js origin — true
+for `localhost` and same-parent-domain deploys. A split-domain deployment
+(e.g. `app.example.com` frontend, `api.example.com` backend) breaks it:
+every authenticated user would be redirected to `/login`, since the
+cookie set for the API's domain never reaches the frontend's server-side
+request. Solving that (a shared parent domain, or a session/token bridge)
+is out of scope for the current implementation.
+
 ## Realtime layer — Channels/Daphne
 
 Collaboration is realtime, server-authoritative: **Django Channels +

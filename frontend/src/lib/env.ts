@@ -21,3 +21,16 @@ function readApiUrl(): string {
 }
 
 export const apiUrl = readApiUrl();
+
+/**
+ * Base URL the *Next.js server process* uses to reach the API. Inside the
+ * frontend container `localhost` is the container itself, so a server-side
+ * fetch to `apiUrl` would ECONNREFUSED; Compose sets INTERNAL_API_URL=
+ * http://backend:8000. Falls back to `apiUrl` so bare `npm run dev` and
+ * Vitest keep working unchanged.
+ */
+function readInternalApiUrl(): string {
+  return process.env.INTERNAL_API_URL ?? apiUrl;
+}
+
+export const internalApiUrl = readInternalApiUrl();
