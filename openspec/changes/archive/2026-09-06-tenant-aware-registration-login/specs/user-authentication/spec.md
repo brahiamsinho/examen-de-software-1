@@ -1,31 +1,6 @@
-# User Authentication Specification
+# Delta for User Authentication
 
-## Purpose
-
-Establish the project's first persisted identity: a custom, email-identified `User` model
-with session-based registration, login, logout, and current-user introspection, backed by
-Argon2 password hashing and Django's password validators.
-
-## Requirements
-
-### Requirement: User Identity Model
-
-The system MUST represent users with a custom `User` model using `AbstractBaseUser` and
-`PermissionsMixin`, with `USERNAME_FIELD = "email"`. The system MUST NOT define a `username`
-field. Email MUST be unique and normalized case-insensitively. Passwords MUST be hashed with
-Argon2.
-
-#### Scenario: Email uniqueness is case-insensitive
-
-- GIVEN a registered user with email `alice@example.com`
-- WHEN a new registration is attempted with email `Alice@Example.com`
-- THEN the system rejects the registration as a duplicate email
-
-#### Scenario: Password stored hashed
-
-- GIVEN a user registers with a valid password
-- WHEN the stored `User` record is inspected
-- THEN the password field contains an Argon2 hash, never the plaintext value
+## ADDED Requirements
 
 ### Requirement: Registration Provisions One Organization
 
@@ -49,6 +24,8 @@ back — no `User` row may persist without its organization.
 - WHEN the registration endpoint is called
 - THEN no `User` record is persisted
 - AND no `Organization` or `Membership` record is persisted
+
+## MODIFIED Requirements
 
 ### Requirement: Registration
 
@@ -79,49 +56,9 @@ configured password validators.
 - THEN the request is rejected with a clear, tested error
 - AND no new `User` record is created
 
-### Requirement: Session Login and Logout
+## REMOVED Requirements
 
-The system MUST authenticate a registered user via email and password against session
-authentication, and MUST invalidate the session server-side on logout.
-
-#### Scenario: Successful login
-
-- GIVEN a registered user with valid credentials
-- WHEN the login endpoint is called with the correct email and password
-- THEN the response establishes an authenticated session
-
-#### Scenario: Invalid credentials rejected
-
-- GIVEN a registered user
-- WHEN the login endpoint is called with an incorrect password or an unknown email
-- THEN the request is rejected with one generic error
-- AND the response does not reveal whether the email exists
-
-#### Scenario: Logout invalidates the session
-
-- GIVEN an authenticated session
-- WHEN the logout endpoint is called
-- THEN the session is invalidated server-side
-- AND a subsequent authenticated-only request with the same session fails as unauthenticated
-
-### Requirement: Current User Introspection
-
-The system MUST expose the authenticated caller's own identity, and MUST reject unauthenticated
-requests.
-
-#### Scenario: Authenticated introspection
-
-- GIVEN an authenticated session
-- WHEN the current-user endpoint is called
-- THEN the response contains that user's own identity fields
-
-#### Scenario: Unauthenticated introspection rejected
-
-- GIVEN no authenticated session
-- WHEN the current-user endpoint is called
-- THEN the request is rejected with `401`
-
-### Requirement: No Auto-Created Organization (REMOVED)
+### Requirement: No Auto-Created Organization
 
 (Reason: directly inverted by the new "Registration Provisions One Organization" requirement —
 its premise that "a freshly registered user legitimately belongs to zero organizations" is now

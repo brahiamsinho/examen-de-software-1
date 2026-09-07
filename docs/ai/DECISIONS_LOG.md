@@ -1,5 +1,77 @@
 # Decisions Log
 
+## 2026-09-06 — Cycle 4 apply: implementation complete (tenant-aware-registration-login)
+
+`sdd-apply` implemented all 23 tasks (Phases 1–9) from
+`openspec/changes/tenant-aware-registration-login/tasks.md`, following
+design.md's DD1–DD8 (extending proposal.md's D1–D8) with strict TDD,
+single PR. 185/185 backend tests pass, 87/87 frontend tests pass (17 new),
+no new migration file, `backend/apps/{users,organizations}/{models,api,
+schemas,constants}.py` byte-for-byte unchanged as required.
+
+**Backend** (Phases 1–4): `organizations/services.py` gained three additive
+functions — `build_slug_base`/`derive_workspace_name` (pure, DB-free,
+`hypothesis`-property-tested in the new `test_slug_properties.py`) and
+`generate_unique_slug` (DB-touching, bounded 5-attempt suffixed retry +
+final long-token fallback, raising `OrganizationError` on total exhaustion).
+`users/services.py::register_user` became `@transaction.atomic` and now
+provisions exactly one `Organization` + `OWNER` `Membership` per
+registration via the existing, unchanged `create_organization`; a forced
+`OrganizationError` during provisioning rolls the `User` back too (asserted
+via `User.objects.count() == 0`). `test_registration_does_not_auto_create_an_organization`
+was rewritten into its inverse (`test_registration_provisions_exactly_one_organization`)
+per D7's REMOVED+ADDED requirement pair. `seed_demo.py` needed only a
+docstring/`help` text correction — each demo user now also owns an
+auto-provisioned personal workspace in addition to `acme-demo`, verified by
+a new idempotency-safe assertion.
+
+**Frontend** (Phases 5–8): `lib/next-path.ts` gained `isSafeNext` (the
+precedence-rule predicate `LoginForm` needs), with `safe()` re-expressed
+through it, byte-identical behavior. `state/organizations.ts` gained
+`useSetActiveOrg()` (the write half of `useOrganizations`, extracted so the
+auth forms can set the active org without mounting the fetch effect).
+`LoginForm.tsx`'s submit handler now branches on `listOrganizations()`
+directly (never `useOrganizations()`, which would 401 on the login page):
+a valid `next` wins unconditionally; otherwise 0 orgs → `/dashboard`
+unchanged, 1 org → set active + `/dashboard`, 2+ orgs → the new
+`/select-organization` picker; a post-login org-fetch failure degrades to
+`/dashboard` without reusing the login error. `RegisterForm.tsx` adopts the
+sole provisioned org (fetched via `listOrganizations()` post-register, per
+D2's rejection of org data in `UserOut`) before redirecting, non-fatally on
+fetch failure. The post-login picker landed as `components/workspace/OrgPicker.tsx`
+(presentational, no `activeSlug` — nothing is active yet) plus a new
+`app/(gate)/` route group (`SessionGuard` + centered-card shell, no topbar)
+hosting `/select-organization`; `OrgSwitcher.tsx`'s private `ROLE_LABELS`
+moved to a shared `components/workspace/roleLabels.ts` so both components
+read the same translation table.
+
+Deviations from the proposal, all called out and justified in design.md's
+Deviations table (DV1–DV5), confirmed exactly as designed with no further
+drift:
+
+1. **`state/organizations.ts` gains `useSetActiveOrg()` (DV1)** despite the
+   proposal marking it Untouched — additive only, `useOrganizations`'s
+   public shape unchanged.
+2. **`lib/next-path.ts` gains `isSafeNext` (DV2)**, not in the proposal's
+   Affected Areas — required for the `next`-precedence rule; `safe()`
+   stayed byte-identical (all 4 pre-existing tests still pass unmodified).
+3. **`OrgSwitcher.tsx`'s `ROLE_LABELS` moved to `roleLabels.ts` (DV3)** —
+   zero behavior change, confirmed via the pre-existing `OrgSwitcher.test.tsx`
+   passing unmodified as an approval test before and after the extraction.
+4. **A new `app/(gate)/` route group (DV4)** — cheaper than reusing `(app)`
+   (would double-render via `AppTopbar`) or `(auth)` (no session guard).
+5. **The provisioned org is read from `GET /api/orgs`, not the register
+   response (DV5)** — D2 already rejects org data in `UserOut`; no spec
+   text change, same observable scenario.
+
+One process note, not a design deviation: `generate_unique_slug` was
+initially added to `organizations/services.py` in the same edit as the pure
+helpers (Phase 1), ahead of Phase 2's dedicated RED test. This was caught
+and corrected before the RED/GREEN evidence was recorded — the function was
+reverted, its RED test written and confirmed failing (`AttributeError`),
+then the function was reinstated as the GREEN step, preserving a truthful
+TDD cycle for Phase 2.
+
 ## 2026-09-06 — Cycle 3 apply: implementation complete (frontend-auth-integration)
 
 `sdd-apply` implemented all tasks from

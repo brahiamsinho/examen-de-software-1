@@ -4,20 +4,65 @@ HTTP-agnostic, keyword-only, raising `errors.py` exceptions. Transaction
 boundaries live here, not in views, so a later Channels consumer or
 management command can call these functions directly.
 """
+import secrets
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
 from django.db.models import QuerySet
+from django.utils.text import slugify
 
 from apps.organizations.constants import Plan, Role
 from apps.organizations.errors import (
     DuplicateMembershipError,
     DuplicateSlugError,
     LastOwnerError,
+    OrganizationError,
 )
 from apps.organizations.models import Membership, Organization
 from apps.users.errors import UserNotFoundError
 from apps.users.models import User
+
+_NAME_SUFFIX = "'s Workspace"
+_NAME_MAX = 120
+_SLUG_BASE_MAX = 40
+_SLUG_ATTEMPTS = 5
+
+
+def derive_workspace_name(*, source: str) -> str:
+    """Pure (design.md DD1/D4). Truncates the SOURCE, never the composed
+    string, so the result always ends with the suffix and is always
+    <= 120 chars (Organization.name's max_length).
+    """
+    return f"{source[: _NAME_MAX - len(_NAME_SUFFIX)]}{_NAME_SUFFIX}"
+
+
+def build_slug_base(*, source: str) -> str:
+    """Pure (design.md DD1/D5 step 1). `slugify(source)[:40]`, or the
+    literal `workspace` when the source slugifies to empty (e.g. a
+    non-Latin name).
+    """
+    return slugify(source)[:_SLUG_BASE_MAX] or "workspace"
+
+
+def generate_unique_slug(*, source: str) -> str:
+    """D5 steps 2-4. Always suffixed; never tries the bare base, so the
+    clean namespace stays available for deliberate organization creation
+    (organization-tenancy § Server-Generated Organization Slug). Collision
+    detection is an `.exists()` pre-check, not a retry loop around
+    `create_organization`'s `IntegrityError` — looping over a caught error
+    inside the caller's `atomic` block risks a poisoned transaction.
+    """
+    base = build_slug_base(source=source)
+    for _ in range(_SLUG_ATTEMPTS):
+        candidate = f"{base}-{secrets.token_hex(3)}"
+        if not Organization.objects.filter(slug=candidate).exists():
+            return candidate
+
+    candidate = f"workspace-{secrets.token_hex(8)}"
+    if not Organization.objects.filter(slug=candidate).exists():
+        return candidate
+
+    raise OrganizationError("Could not generate a unique organization slug.")
 
 
 @transaction.atomic

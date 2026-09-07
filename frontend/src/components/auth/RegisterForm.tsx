@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { ApiError } from "@/lib/api";
 import { register } from "@/lib/auth";
+import { listOrganizations } from "@/lib/organizations";
 import { sessionAtom } from "@/state/session";
+import { useSetActiveOrg } from "@/state/organizations";
 
 /**
  * On success writes the returned user directly to `sessionAtom` and
@@ -17,10 +19,18 @@ import { sessionAtom } from "@/state/session";
  * spec's Registration requirement). On a duplicate email the backend's
  * `detail` is shown verbatim, unlike LoginForm's deliberately generic
  * message.
+ *
+ * The backend provisions exactly one organization per registration (D1);
+ * since D2 forbids org data in `UserOut`, the newly provisioned org is
+ * adopted via the `GET /api/orgs` response (design.md DD6) before the
+ * redirect. That fetch sits outside this catch — a failed org fetch must
+ * never surface as a bogus "email already registered" message; the
+ * dashboard re-fetches on mount regardless.
  */
 export function RegisterForm() {
   const router = useRouter();
   const setSession = useSetAtom(sessionAtom);
+  const setActiveOrg = useSetActiveOrg();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -35,6 +45,14 @@ export function RegisterForm() {
     try {
       const user = await register({ email, password, full_name: fullName || undefined });
       setSession({ status: "authenticated", user });
+
+      try {
+        const organizations = await listOrganizations();
+        if (organizations.length > 0) setActiveOrg(organizations[0]!.slug);
+      } catch {
+        // non-fatal: the dashboard re-fetches organizations on mount
+      }
+
       router.replace("/dashboard");
     } catch (err) {
       setError(

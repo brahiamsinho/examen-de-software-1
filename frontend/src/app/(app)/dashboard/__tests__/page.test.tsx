@@ -32,6 +32,11 @@ describe("DashboardPage", () => {
     vi.mocked(orgsLib.createOrganization).mockReset();
   });
 
+  // Precondition-agnostic by design (web-organization-workspace § Zero-Organization Empty
+  // State, DD7): the frontend cannot distinguish a legacy pre-change account from a user
+  // whose sole org was deleted — both just render `organizations.length === 0`. This one
+  // test is the evidence for both "Legacy pre-change account reaches the empty state" and
+  // "Sole organization deleted falls back to the empty state" scenarios.
   it("renders the empty state and the creation form when there are no organizations", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
     renderPage();

@@ -1,4 +1,7 @@
-"""Development-only seed data: demo users, one organization, and memberships.
+"""Development-only seed data: demo users, a shared organization, and
+memberships. Each demo user also gets an auto-provisioned personal workspace
+(design.md DD8) — `register_user` provisions one organization per
+registration, and this command registers through that same service.
 
 Idempotent by construction (safe to run repeatedly, e.g. after a fresh
 `docker compose up -d --build`): goes through the same domain services as a
@@ -33,7 +36,10 @@ DEMO_MEMBERS = [
 
 
 class Command(BaseCommand):
-    help = "Seed demo users, one organization, and memberships for local development."
+    help = (
+        "Seed demo users (each with an auto-provisioned personal workspace), "
+        "a shared organization, and memberships for local development."
+    )
 
     def handle(self, *args, **options) -> None:
         for email, full_name in DEMO_USERS:

@@ -1,12 +1,5 @@
 import type { Organization } from "@/lib/organizations";
-
-// Matches proposal.md Q2's established role-label convention ("Propietario
-// / Editor / Lector"), not an ad hoc translation.
-const ROLE_LABELS: Record<string, string> = {
-  OWNER: "Propietario",
-  EDITOR: "Editor",
-  VIEWER: "Lector",
-};
+import { ROLE_LABELS } from "@/components/workspace/roleLabels";
 
 type OrgSwitcherProps = {
   organizations: Organization[];

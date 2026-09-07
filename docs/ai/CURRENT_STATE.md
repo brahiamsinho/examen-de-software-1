@@ -30,6 +30,17 @@ initialized but not yet used for a real cycle.
   service (`docker compose up -d db backend`) is required before
   `docker compose exec backend pytest` (or `cd backend && pytest`) will
   work. `apps/uml_modeling/` itself stays DB-free and unaffected.
+- **SDD Cycle 4** (`tenant-aware-registration-login`) is **fully
+  implemented**, single PR: `register_user` (`apps/users/services.py`) is
+  now `@transaction.atomic` and provisions exactly one `Organization` +
+  `OWNER` `Membership` per registration via three additive
+  `organizations/services.py` helpers — `build_slug_base`/
+  `derive_workspace_name` (pure, `hypothesis`-property-tested) and
+  `generate_unique_slug` (bounded 5-attempt suffixed retry + final
+  long-token fallback, raising `OrganizationError` on exhaustion, which
+  rolls the whole registration transaction back). `create_organization`,
+  every model, and every migration stay byte-for-byte unchanged. 185/185
+  backend tests pass. `sdd-verify`/`sdd-archive` are the remaining steps.
 
 ### Frontend
 
@@ -71,6 +82,28 @@ initialized but not yet used for a real cycle.
   (exactly 2 `useOrganizations()` instances per dashboard visit, one per
   container) is accepted as low-risk since the request is an idempotent GET
   converging on the same shared `organizationsAtom`.
+
+- **SDD Cycle 4** (`tenant-aware-registration-login`) is **fully
+  implemented**, single PR: `LoginForm.tsx` now resolves the caller's
+  organizations via `listOrganizations()` directly (never
+  `useOrganizations()`, which would fire an anonymous fetch on the login
+  page) and branches the post-login destination — a valid `next` wins
+  unconditionally over org-count branching; otherwise 0 orgs → `/dashboard`
+  unchanged, 1 org → set active + `/dashboard`, 2+ orgs → the new
+  `/select-organization` picker (`app/(gate)/select-organization/page.tsx`,
+  under a new `(gate)` route group with its own `SessionGuard` + centered
+  card, no topbar). `RegisterForm.tsx` adopts the sole provisioned org
+  (read from `GET /api/orgs` post-register, since org data is deliberately
+  excluded from `UserOut`) before redirecting. New shared pieces:
+  `lib/next-path.ts::isSafeNext` (the precedence-rule predicate, with
+  `safe()` re-expressed through it, byte-identical), `state/organizations.ts
+  ::useSetActiveOrg()` (the write half of `useOrganizations`, consumed by
+  both the hook and the auth forms), `components/workspace/OrgPicker.tsx`
+  (presentational, no `activeSlug`), and `components/workspace/roleLabels.ts`
+  (shared with `OrgSwitcher`, preventing translation-table drift). 87/87
+  frontend tests pass (17 new), `backend/` and every pre-existing
+  frontend behavior unchanged. `sdd-verify`/`sdd-archive` are the
+  remaining steps.
 
 ### Mobile
 

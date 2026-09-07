@@ -23,6 +23,23 @@ class TestSeedDemo:
         assert memberships.get(user__email__iexact=DEMO_USERS[1][0]).role == Role.EDITOR
         assert memberships.get(user__email__iexact=DEMO_USERS[2][0]).role == Role.VIEWER
 
+    def test_each_demo_user_also_owns_an_auto_provisioned_personal_workspace(self):
+        """design.md DD8: `register_user` now provisions a personal workspace
+        for every demo user, in addition to the shared `acme-demo` org.
+        """
+        call_command("seed_demo")
+
+        for email, _ in DEMO_USERS:
+            user = User.objects.get(email__iexact=email)
+            personal_orgs = Organization.objects.filter(memberships__user=user).exclude(
+                slug=DEMO_ORG_SLUG
+            )
+            assert personal_orgs.count() == 1
+            personal_membership = Membership.all_objects.get(
+                organization=personal_orgs.first(), user=user
+            )
+            assert personal_membership.role == Role.OWNER
+
     def test_running_twice_does_not_duplicate_or_raise(self):
         call_command("seed_demo")
         call_command("seed_demo")

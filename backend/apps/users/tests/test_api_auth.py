@@ -5,6 +5,7 @@ real session/CSRF machinery, no mocking.
 """
 import pytest
 
+from apps.organizations.errors import OrganizationError
 from apps.users.tests.factories import make_user
 
 
@@ -50,20 +51,42 @@ class TestRegister:
         assert response.status_code == 400
         assert response.json()["code"] == "password_invalid"
 
-    def test_registration_does_not_auto_create_an_organization(self, auth_client):
-        """user-authentication spec, 'No Auto-Created Organization': a freshly
-        registered user legitimately belongs to zero organizations.
+    def test_registration_provisions_exactly_one_organization(self, auth_client):
+        """user-authentication spec, 'Registration Provisions One Organization'
+        (inverted from the removed 'No Auto-Created Organization'): a freshly
+        registered user has exactly one organization, not zero.
         """
         response = auth_client.post(
             "/api/auth/register",
-            data={"email": "noorg@example.com", "password": "a-strong-pass-0", "full_name": "No Org"},
+            data={"email": "hasorg@example.com", "password": "a-strong-pass-0", "full_name": "Has Org"},
             content_type="application/json",
         )
         assert response.status_code == 201
 
         orgs_response = auth_client.get("/api/orgs")
         assert orgs_response.status_code == 200
-        assert orgs_response.json() == []
+        assert len(orgs_response.json()) == 1
+
+    def test_slug_exhaustion_returns_structured_server_error(self, auth_client, monkeypatch):
+        """A bare `OrganizationError` (slug-collision-retry exhaustion) must surface as
+        this API's standard structured error shape, not an unhandled 500 crash. Verify
+        found this gap: only the four specific `OrganizationError` subclasses had a
+        registered exception handler; the base class itself did not.
+        """
+        from apps.users import services as user_services
+
+        def _raise_organization_error(*, source):
+            raise OrganizationError("Could not generate a unique organization slug.")
+
+        monkeypatch.setattr(user_services, "generate_unique_slug", _raise_organization_error)
+
+        response = auth_client.post(
+            "/api/auth/register",
+            data={"email": "exhausted@example.com", "password": "a-strong-pass-0"},
+            content_type="application/json",
+        )
+        assert response.status_code == 500
+        assert response.json()["code"] == "organization_error"
 
 
 @pytest.mark.django_db

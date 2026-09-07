@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { Provider } from "jotai";
+import { Provider, useAtomValue } from "jotai";
 import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as orgsLib from "@/lib/organizations";
-import { useOrganizations } from "@/state/organizations";
+import { activeOrgSlugAtom, useOrganizations, useSetActiveOrg } from "@/state/organizations";
 
 /**
  * `useOrganizations()` owns the `listOrganizations()` fetch and the
@@ -86,5 +86,31 @@ describe("state/organizations useOrganizations()", () => {
 
     expect(result.current.activeSlug).toBe("beta");
     expect(window.localStorage.getItem("modelia:active-org-slug")).toBe("beta");
+  });
+});
+
+/**
+ * `useSetActiveOrg` (design.md DD5, DV1) is the write half of
+ * `useOrganizations`, extracted so `LoginForm`/`RegisterForm` can set the
+ * active org without mounting the fetch effect (which would fire an
+ * anonymous `listOrganizations()` on the login/register page).
+ */
+describe("state/organizations useSetActiveOrg()", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("sets the active org slug atom and persists it to localStorage", () => {
+    const { result } = renderHook(
+      () => ({ setActiveOrg: useSetActiveOrg(), activeSlug: useAtomValue(activeOrgSlugAtom) }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.setActiveOrg("acme");
+    });
+
+    expect(result.current.activeSlug).toBe("acme");
+    expect(window.localStorage.getItem("modelia:active-org-slug")).toBe("acme");
   });
 });

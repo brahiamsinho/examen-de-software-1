@@ -1,4 +1,4 @@
-import { atom, useAtom } from "jotai";
+import { atom, useAtom, useSetAtom } from "jotai";
 import { useCallback, useEffect } from "react";
 
 import {
@@ -20,9 +20,27 @@ const ACTIVE_ORG_STORAGE_KEY = "modelia:active-org-slug";
 export const organizationsAtom = atom<Organization[]>([]);
 export const activeOrgSlugAtom = atom<string | null>(null);
 
+/**
+ * The write half of `useOrganizations` (design.md DD5, DV1), extracted so
+ * `LoginForm`/`RegisterForm` can set the active org after login/register
+ * without calling `useOrganizations()` itself — that hook's mount effect
+ * would fire an anonymous `listOrganizations()` on the auth page and 401.
+ */
+export function useSetActiveOrg() {
+  const setActiveSlug = useSetAtom(activeOrgSlugAtom);
+  return useCallback(
+    (slug: string) => {
+      setActiveSlug(slug);
+      window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, slug);
+    },
+    [setActiveSlug],
+  );
+}
+
 export function useOrganizations() {
   const [organizations, setOrganizations] = useAtom(organizationsAtom);
   const [activeSlug, setActiveSlug] = useAtom(activeOrgSlugAtom);
+  const setActiveOrg = useSetActiveOrg();
 
   useEffect(() => {
     let cancelled = false;
@@ -45,14 +63,6 @@ export function useOrganizations() {
     setActiveSlug(stillMember ? persisted : organizations[0]!.slug);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizations]);
-
-  const setActiveOrg = useCallback(
-    (slug: string) => {
-      setActiveSlug(slug);
-      window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, slug);
-    },
-    [setActiveSlug],
-  );
 
   /** Optimistic append (design.md DD7): `POST /api/orgs` already returns
    * the creator as `my_role: "OWNER"`, so the new org is appended and made

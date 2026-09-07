@@ -3,7 +3,7 @@ import pytest
 
 from apps.organizations import services
 from apps.organizations.constants import Plan, Role
-from apps.organizations.errors import DuplicateSlugError
+from apps.organizations.errors import DuplicateSlugError, OrganizationError
 from apps.organizations.models import Membership, Organization
 from apps.organizations.tests.factories import make_organization
 from apps.users.tests.factories import make_user
@@ -44,6 +44,9 @@ class TestRenameOrganization:
 @pytest.mark.django_db
 class TestDeleteOrganization:
     def test_hard_delete_cascades_memberships(self):
+        # Backend evidence for web-organization-workspace § "Sole organization deleted
+        # falls back to the empty state": zero remaining memberships is exactly the
+        # precondition that scenario relies on.
         org = make_organization()
         org_id = org.id
 
@@ -63,3 +66,73 @@ class TestListUserOrganizations:
         result = list(services.list_user_organizations(user=user))
 
         assert result == [org_a]
+
+
+class TestBuildSlugBase:
+    def test_normal_source_slugifies_to_a_hyphenated_base(self):
+        assert services.build_slug_base(source="Acme Corp") == "acme-corp"
+
+    def test_non_latin_source_falls_back_to_the_literal_base(self):
+        assert services.build_slug_base(source="日本語") == "workspace"
+
+
+class TestDeriveWorkspaceName:
+    def test_appends_the_workspace_suffix(self):
+        assert services.derive_workspace_name(source="Ada") == "Ada's Workspace"
+
+
+@pytest.mark.django_db
+class TestGenerateUniqueSlug:
+    """`secrets.token_hex` is patched to a fixed sequence so collisions are
+    deterministic (organization-tenancy § Server-Generated Organization Slug).
+    """
+
+    def test_first_attempt_is_never_a_bare_base(self, monkeypatch):
+        monkeypatch.setattr(services.secrets, "token_hex", lambda n: "abc123")
+
+        slug = services.generate_unique_slug(source="Acme")
+
+        assert slug == "acme-abc123"
+        assert slug != "acme"
+
+    def test_collision_retried_up_to_5_suffixed_attempts(self, monkeypatch):
+        base_tokens = ["aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee"]
+        calls = iter(base_tokens)
+        monkeypatch.setattr(services.secrets, "token_hex", lambda n: next(calls))
+        for hex_token in base_tokens[:4]:
+            make_organization(slug=f"acme-{hex_token}")
+
+        slug = services.generate_unique_slug(source="Acme")
+
+        assert slug == "acme-eeeeee"
+
+    def test_exhaustion_falls_back_to_final_long_token_form(self, monkeypatch):
+        base_tokens = ["aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee"]
+        fallback_token = "f" * 16
+        calls = iter(base_tokens + [fallback_token])
+        monkeypatch.setattr(services.secrets, "token_hex", lambda n: next(calls))
+        for hex_token in base_tokens:
+            make_organization(slug=f"acme-{hex_token}")
+
+        slug = services.generate_unique_slug(source="Acme")
+
+        assert slug == f"workspace-{fallback_token}"
+
+    def test_total_exhaustion_raises_organization_error(self, monkeypatch):
+        base_tokens = ["aaaaaa", "bbbbbb", "cccccc", "dddddd", "eeeeee"]
+        fallback_token = "f" * 16
+        calls = iter(base_tokens + [fallback_token])
+        monkeypatch.setattr(services.secrets, "token_hex", lambda n: next(calls))
+        for hex_token in base_tokens:
+            make_organization(slug=f"acme-{hex_token}")
+        make_organization(slug=f"workspace-{fallback_token}")
+
+        with pytest.raises(OrganizationError):
+            services.generate_unique_slug(source="Acme")
+
+    def test_generated_slug_never_exceeds_field_length(self):
+        long_source = "a" * 100
+
+        slug = services.generate_unique_slug(source=long_source)
+
+        assert len(slug) <= 47

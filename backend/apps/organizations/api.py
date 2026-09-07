@@ -143,6 +143,12 @@ _ERROR_STATUS_MAP: dict[type[OrganizationError], int] = {
     DuplicateMembershipError: 409,
     LastOwnerError: 409,
     RoleNotAllowedError: 403,
+    # Catch-all for any `OrganizationError` not mapped above (e.g. the bare
+    # `OrganizationError` raised by `generate_unique_slug` on collision-retry
+    # exhaustion) — a genuine capacity fault, not a client error, but it must
+    # still return this API's structured error shape rather than an
+    # unhandled 500 crash (verify-report finding on tenant-aware-registration-login).
+    OrganizationError: 500,
 }
 
 
