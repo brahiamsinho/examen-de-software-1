@@ -1,10 +1,19 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { Provider, useAtomValue } from "jotai";
+import { createStore, Provider, useAtomValue } from "jotai";
 import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as orgsLib from "@/lib/organizations";
-import { activeOrgSlugAtom, useOrganizations, useSetActiveOrg } from "@/state/organizations";
+import {
+  activeOrgSlugAtom,
+  organizationsAtom,
+  persistActiveOrgSlug,
+  useLeaveOrganization,
+  useOrganizations,
+  useSetActiveOrg,
+} from "@/state/organizations";
+
+const ACTIVE_ORG_STORAGE_KEY = "modelia:active-org-slug";
 
 /**
  * `useOrganizations()` owns the `listOrganizations()` fetch and the
@@ -13,11 +22,20 @@ import { activeOrgSlugAtom, useOrganizations, useSetActiveOrg } from "@/state/or
  */
 vi.mock("@/lib/organizations", async () => {
   const actual = await vi.importActual<typeof import("@/lib/organizations")>("@/lib/organizations");
-  return { ...actual, listOrganizations: vi.fn(), createOrganization: vi.fn() };
+  return { ...actual, listOrganizations: vi.fn(), createOrganization: vi.fn(), removeMember: vi.fn() };
 });
+
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 
 function wrapper({ children }: { children: ReactNode }) {
   return createElement(Provider, null, children);
+}
+
+function storeWrapper(store: ReturnType<typeof createStore>) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return createElement(Provider, { store }, children);
+  };
 }
 
 const orgA = { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const };
@@ -112,5 +130,152 @@ describe("state/organizations useSetActiveOrg()", () => {
 
     expect(result.current.activeSlug).toBe("acme");
     expect(window.localStorage.getItem("modelia:active-org-slug")).toBe("acme");
+  });
+});
+
+/**
+ * `persistActiveOrgSlug` (design.md's leave-org helper, extracted from
+ * `useSetActiveOrg`'s inline `localStorage.setItem` call) is the single
+ * writer for the storage key: a string slug persists it, `null` removes it
+ * — the case `useSetActiveOrg` never needed until self-removal.
+ */
+describe("persistActiveOrgSlug", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("persists a slug to localStorage", () => {
+    persistActiveOrgSlug("acme");
+
+    expect(window.localStorage.getItem(ACTIVE_ORG_STORAGE_KEY)).toBe("acme");
+  });
+
+  it("removes the storage key when given null", () => {
+    window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, "acme");
+
+    persistActiveOrgSlug(null);
+
+    expect(window.localStorage.getItem(ACTIVE_ORG_STORAGE_KEY)).toBeNull();
+  });
+});
+
+/**
+ * `useLeaveOrganization` (design.md's self-removal repointing, "highest
+ * risk" per tasks.md Phase 2) — each test seeds an explicit jotai `store` so
+ * assertions can read atom state directly via `store.get(...)` instead of
+ * re-rendering a harness component.
+ */
+describe("state/organizations useLeaveOrganization()", () => {
+  beforeEach(() => {
+    vi.mocked(orgsLib.removeMember).mockReset();
+    replace.mockReset();
+    window.localStorage.clear();
+  });
+
+  it("repoints the active org to the first remaining org (two-org case)", async () => {
+    const store = createStore();
+    store.set(organizationsAtom, [orgA, orgB]);
+    store.set(activeOrgSlugAtom, "acme");
+    window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, "acme");
+    vi.mocked(orgsLib.removeMember).mockResolvedValueOnce(undefined);
+
+    const { result } = renderHook(() => useLeaveOrganization(), { wrapper: storeWrapper(store) });
+
+    await act(async () => {
+      await result.current("acme", "user-1");
+    });
+
+    expect(orgsLib.removeMember).toHaveBeenCalledWith("acme", "user-1");
+    expect(store.get(organizationsAtom)).toEqual([orgB]);
+    expect(store.get(activeOrgSlugAtom)).toBe("beta");
+    expect(window.localStorage.getItem(ACTIVE_ORG_STORAGE_KEY)).toBe("beta");
+    expect(replace).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("falls back to the no-organization state when no org remains (zero-remaining case)", async () => {
+    const store = createStore();
+    store.set(organizationsAtom, [orgA]);
+    store.set(activeOrgSlugAtom, "acme");
+    window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, "acme");
+    vi.mocked(orgsLib.removeMember).mockResolvedValueOnce(undefined);
+
+    const { result } = renderHook(() => useLeaveOrganization(), { wrapper: storeWrapper(store) });
+
+    await act(async () => {
+      await result.current("acme", "user-1");
+    });
+
+    expect(store.get(organizationsAtom)).toEqual([]);
+    expect(store.get(activeOrgSlugAtom)).toBeNull();
+    expect(window.localStorage.getItem(ACTIVE_ORG_STORAGE_KEY)).toBeNull();
+    expect(replace).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("leaves atoms and storage untouched and does not redirect when removeMember rejects", async () => {
+    const store = createStore();
+    store.set(organizationsAtom, [orgA, orgB]);
+    store.set(activeOrgSlugAtom, "acme");
+    window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, "acme");
+    vi.mocked(orgsLib.removeMember).mockRejectedValueOnce(new Error("network down"));
+
+    const { result } = renderHook(() => useLeaveOrganization(), { wrapper: storeWrapper(store) });
+
+    await expect(
+      act(async () => {
+        await result.current("acme", "user-1");
+      }),
+    ).rejects.toThrow("network down");
+
+    expect(store.get(organizationsAtom)).toEqual([orgA, orgB]);
+    expect(store.get(activeOrgSlugAtom)).toBe("acme");
+    expect(window.localStorage.getItem(ACTIVE_ORG_STORAGE_KEY)).toBe("acme");
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("still repoints atoms and redirects when localStorage.setItem throws", async () => {
+    const store = createStore();
+    store.set(organizationsAtom, [orgA, orgB]);
+    store.set(activeOrgSlugAtom, "acme");
+    vi.mocked(orgsLib.removeMember).mockResolvedValueOnce(undefined);
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementationOnce(() => {
+        throw new Error("quota exceeded");
+      });
+
+    const { result } = renderHook(() => useLeaveOrganization(), { wrapper: storeWrapper(store) });
+
+    await act(async () => {
+      await result.current("acme", "user-1");
+    });
+
+    expect(store.get(organizationsAtom)).toEqual([orgB]);
+    expect(store.get(activeOrgSlugAtom)).toBe("beta");
+    expect(replace).toHaveBeenCalledWith("/dashboard");
+
+    setItemSpy.mockRestore();
+  });
+
+  it("commits atom writes before router.replace fires", async () => {
+    const store = createStore();
+    store.set(organizationsAtom, [orgA, orgB]);
+    store.set(activeOrgSlugAtom, "acme");
+    vi.mocked(orgsLib.removeMember).mockResolvedValueOnce(undefined);
+
+    let activeSlugAtReplaceTime: string | null | undefined;
+    let organizationsAtReplaceTime: string[] | undefined;
+    replace.mockImplementationOnce(() => {
+      activeSlugAtReplaceTime = store.get(activeOrgSlugAtom);
+      organizationsAtReplaceTime = store.get(organizationsAtom).map((org) => org.slug);
+    });
+
+    const { result } = renderHook(() => useLeaveOrganization(), { wrapper: storeWrapper(store) });
+
+    await act(async () => {
+      await result.current("acme", "user-1");
+    });
+
+    expect(activeSlugAtReplaceTime).toBe("beta");
+    expect(organizationsAtReplaceTime).toEqual(["beta"]);
   });
 });

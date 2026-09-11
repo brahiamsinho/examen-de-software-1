@@ -1,9 +1,11 @@
 import { atom, useAtom, useSetAtom } from "jotai";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect } from "react";
 
 import {
   createOrganization as createOrganizationApi,
   listOrganizations,
+  removeMember,
   type Organization,
 } from "@/lib/organizations";
 
@@ -21,6 +23,27 @@ export const organizationsAtom = atom<Organization[]>([]);
 export const activeOrgSlugAtom = atom<string | null>(null);
 
 /**
+ * Single writer for the persisted active-org key (extracted from
+ * `useSetActiveOrg`'s inline call so `useLeaveOrganization` can reuse it for
+ * the `null` case — "no organization" — that `useSetActiveOrg` never needed).
+ * Swallows storage failure (quota/private mode, design.md's self-removal
+ * data-flow note): the atom repoint is the source of truth for this render,
+ * and the existing `stillMember` check in `useOrganizations()` self-heals a
+ * stale key on next load.
+ */
+export function persistActiveOrgSlug(slug: string | null): void {
+  try {
+    if (slug === null) {
+      window.localStorage.removeItem(ACTIVE_ORG_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, slug);
+    }
+  } catch {
+    // Storage failure is not fatal — see docblock.
+  }
+}
+
+/**
  * The write half of `useOrganizations` (design.md DD5, DV1), extracted so
  * `LoginForm`/`RegisterForm` can set the active org after login/register
  * without calling `useOrganizations()` itself — that hook's mount effect
@@ -31,9 +54,40 @@ export function useSetActiveOrg() {
   return useCallback(
     (slug: string) => {
       setActiveSlug(slug);
-      window.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, slug);
+      persistActiveOrgSlug(slug);
     },
     [setActiveSlug],
+  );
+}
+
+/**
+ * Self-removal repointing (design.md "Data Flow — self-removal"). Ordering
+ * is load-bearing: `removeMember` first (a rejection — e.g. the 409
+ * last-owner invariant — leaves every atom and the storage key untouched,
+ * verbatim `ApiError` rethrown to the caller); then organizations/active-slug
+ * atoms are written synchronously in the same tick as the `persistActiveOrgSlug`
+ * call; only then does `router.replace("/dashboard")` fire, so `AppTopbar`
+ * (which survives the navigation, living in the `(app)` layout) never renders
+ * a stale org.
+ */
+export function useLeaveOrganization() {
+  const [organizations, setOrganizations] = useAtom(organizationsAtom);
+  const setActiveSlug = useSetAtom(activeOrgSlugAtom);
+  const router = useRouter();
+
+  return useCallback(
+    async (orgSlug: string, userId: string) => {
+      await removeMember(orgSlug, userId);
+
+      const remaining = organizations.filter((org) => org.slug !== orgSlug);
+      const nextSlug = remaining[0]?.slug ?? null;
+      setOrganizations(remaining);
+      setActiveSlug(nextSlug);
+      persistActiveOrgSlug(nextSlug);
+
+      router.replace("/dashboard");
+    },
+    [organizations, setOrganizations, setActiveSlug, router],
   );
 }
 
