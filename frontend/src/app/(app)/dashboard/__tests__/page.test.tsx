@@ -1,9 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { Provider } from "jotai";
+import { createStore, Provider } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DashboardPage from "@/app/(app)/dashboard/page";
 import * as orgsLib from "@/lib/organizations";
+import { sessionAtom } from "@/state/session";
 
 /**
  * Container: owns the single `useOrganizations()` instance for this route
@@ -75,5 +76,41 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Gamma" })).toBeInTheDocument();
     expect(orgsLib.listOrganizations).toHaveBeenCalledOnce();
+  });
+
+  // web-account-recovery § "Dismissible Verify-Email Banner on Dashboard".
+  it("shows the verify-email banner for an unverified authenticated user", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+    const store = createStore();
+    store.set(sessionAtom, {
+      status: "authenticated",
+      user: { id: "1", email: "a@b.com", full_name: "A", is_verified: false },
+    });
+
+    render(
+      <Provider store={store}>
+        <DashboardPage />
+      </Provider>,
+    );
+
+    expect(await screen.findByRole("region")).toBeInTheDocument();
+  });
+
+  it("does not show the verify-email banner for a verified user", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+    const store = createStore();
+    store.set(sessionAtom, {
+      status: "authenticated",
+      user: { id: "1", email: "a@b.com", full_name: "A", is_verified: true },
+    });
+
+    render(
+      <Provider store={store}>
+        <DashboardPage />
+      </Provider>,
+    );
+
+    await screen.findByRole("heading", { name: "Crea tu primera organización" });
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
   });
 });

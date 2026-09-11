@@ -21,7 +21,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return createElement(Provider, null, children);
 }
 
-const user = { id: "1", email: "a@b.com", full_name: "A B" };
+const user = { id: "1", email: "a@b.com", full_name: "A B", is_verified: false };
 
 describe("state/session useSession()", () => {
   beforeEach(() => {

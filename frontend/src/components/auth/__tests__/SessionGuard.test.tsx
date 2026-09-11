@@ -66,7 +66,7 @@ describe("SessionGuard", () => {
   it("renders children when authenticated", () => {
     vi.mocked(sessionState.useSession).mockReturnValue({
       status: "authenticated",
-      user: { id: "1", email: "a@b.com", full_name: "A" },
+      user: { id: "1", email: "a@b.com", full_name: "A", is_verified: false },
     });
 
     render(

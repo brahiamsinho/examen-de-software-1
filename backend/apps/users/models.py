@@ -52,6 +52,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     full_name = models.CharField(max_length=150, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    # Informational only — never gates login, session creation, or access to
+    # any protected route (email-verification spec § "Non-Blocking Verification").
+    is_verified = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 
     objects = UserManager()
@@ -67,3 +70,33 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.email
+
+
+class EmailTokenPurpose(models.TextChoices):
+    VERIFY = "verify", "Verify"
+    RESET = "reset", "Reset"
+
+
+class EmailToken(models.Model):
+    """Single-use, expiring, hashed-at-rest token shared by email verification
+    and password reset, discriminated by `purpose` (design.md DD1/DD2).
+
+    `token_hash` is the sha256 hex digest of the raw token, never the raw
+    value itself — see `apps/users/tokens.py`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey("users.User", on_delete=models.CASCADE, related_name="email_tokens")
+    purpose = models.CharField(max_length=16, choices=EmailTokenPurpose.choices)
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "purpose", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.purpose}"

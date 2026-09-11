@@ -40,7 +40,7 @@ describe("RegisterForm", () => {
   });
 
   it("authenticates and redirects to /dashboard on successful registration", async () => {
-    const user = { id: "1", email: "new@b.com", full_name: "New User" };
+    const user = { id: "1", email: "new@b.com", full_name: "New User", is_verified: false };
     vi.mocked(authLib.register).mockResolvedValueOnce(user);
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
       { id: "1", name: "New's Workspace", slug: "new-abc123", plan: "free", my_role: "OWNER" as const },
@@ -58,7 +58,7 @@ describe("RegisterForm", () => {
   });
 
   it("adopts the sole provisioned organization as active before redirect", async () => {
-    const user = { id: "1", email: "new@b.com", full_name: "New User" };
+    const user = { id: "1", email: "new@b.com", full_name: "New User", is_verified: false };
     vi.mocked(authLib.register).mockResolvedValueOnce(user);
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
       { id: "1", name: "New's Workspace", slug: "new-abc123", plan: "free", my_role: "OWNER" as const },
@@ -74,7 +74,7 @@ describe("RegisterForm", () => {
   });
 
   it("a post-register org-fetch failure still redirects to /dashboard, non-fatally", async () => {
-    const user = { id: "1", email: "new@b.com", full_name: "New User" };
+    const user = { id: "1", email: "new@b.com", full_name: "New User", is_verified: false };
     vi.mocked(authLib.register).mockResolvedValueOnce(user);
     vi.mocked(orgsLib.listOrganizations).mockRejectedValueOnce(new Error("network error"));
 

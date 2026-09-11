@@ -43,7 +43,7 @@ describe("LoginForm", () => {
   });
 
   function loginAsUser() {
-    const user = { id: "1", email: "a@b.com", full_name: "A" };
+    const user = { id: "1", email: "a@b.com", full_name: "A", is_verified: false };
     vi.mocked(authLib.login).mockResolvedValueOnce(user);
     renderForm();
     fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "a@b.com" } });

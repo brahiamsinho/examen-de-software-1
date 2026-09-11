@@ -55,7 +55,7 @@ function renderPage({
   const store = createStore();
   store.set(organizationsAtom, [{ ...org, my_role: myRole }]);
   store.set(activeOrgSlugAtom, org.slug);
-  store.set(sessionAtom, { status: "authenticated", user: currentUser });
+  store.set(sessionAtom, { status: "authenticated", user: { ...currentUser, is_verified: true } });
 
   return render(
     <Provider store={store}>
@@ -199,7 +199,12 @@ describe("MembersPage", () => {
     store.set(activeOrgSlugAtom, org.slug);
     store.set(sessionAtom, {
       status: "authenticated",
-      user: { id: editorMember.user_id, email: editorMember.email, full_name: editorMember.full_name },
+      user: {
+        id: editorMember.user_id,
+        email: editorMember.email,
+        full_name: editorMember.full_name,
+        is_verified: true,
+      },
     });
 
     render(

@@ -24,6 +24,11 @@ export default function LoginPage() {
           Registrate
         </Link>
       </p>
+      <p className="text-center text-sm text-muted-foreground">
+        <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+          ¿Olvidaste tu contraseña?
+        </Link>
+      </p>
       {process.env.NODE_ENV === "development" ? <DemoCredentials /> : null}
     </div>
   );
