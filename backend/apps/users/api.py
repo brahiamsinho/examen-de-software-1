@@ -14,10 +14,30 @@ from apps.users.errors import (
     DuplicateEmailError,
     InvalidCredentialsError,
     PasswordPolicyError,
+    ResendCooldownError,
+    ResendRateLimitError,
+    TokenExpiredError,
+    TokenInvalidError,
+    TokenUsedError,
     UserError,
     UserNotFoundError,
 )
-from apps.users.schemas import CsrfOut, LoginIn, RegisterIn, UserOut
+from apps.users.schemas import (
+    CsrfOut,
+    LoginIn,
+    MessageOut,
+    RegisterIn,
+    ResetConfirmIn,
+    ResetRequestIn,
+    UserOut,
+    VerifyIn,
+)
+
+# One constant response object for every branch of the anti-enumeration
+# reset-request endpoint (design.md DD4): status code and body are both
+# byte-identical regardless of whether the email matched an account, or
+# whether the request was throttled.
+_RESET_REQUEST_MESSAGE = {"message": "If that account exists, a reset email has been sent."}
 
 auth_router = Router()
 
@@ -77,6 +97,42 @@ def me(request: HttpRequest):
     return request.user
 
 
+@auth_router.post("/verify-email", response={200: MessageOut}, auth=None)
+def verify_email(request: HttpRequest, payload: VerifyIn):
+    csrf_error = _reject_unless_csrf_valid(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    services.verify_email(token=payload.token)
+    return {"message": "Your email has been verified."}
+
+
+@auth_router.post("/resend-verification", response={202: MessageOut}, auth=django_auth)
+def resend_verification(request: HttpRequest):
+    services.resend_verification(user=request.user)
+    return Status(202, {"message": "A new verification email has been sent."})
+
+
+@auth_router.post("/password-reset/request", response={200: MessageOut}, auth=None)
+def request_password_reset(request: HttpRequest, payload: ResetRequestIn):
+    csrf_error = _reject_unless_csrf_valid(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    services.request_password_reset(email=payload.email)
+    return _RESET_REQUEST_MESSAGE
+
+
+@auth_router.post("/password-reset/confirm", response={200: MessageOut}, auth=None)
+def confirm_password_reset(request: HttpRequest, payload: ResetConfirmIn):
+    csrf_error = _reject_unless_csrf_valid(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    services.confirm_password_reset(token=payload.token, new_password=payload.password)
+    return {"message": "Your password has been reset."}
+
+
 # --- exception handlers (design.md DD6) -----------------------------------
 
 _ERROR_STATUS_MAP: dict[type[UserError], int] = {
@@ -84,6 +140,11 @@ _ERROR_STATUS_MAP: dict[type[UserError], int] = {
     PasswordPolicyError: 400,
     InvalidCredentialsError: 401,
     UserNotFoundError: 404,
+    TokenInvalidError: 400,
+    TokenExpiredError: 400,
+    TokenUsedError: 409,
+    ResendCooldownError: 429,
+    ResendRateLimitError: 429,
 }
 
 

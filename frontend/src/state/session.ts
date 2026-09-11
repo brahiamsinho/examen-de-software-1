@@ -23,6 +23,16 @@ export type SessionState =
  */
 export const sessionAtom = atom<SessionState>({ status: "loading" });
 
+/**
+ * Session-only dismiss flag for `VerifyEmailBanner` (design.md DD6). A
+ * plain atom, never `atomWithStorage`/`localStorage`: the active-org key in
+ * `state/organizations.ts` is a *preference* that must survive reload, but
+ * a verification reminder is a *nag* that should return next session until
+ * resolved — persisting it would also re-introduce that module's documented
+ * SSR hydration-mismatch problem.
+ */
+export const verifyBannerDismissedAtom = atom(false);
+
 /** Fires `fetchMe()` once per mount; owns the single source of truth for
  * whether the current visitor is authenticated. */
 export function useSession(): SessionState {

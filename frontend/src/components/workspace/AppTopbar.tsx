@@ -1,6 +1,7 @@
 "use client";
 
 import { useSetAtom } from "jotai";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { OrgSwitcher } from "@/components/workspace/OrgSwitcher";
@@ -35,9 +36,14 @@ export function AppTopbar() {
   return (
     <header className="flex items-center justify-between border-b border-border px-6 py-3">
       <OrgSwitcher organizations={organizations} activeSlug={activeSlug} onSelect={setActiveOrg} />
-      <button type="button" onClick={handleLogout} className="text-sm font-semibold underline">
-        Cerrar sesión
-      </button>
+      <nav className="flex items-center gap-4">
+        <Link href="/settings/members" className="text-sm font-semibold underline">
+          Miembros
+        </Link>
+        <button type="button" onClick={handleLogout} className="text-sm font-semibold underline">
+          Cerrar sesión
+        </button>
+      </nav>
     </header>
   );
 }

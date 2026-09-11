@@ -155,3 +155,19 @@ CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=not DEBUG)
 
 SESSION_COOKIE_HTTPONLY = True   # JS never needs the session cookie
 CSRF_COOKIE_HTTPONLY = False     # the frontend MUST read csrftoken to echo it back
+
+# --- Transactional email (email-verification / password-reset) -----------
+# Every value below defaults to Django's own built-in default, so an
+# environment with no EMAIL_* vars set falls back to unchanged Django
+# behavior (transactional-email spec § "Missing EMAIL_* falls back safely").
+# No Mailpit-specific literal is hardcoded here (design.md DD5) — Mailpit is
+# only ever reached by setting EMAIL_HOST/EMAIL_PORT in the environment.
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=25)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@localhost")
+
+# Base URL the frontend is served from, used to build verification/reset
+# links in outgoing emails (design.md DD5).
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")

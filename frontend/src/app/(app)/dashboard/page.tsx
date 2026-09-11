@@ -1,5 +1,6 @@
 "use client";
 
+import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
 import { CreateOrgForm } from "@/components/workspace/CreateOrgForm";
 import { OrgEmptyState } from "@/components/workspace/OrgEmptyState";
 import { useOrganizations } from "@/state/organizations";
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   if (organizations.length === 0) {
     return (
       <div className="flex flex-col gap-6 p-6">
+        <VerifyEmailBanner />
         <OrgEmptyState />
         <CreateOrgForm onCreate={createOrganization} />
       </div>
@@ -30,6 +32,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      <VerifyEmailBanner />
       {activeOrg ? (
         <div className="rounded-lg border border-border p-6">
           <h1 className="text-xl font-semibold">{activeOrg.name}</h1>

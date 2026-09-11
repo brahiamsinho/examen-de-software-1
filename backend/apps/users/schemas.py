@@ -21,7 +21,25 @@ class UserOut(Schema):
     id: UUID
     email: str
     full_name: str
+    is_verified: bool
 
 
 class CsrfOut(Schema):
     csrf_token: str
+
+
+class VerifyIn(Schema):
+    token: str
+
+
+class ResetRequestIn(Schema):
+    email: EmailStr
+
+
+class ResetConfirmIn(Schema):
+    token: str
+    password: str
+
+
+class MessageOut(Schema):
+    message: str

@@ -41,6 +41,16 @@ services:
     ports:
       - "8000:8000"
 
+  # Dev-only SMTP catcher for verification/reset emails (transactional-email
+  # spec § "Dev-Only Mailpit Wiring"). Never referenced by any production
+  # configuration — the backend only reaches it when backend/.env points
+  # EMAIL_HOST/EMAIL_PORT at this service (see backend/env.example).
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
   frontend:
     build:
       context: ./frontend

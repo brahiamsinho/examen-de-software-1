@@ -10,7 +10,10 @@ export type User = {
   id: string;
   email: string;
   full_name: string;
+  is_verified: boolean;
 };
+
+export type MessageResponse = { message: string };
 
 export async function register(input: {
   email: string;
@@ -36,4 +39,29 @@ export async function logout(): Promise<void> {
 
 export async function fetchMe(): Promise<User> {
   return apiFetch<User>("/api/auth/me");
+}
+
+export async function verifyEmail(input: { token: string }): Promise<MessageResponse> {
+  return apiFetch<MessageResponse>("/api/auth/verify-email", { method: "POST", json: input });
+}
+
+export async function resendVerification(): Promise<MessageResponse> {
+  return apiFetch<MessageResponse>("/api/auth/resend-verification", { method: "POST" });
+}
+
+export async function requestPasswordReset(input: { email: string }): Promise<MessageResponse> {
+  return apiFetch<MessageResponse>("/api/auth/password-reset/request", {
+    method: "POST",
+    json: input,
+  });
+}
+
+export async function confirmPasswordReset(input: {
+  token: string;
+  password: string;
+}): Promise<MessageResponse> {
+  return apiFetch<MessageResponse>("/api/auth/password-reset/confirm", {
+    method: "POST",
+    json: input,
+  });
 }

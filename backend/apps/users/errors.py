@@ -30,3 +30,23 @@ class InvalidCredentialsError(UserError):
 
 class UserNotFoundError(UserError):
     code = "user_not_found"
+
+
+class TokenInvalidError(UserError):
+    code = "token_invalid"
+
+
+class TokenExpiredError(UserError):
+    code = "token_expired"
+
+
+class TokenUsedError(UserError):
+    code = "token_used"
+
+
+class ResendCooldownError(UserError):
+    code = "resend_cooldown"
+
+
+class ResendRateLimitError(UserError):
+    code = "resend_rate_limited"

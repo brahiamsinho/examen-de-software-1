@@ -47,6 +47,16 @@ describe("AppTopbar", () => {
     expect(await screen.findByRole("button", { name: /Acme/ })).toBeInTheDocument();
   });
 
+  it("renders a Miembros link to /settings/members alongside logout", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+
+    renderTopbar();
+
+    const link = await screen.findByRole("link", { name: "Miembros" });
+    expect(link).toHaveAttribute("href", "/settings/members");
+    expect(screen.getByRole("button", { name: "Cerrar sesión" })).toBeInTheDocument();
+  });
+
   it("logging out calls logout() and redirects to /", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
     vi.mocked(authLib.logout).mockResolvedValueOnce(undefined);

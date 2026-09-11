@@ -1,5 +1,62 @@
 # Decisions Log
 
+## 2026-09-11 — Cycle 6 apply: implementation complete (email-verification-password-reset)
+
+`sdd-apply` implemented all 24 tasks (Phases 1–7) from
+`openspec/changes/email-verification-password-reset/tasks.md`, following
+design.md's DD1–DD6, strict TDD, single PR with maintainer-approved
+`size:exception`. Backend `pytest -q`: 233/233 pass. Frontend `vitest run`:
+168/168 pass (17 new). No regressions in either suite.
+
+**DD1 — Single-table token with fast hash lookup.** One `EmailToken` model
+(`purpose ∈ {verify, reset}`), `token_hash = sha256(raw).hexdigest()`
+(`unique=True`), raw = `secrets.token_urlsafe(32)`. A slow password-style
+hash was rejected: 256 bits of CSPRNG entropy is not brute-forceable, so a
+slow hash would only add a full-table-scan cost per submission for no
+security benefit — `apps/users/tokens.py`.
+
+**DD2 — Purpose column, not two tables.** `EmailToken.purpose` distinguishes
+`verify`/`reset` rather than two separate models — identical shape, identical
+cooldown/cap query, one migration instead of two.
+
+**DD3 — Throttle by querying `created_at`.** `resend_verification` and
+`request_password_reset`'s throttle branch share one query helper
+(`_cooldown_active`/`_hourly_cap_reached` in `apps/users/services.py`):
+60s cooldown, 5-per-rolling-hour cap. No new dependency (`django-ratelimit`
+rejected) — the table already stores the needed timestamp.
+
+**DD4 — Anti-enumeration lives in the service, not the view.**
+`request_password_reset` returns `None` on every path (miss, hit, throttled);
+`api.py` returns one module-level constant `MessageOut`. The miss/throttled
+paths additionally call `time.sleep(_RESET_ANTI_ENUMERATION_DELAY_SECONDS)`
+(0.3s) before returning, approximating — not eliminating — the hit path's
+real SMTP-send response time (resolved Open Question: exact timing parity
+would require a background job queue, explicitly out of scope; the residual
+gap is an accepted risk at this project's scale).
+
+**DD5 — Link URL from `FRONTEND_BASE_URL` env var.** `EMAIL_BACKEND/HOST/
+PORT/TIMEOUT/DEFAULT_FROM_EMAIL` and `FRONTEND_BASE_URL` are all
+`env(...)` with Django's own defaults in `settings.py` — no Mailpit literal
+reaches source; `docker-compose.yml`'s new `mailpit` service (SMTP 1025, UI
+8025) is reached only via `backend/.env` values documented in
+`backend/env.example`. Verified end-to-end at runtime: a real registration
+through Mailpit produced a verification email whose link used the
+configured `FRONTEND_BASE_URL`, and posting that emailed token to
+`/api/auth/verify-email` set `is_verified=True`.
+
+**DD6 — Banner dismissal is session-only (jotai atom), not `localStorage`.**
+`state/session.ts`'s new `verifyBannerDismissedAtom` is a plain atom, never
+`atomWithStorage`. Unlike `state/organizations.ts`'s active-org key (a
+preference that must survive reload), a verification reminder is a nag that
+should return next session until resolved — persisting it would also
+re-introduce that module's documented SSR hydration-mismatch problem.
+
+**Minor deviation from tasks.md's exact wording**: `(auth)/forgot-password/
+page.tsx` is not `Suspense`-wrapped — `ForgotPasswordForm` never calls
+`useSearchParams()`, so no boundary is required (matches
+`(auth)/register/page.tsx`'s existing precedent, per `(auth)/login/
+page.tsx`'s own docblock on when the boundary is actually needed).
+
 ## 2026-09-06 — Cycle 5 apply: implementation complete (ssr-protected-routes)
 
 `sdd-apply` implemented all 19 tasks (Phases 1–8) from
