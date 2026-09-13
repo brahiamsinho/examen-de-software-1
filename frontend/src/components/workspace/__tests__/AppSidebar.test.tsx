@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AppTopbar } from "@/components/workspace/AppTopbar";
+import { AppSidebar } from "@/components/workspace/AppSidebar";
 import * as authLib from "@/lib/auth";
 import * as orgsLib from "@/lib/organizations";
 
@@ -22,27 +22,27 @@ vi.mock("@/lib/organizations", async () => {
   return { ...actual, listOrganizations: vi.fn(), createOrganization: vi.fn() };
 });
 
-function renderTopbar() {
+function renderSidebar() {
   return render(
     <Provider>
-      <AppTopbar />
+      <AppSidebar />
     </Provider>,
   );
 }
 
-describe("AppTopbar", () => {
+describe("AppSidebar", () => {
   beforeEach(() => {
     replace.mockReset();
     vi.mocked(authLib.logout).mockReset();
     vi.mocked(orgsLib.listOrganizations).mockReset();
   });
 
-  it("renders the organization switcher (completes 5.6/D4: only logout affordance)", async () => {
+  it("renders the organization switcher (only logout affordance stays reachable at the bottom)", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
       { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
     ]);
 
-    renderTopbar();
+    renderSidebar();
 
     expect(await screen.findByRole("button", { name: /Acme/ })).toBeInTheDocument();
   });
@@ -50,18 +50,27 @@ describe("AppTopbar", () => {
   it("renders a Miembros link to /settings/members alongside logout", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
 
-    renderTopbar();
+    renderSidebar();
 
     const link = await screen.findByRole("link", { name: "Miembros" });
     expect(link).toHaveAttribute("href", "/settings/members");
     expect(screen.getByRole("button", { name: "Cerrar sesión" })).toBeInTheDocument();
   });
 
+  it("renders a Diagramas link back to /dashboard, reachable from any page under the sidebar", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+
+    renderSidebar();
+
+    const link = await screen.findByRole("link", { name: "Diagramas" });
+    expect(link).toHaveAttribute("href", "/dashboard");
+  });
+
   it("logging out calls logout() and redirects to /", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
     vi.mocked(authLib.logout).mockResolvedValueOnce(undefined);
 
-    renderTopbar();
+    renderSidebar();
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
 
     await waitFor(() => expect(authLib.logout).toHaveBeenCalledOnce());

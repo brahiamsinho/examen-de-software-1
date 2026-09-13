@@ -236,6 +236,111 @@ describe("DocumentPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the 3 remove controls under an 'Eliminar' heading, in class/attribute/relationship order, after the Add* block (DD7)", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    const { container } = renderPage();
+
+    await screen.findByText("Tap Cliente");
+
+    expect(screen.getByRole("heading", { name: "Eliminar", level: 2 })).toBeInTheDocument();
+
+    const removeClassButton = screen.getByRole("button", { name: "Eliminar" });
+    const removeAttributeButton = screen.getByRole("button", { name: "Eliminar atributo" });
+    const removeRelationshipButton = screen.getByRole("button", { name: "Eliminar relación" });
+
+    expect(removeClassButton).toBeInTheDocument();
+    expect(removeAttributeButton).toBeInTheDocument();
+    expect(removeRelationshipButton).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar atributo" })).toBeInTheDocument();
+
+    const html = container.innerHTML;
+    const addBlockIndex = html.indexOf("Agregar atributo");
+    const headingIndex = html.indexOf(">Eliminar<");
+    const classControlIndex = html.indexOf('id="remove-class-select"');
+    const attributeControlIndex = html.indexOf('id="remove-attribute-class"');
+    const relationshipControlIndex = html.indexOf('id="remove-relationship-select"');
+
+    expect(addBlockIndex).toBeGreaterThan(-1);
+    expect(headingIndex).toBeGreaterThan(addBlockIndex);
+    expect(classControlIndex).toBeGreaterThan(headingIndex);
+    expect(attributeControlIndex).toBeGreaterThan(classControlIndex);
+    expect(relationshipControlIndex).toBeGreaterThan(attributeControlIndex);
+  });
+
+  it("removing the pending source class resets the click-click flow instead of showing a dead id (post-verify WARNING 2 on uml-canvas-remove-ui)", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    const store = createStore();
+    store.set(activeOrgSlugAtom, "acme");
+    const { rerender } = render(
+      <Provider store={store}>
+        <DocumentPage params={paramsPromise("doc-1")} />
+      </Provider>,
+    );
+
+    fireEvent.click(await screen.findByText("Tap Cliente"));
+    expect(screen.getByText(/Selecciona la clase destino/)).toBeInTheDocument();
+
+    // Simulate RemoveClassControl removing "Cliente" (c1) and the resulting refetch.
+    const documentWithoutCliente = {
+      ...document,
+      model: { ...model, classes: model.classes.filter((c) => c.id !== "c1"), relationships: [] },
+    };
+    useDocumentMock.mockReturnValue({
+      document: documentWithoutCliente,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    rerender(
+      <Provider store={store}>
+        <DocumentPage params={paramsPromise("doc-1")} />
+      </Provider>,
+    );
+
+    expect(screen.queryByText(/Selecciona la clase destino/)).not.toBeInTheDocument();
+  });
+
+  it("disables all 6 command-submitting controls while isSubmitting is true (post-verify WARNING 3 on uml-canvas-remove-ui)", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+      isSubmitting: true,
+    });
+
+    renderPage();
+
+    await screen.findByText("Tap Cliente");
+
+    expect(screen.getByRole("button", { name: "Agregar clase" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar atributo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Eliminar" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Eliminar atributo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Eliminar relación" })).toBeDisabled();
+
+    fireEvent.click(screen.getByText("Tap Cliente"));
+    fireEvent.click(screen.getByText("Tap Pedido"));
+    expect(screen.getByRole("button", { name: "Confirmar relación" })).toBeDisabled();
+  });
+
   it("does not show the dangling-relationship note when all endpoints resolve", async () => {
     useDocumentMock.mockReturnValue({
       document,

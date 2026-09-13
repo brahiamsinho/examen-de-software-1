@@ -1,13 +1,18 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import type { CommandResult, UmlCommandIn } from "@/lib/uml_documents";
 
 type AddClassFormProps = {
   onSubmit: (command: UmlCommandIn) => Promise<CommandResult>;
+  disabled?: boolean;
 };
 
 /**
@@ -17,7 +22,7 @@ type AddClassFormProps = {
  * `crypto.randomUUID()` (DD10): the frozen command bus has no
  * id-allocation path.
  */
-export function AddClassForm({ onSubmit }: AddClassFormProps) {
+export function AddClassForm({ onSubmit, disabled = false }: AddClassFormProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -39,10 +44,10 @@ export function AddClassForm({ onSubmit }: AddClassFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="add-class-name">Nombre de la clase</label>
-        <input
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-class-name">Nombre de la clase</Label>
+        <Input
           id="add-class-name"
           type="text"
           value={name}
@@ -52,12 +57,13 @@ export function AddClassForm({ onSubmit }: AddClassFormProps) {
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="sm" className="self-start" disabled={submitting || disabled}>
         Agregar clase
       </Button>
     </form>

@@ -1,5 +1,96 @@
 # Decisions Log
 
+## 2026-09-13 — Cycle 9 apply: implementation complete (uml-canvas-remove-ui)
+
+`sdd-apply` implemented all 15 tasks (Phases 1–7) from
+`openspec/changes/uml-canvas-remove-ui/tasks.md`, following design.md's
+DD1–DD8 with strict TDD, single PR, frontend-only (`backend/` diff empty —
+`RemoveClass`/`RemoveAttribute`/`RemoveRelationship` already existed on the
+command bus and were only unreachable from the UI). This closes the
+create/destroy gap left deliberately open by the prior `uml-canvas-ui`
+cycle: a diagram could previously only grow.
+
+**DD1 — Three new `UmlCommandIn` members, fields copied verbatim from the
+Pydantic schemas.** `{type: "RemoveClass"; class_id}`,
+`{type: "RemoveAttribute"; class_id; attribute_id}` (both fields required —
+attribute ids are only unique within a class), `{type: "RemoveRelationship";
+relationship_id}` (only one field — a relationship id is globally unique).
+The union's stale "only three commands" comment now names the six wired
+shapes and calls out `RenameClass` as the sole remaining gap. Guessing a
+generic escape-hatch shape was rejected — the two asymmetric remove payloads
+would only surface a wrong-shape 422 at runtime, not at compile time.
+
+**DD2 — Stale selection eliminated by derivation, not an effect.** Every
+control stores only the raw selected id in `useState` and re-derives
+`options.find(o => o.id === rawId) ?? null` on every render, feeding
+`value={selected?.id ?? ""}` to its `<select>`. A `useEffect` clearing a
+dead id was rejected — it fires *after* a render that already holds the
+dead id, so a fast submit between refetch and effect could still post a
+stale id, which is exactly the silent no-op this cycle exists to prevent.
+
+**DD3 — Leading placeholder option, submit disabled on `null`.** Every
+`<select>` renders `<option value="">...` and its submit control is
+`disabled` when the derived selection is `null`, so a destructive control
+never arrives pre-aimed at something the user never chose. Preselecting
+`options[0]` (as `AddAttributeForm` does) was rejected for these three
+controls; `AddAttributeForm`'s own init-only preselect shares DD2's
+staleness bug but is out of scope this cycle (recorded as an open item).
+
+**DD4 — `RemoveClassControl`'s confirmation is a second render branch, not
+`window.confirm()`.** A `confirming` boolean swaps the select for a warning
+plus `Confirmar eliminación`/`Cancelar`, the same early-return-on-state
+shape `AddRelationshipControl` already uses for pending-source/pending-target.
+`window.confirm()` was rejected as untestable under RTL/jsdom without
+stubbing a global and as the one UI primitive this codebase uses nowhere;
+no modal primitive exists in `components/ui/` and introducing one for a
+single call site was judged out of scope.
+
+**DD5 — Cascade count is derived at render, never stored.** `RemoveClassControl`
+computes `relationships.filter(r => r.source.class_id === id ||
+r.target.class_id === id).length` fresh on every render (including inside
+the confirm branch), mirroring `remove_class`'s own source-or-target filter
+and `page.tsx`'s pre-existing `danglingRelationshipCount` derivation. Per
+design.md's explicit rationale, the confirmation branch always appears
+(spec: class removal always confirms) but the "también N relación(es)" line
+is omitted when the count is 0 rather than rendering a "0 relación(es)"
+line — a deliberate, documented refinement of the spec's literal wording,
+not a silent deviation.
+
+**DD6 — Relationship options are labelled by endpoint names and kind, not
+multiplicity.** `` `${name(source)} → ${name(target)} (${kind})` `` with
+`name(id) = classes.find(c => c.id === id)?.name ?? id`. Reusing the canvas
+edge label (`formatMultiplicity`) was rejected — multiplicity does not
+disambiguate two relationships between the same class pair. Dangling
+relationships are listed, not filtered, using the raw `class_id` fallback:
+`toElements` already drops them from the canvas, so this control is the
+only way to remove one.
+
+**DD7 — All three controls render after the existing `Add*` block, under a
+new `<h2>Eliminar</h2>` heading, in class → attribute → relationship order.**
+`ValidationPanel` stays above the forms, unmoved. Interleaving each `Remove*`
+beside its `Add*` was rejected — grouping destructive controls behind one
+heading reduces the chance of a mis-click landing on a remove select while
+adding.
+
+**DD8 — Error handling and submit locking copied verbatim from
+`AddAttributeForm`/`AddRelationshipControl`.** `useState` `error`/
+`submitting`, `catch (err) { err instanceof ApiError ? err.detail : "Ocurrió
+un error inesperado. Intenta de nuevo." }`, `<p role="alert"
+className="text-sm text-destructive">`, `variant="destructive"` buttons. A
+shared `useCommandSubmit` hook extraction was rejected this cycle — it would
+rewrite three already-verified components; logged as tech debt for a future
+cycle now that 6 of 7 command shapes duplicate the block.
+
+All 4 modified `web-uml-canvas` requirements pass their scenarios; the full
+frontend suite and `npm run lint` are clean (Phase 7); `git diff --stat --
+backend` is empty. `sdd-verify`/`sdd-archive` remain.
+
+*Process note*: the three preceding cycles that actually built the canvas
+domain (`uml-canvas-ui`, `uml-command-bus`, `uml-document-persistence`, all
+merged 2026-09-12 per `git log`) never got a `docs/ai/DECISIONS_LOG.md`/
+`CURRENT_STATE.md` sync entry — a pre-existing gap this apply does not
+attempt to backfill, since it is out of this change's assigned scope.
+
 ## 2026-09-11 — Cycle 6 apply: implementation complete (email-verification-password-reset)
 
 `sdd-apply` implemented all 24 tasks (Phases 1–7) from

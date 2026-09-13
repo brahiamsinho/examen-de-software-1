@@ -153,6 +153,31 @@ initialized but not yet used for a real cycle.
   frontend behavior unchanged. `sdd-verify`/`sdd-archive` are the
   remaining steps.
 
+- **SDD Cycles 7–9** (`uml-canvas-ui`, `uml-command-bus`, `uml-document-persistence`,
+  merged 2026-09-12, then `uml-canvas-remove-ui`, this entry) brought the
+  UML canvas domain to the frontend for the first time: `lib/uml_documents.ts`
+  (domain client for `apps/uml_documents`, one module per backend Django
+  app), a Cytoscape.js `DiagramCanvas`, `AddClassForm`/`AddAttributeForm`/
+  `AddRelationshipControl` for growing a diagram, and `state/document.ts`'s
+  `useDocument` (POST command → refetch → `setDocument`). **Cycle 9
+  (`uml-canvas-remove-ui`, this entry) closes the create/destroy gap** those
+  cycles deliberately deferred: `RemoveClassControl` (class select + a
+  mandatory confirmation step stating the exact client-derived cascade
+  count), `RemoveAttributeControl` (class → attribute select, immediate
+  submit), and `RemoveRelationshipControl` (relationship select labelled by
+  endpoint names + kind, immediate submit) are wired into
+  `documents/[docId]/page.tsx` under a new "Eliminar" heading. `UmlCommandIn`
+  now covers 6 of the backend's 7 command shapes — only `RenameClass` has no
+  UI. `backend/` diff is empty for this cycle: all three remove commands,
+  their schemas, and cascade behavior already existed and were already
+  tested. `sdd-verify`/`sdd-archive` remain.
+  **Known documentation gap**: Cycles 7–8 (`uml-canvas-ui`,
+  `uml-command-bus`, `uml-document-persistence`) never received their own
+  `DECISIONS_LOG.md`/`CURRENT_STATE.md` sync entries when they merged; this
+  paragraph is the first mention of the canvas domain existing at all in
+  this file. A full backfill of those three cycles' individual design
+  decisions is out of `uml-canvas-remove-ui`'s scope and remains pending.
+
 ### Mobile
 
 - `mobile/` is a bare Flutter scaffold (default counter-app template plus

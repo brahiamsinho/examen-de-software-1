@@ -1,3 +1,6 @@
+import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { CommandResult } from "@/lib/uml_documents";
 
 type ValidationPanelProps = {
@@ -15,16 +18,31 @@ export function ValidationPanel({ lastValidation }: ValidationPanelProps) {
     return null;
   }
 
+  if (lastValidation.violations.length === 0) {
+    return (
+      <Alert variant="success">
+        <CheckCircle2 />
+        <AlertDescription>El modelo es válido.</AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
-    <ul className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       {lastValidation.violations.map((violation, index) => (
-        <li key={`${violation.code}-${index}`} className="flex flex-col gap-0.5 text-sm">
-          <span>{violation.severity}</span>
-          <span>{violation.code}</span>
-          <span>{violation.message}</span>
-          <span>{violation.path}</span>
-        </li>
+        <Alert
+          key={`${violation.code}-${index}`}
+          variant={violation.severity === "error" ? "destructive" : "caution"}
+        >
+          {violation.severity === "error" ? <XCircle /> : <AlertTriangle />}
+          <AlertDescription>
+            <p className="text-xs opacity-70">{violation.severity}</p>
+            <p className="font-mono text-xs opacity-80">{violation.code}</p>
+            <p>{violation.message}</p>
+            <p className="font-mono text-xs opacity-70">{violation.path}</p>
+          </AlertDescription>
+        </Alert>
       ))}
-    </ul>
+    </div>
   );
 }

@@ -96,6 +96,48 @@ describe("lib/uml_documents", () => {
     expect(result).toEqual(commandResult);
   });
 
+  it("submitCommand forwards RemoveClass verbatim as the JSON body", async () => {
+    const commandResult = { revision: 6, validation: { is_valid: true, violations: [] } };
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);
+
+    const command = { type: "RemoveClass" as const, class_id: "c1" };
+    const result = await submitCommand("acme", documentFixture.id, command);
+
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      `/api/orgs/acme/documents/${documentFixture.id}/commands`,
+      expect.objectContaining({ method: "POST", json: command }),
+    );
+    expect(result).toEqual(commandResult);
+  });
+
+  it("submitCommand forwards RemoveAttribute verbatim as the JSON body", async () => {
+    const commandResult = { revision: 7, validation: { is_valid: true, violations: [] } };
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);
+
+    const command = { type: "RemoveAttribute" as const, class_id: "c1", attribute_id: "a1" };
+    const result = await submitCommand("acme", documentFixture.id, command);
+
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      `/api/orgs/acme/documents/${documentFixture.id}/commands`,
+      expect.objectContaining({ method: "POST", json: command }),
+    );
+    expect(result).toEqual(commandResult);
+  });
+
+  it("submitCommand forwards RemoveRelationship verbatim as the JSON body", async () => {
+    const commandResult = { revision: 8, validation: { is_valid: true, violations: [] } };
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);
+
+    const command = { type: "RemoveRelationship" as const, relationship_id: "r1" };
+    const result = await submitCommand("acme", documentFixture.id, command);
+
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      `/api/orgs/acme/documents/${documentFixture.id}/commands`,
+      expect.objectContaining({ method: "POST", json: command }),
+    );
+    expect(result).toEqual(commandResult);
+  });
+
   it("ApiError propagates unmodified from any of the three wrappers", async () => {
     const error = new ApiError({ status: 422, code: "invalid_command_payload", detail: "bad" });
     vi.mocked(api.apiFetch).mockRejectedValueOnce(error);

@@ -187,4 +187,65 @@ describe("state/document useDocument()", () => {
     expect(result.current.lastValidation).toEqual(validation);
     expect(result.current.document).toEqual(documentA);
   });
+
+  it("isSubmitting is true while submitCommand is pending and false once it resolves (post-verify WARNING 3 on uml-canvas-remove-ui)", async () => {
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+
+    expect(result.current.isSubmitting).toBe(false);
+
+    let resolvePost!: (value: Awaited<ReturnType<typeof docsLib.submitCommand>>) => void;
+    const postPromise = new Promise<Awaited<ReturnType<typeof docsLib.submitCommand>>>((resolve) => {
+      resolvePost = resolve;
+    });
+    vi.mocked(docsLib.submitCommand).mockReturnValueOnce(postPromise);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce({ ...documentA, revision: 2 });
+
+    let submitPromise!: ReturnType<typeof result.current.submitCommand>;
+    act(() => {
+      submitPromise = result.current.submitCommand({ type: "AddClass", class_id: "c1", name: "Cliente" });
+    });
+
+    await waitFor(() => expect(result.current.isSubmitting).toBe(true));
+
+    await act(async () => {
+      resolvePost({ revision: 2, validation: { is_valid: true, violations: [] } });
+      await submitPromise;
+    });
+
+    expect(result.current.isSubmitting).toBe(false);
+  });
+
+  it("isSubmitting is true while submitCommand is pending and false once it rejects (post-verify WARNING 3 on uml-canvas-remove-ui)", async () => {
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+
+    let rejectPost!: (reason: unknown) => void;
+    const postPromise = new Promise<Awaited<ReturnType<typeof docsLib.submitCommand>>>((_, reject) => {
+      rejectPost = reject;
+    });
+    vi.mocked(docsLib.submitCommand).mockReturnValueOnce(postPromise);
+
+    let submitError: unknown;
+    let settled = false;
+    act(() => {
+      result.current.submitCommand({ type: "AddClass", class_id: "c1", name: "Cliente" }).catch((err) => {
+        submitError = err;
+      }).finally(() => {
+        settled = true;
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSubmitting).toBe(true));
+
+    await act(async () => {
+      rejectPost(new Error("500"));
+      await waitFor(() => expect(settled).toBe(true));
+    });
+
+    expect(submitError).toBeInstanceOf(Error);
+    expect(result.current.isSubmitting).toBe(false);
+  });
 });

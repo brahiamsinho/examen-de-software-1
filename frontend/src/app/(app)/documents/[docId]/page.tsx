@@ -1,12 +1,18 @@
 "use client";
 
 import { useAtomValue } from "jotai";
+import { AlertTriangle } from "lucide-react";
 import { use, useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
 import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
+import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeControl";
+import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
+import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelationshipControl";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { useDocument } from "@/state/document";
 import { activeOrgSlugAtom } from "@/state/organizations";
@@ -25,33 +31,14 @@ import { activeOrgSlugAtom } from "@/state/organizations";
 export default function DocumentPage({ params }: { params: Promise<{ docId: string }> }) {
   const { docId } = use(params);
   const orgSlug = useAtomValue(activeOrgSlugAtom);
-  const { document, error, lastValidation, submitCommand } = useDocument(orgSlug, docId);
+  const { document, error, lastValidation, isSubmitting, submitCommand } = useDocument(orgSlug, docId);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
-
-  function handleNodeTap(classId: string) {
-    if (pendingSourceId === null) {
-      setPendingSourceId(classId);
-    } else if (classId === pendingSourceId) {
-      // Cancel gesture: must also clear pendingTargetId, otherwise a later
-      // fresh source tap immediately pairs with this stale target without a
-      // second explicit tap (post-verify CRITICAL 1).
-      setPendingSourceId(null);
-      setPendingTargetId(null);
-    } else {
-      setPendingTargetId(classId);
-    }
-  }
-
-  function handleCancelRelationship() {
-    setPendingSourceId(null);
-    setPendingTargetId(null);
-  }
 
   if (orgSlug === null) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <h1 className="text-xl font-semibold">Diagrama</h1>
+        <h1 className="font-heading text-xl font-semibold text-foreground">Diagrama</h1>
         <p className="text-sm text-muted-foreground">No hay una organización activa.</p>
       </div>
     );
@@ -60,7 +47,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   if (error !== null) {
     return (
       <div className="flex flex-col gap-6 p-6">
-        <h1 className="text-xl font-semibold">Diagrama</h1>
+        <h1 className="font-heading text-xl font-semibold text-foreground">Diagrama</h1>
         <p className="text-sm text-muted-foreground">
           {error.notFound ? "Documento no encontrado." : "Ocurrió un error al cargar el documento."}
         </p>
@@ -77,41 +64,151 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     (r) => !classIds.has(r.source.class_id) || !classIds.has(r.target.class_id),
   ).length;
 
+  // Derived, not stored (same DD2 philosophy as the Remove* controls): if
+  // the class pinned by the click-click flow was removed via
+  // RemoveClassControl, it collapses to null in this same render pass
+  // instead of the flow rendering a dead id after refetch (post-verify
+  // WARNING 2 on uml-canvas-remove-ui).
+  const effectiveSourceId = pendingSourceId !== null && classIds.has(pendingSourceId) ? pendingSourceId : null;
+  const effectiveTargetId = pendingTargetId !== null && classIds.has(pendingTargetId) ? pendingTargetId : null;
+
+  function handleNodeTap(classId: string) {
+    if (effectiveSourceId === null) {
+      setPendingSourceId(classId);
+    } else if (classId === effectiveSourceId) {
+      // Cancel gesture: must also clear pendingTargetId, otherwise a later
+      // fresh source tap immediately pairs with this stale target without a
+      // second explicit tap (post-verify CRITICAL 1 on uml-canvas-ui).
+      setPendingSourceId(null);
+      setPendingTargetId(null);
+    } else {
+      setPendingTargetId(classId);
+    }
+  }
+
+  function handleCancelRelationship() {
+    setPendingSourceId(null);
+    setPendingTargetId(null);
+  }
+
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-xl font-semibold">{document.metadata.name}</h1>
-      <div className="flex gap-4 text-sm text-muted-foreground">
-        <p>Clases: {document.model.classes.length}</p>
-        <p>Relaciones: {document.model.relationships.length}</p>
+    <div className="flex flex-col">
+      <div className="flex items-baseline justify-between gap-4 border-b border-border px-6 py-4">
+        <h1 className="font-heading text-xl font-semibold text-foreground">
+          {document.metadata.name}
+        </h1>
+        <div className="flex gap-4 text-sm text-muted-foreground">
+          <p>Clases: {document.model.classes.length}</p>
+          <p>Relaciones: {document.model.relationships.length}</p>
+        </div>
       </div>
 
-      <div className="h-96 w-full border border-border">
-        <DiagramCanvas
-          model={document.model}
-          revision={document.revision}
-          onNodeTap={handleNodeTap}
-          highlightedClassId={pendingSourceId}
-        />
+      <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="h-[32rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
+            <DiagramCanvas
+              model={document.model}
+              revision={document.revision}
+              onNodeTap={handleNodeTap}
+              highlightedClassId={effectiveSourceId}
+            />
+          </div>
+
+          {danglingRelationshipCount > 0 ? (
+            <Alert variant="caution">
+              <AlertTriangle />
+              <AlertDescription>
+                {danglingRelationshipCount} relación(es) no se muestran por referirse a una clase
+                inexistente.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+
+        <aside className="flex w-full flex-col gap-6 lg:w-96 lg:shrink-0">
+          <ValidationPanel lastValidation={lastValidation} />
+
+          <div className="flex flex-col gap-3">
+            <h2 className="font-heading text-sm font-semibold text-foreground">Agregar</h2>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Clase</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AddClassForm onSubmit={submitCommand} disabled={isSubmitting} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Atributo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AddAttributeForm
+                  classes={document.model.classes}
+                  onSubmit={submitCommand}
+                  disabled={isSubmitting}
+                />
+              </CardContent>
+            </Card>
+
+            <AddRelationshipControl
+              pendingSourceId={effectiveSourceId}
+              pendingTargetId={effectiveTargetId}
+              classes={document.model.classes}
+              onSubmit={submitCommand}
+              onCancel={handleCancelRelationship}
+              disabled={isSubmitting}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h2 className="font-heading text-sm font-semibold text-foreground">Eliminar</h2>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Clase</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RemoveClassControl
+                  classes={document.model.classes}
+                  relationships={document.model.relationships}
+                  onSubmit={submitCommand}
+                  disabled={isSubmitting}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Atributo</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RemoveAttributeControl
+                  classes={document.model.classes}
+                  onSubmit={submitCommand}
+                  disabled={isSubmitting}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Relación</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RemoveRelationshipControl
+                  classes={document.model.classes}
+                  relationships={document.model.relationships}
+                  onSubmit={submitCommand}
+                  disabled={isSubmitting}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </aside>
       </div>
-
-      {danglingRelationshipCount > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {danglingRelationshipCount} relación(es) no se muestran por referirse a una clase
-          inexistente.
-        </p>
-      ) : null}
-
-      <ValidationPanel lastValidation={lastValidation} />
-
-      <AddClassForm onSubmit={submitCommand} />
-      <AddAttributeForm classes={document.model.classes} onSubmit={submitCommand} />
-      <AddRelationshipControl
-        pendingSourceId={pendingSourceId}
-        pendingTargetId={pendingTargetId}
-        classes={document.model.classes}
-        onSubmit={submitCommand}
-        onCancel={handleCancelRelationship}
-      />
     </div>
   );
 }

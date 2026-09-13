@@ -108,8 +108,9 @@ export type CommandResult = {
 };
 
 /**
- * Only the three command shapes this cycle submits (the other four exist
- * backend-side but are out of scope — proposal §Out of Scope).
+ * Six of the seven backend command shapes. Only `RenameClass` remains
+ * unwired — no UI collects a new name (proposal §Out of Scope).
+ * Field names are copied from `apps/uml_documents/schemas.py`.
  */
 export type UmlCommandIn =
   | { type: "AddClass"; class_id: string; name: string }
@@ -128,7 +129,10 @@ export type UmlCommandIn =
         source: { class_id: string; multiplicity: string; role?: string | null };
         target: { class_id: string; multiplicity: string; role?: string | null };
       };
-    };
+    }
+  | { type: "RemoveClass"; class_id: string }
+  | { type: "RemoveAttribute"; class_id: string; attribute_id: string }
+  | { type: "RemoveRelationship"; relationship_id: string };
 
 const base = (orgSlug: string) => `/api/orgs/${encodeURIComponent(orgSlug)}/documents`;
 

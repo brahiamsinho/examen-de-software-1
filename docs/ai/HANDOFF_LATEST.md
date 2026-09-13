@@ -2,6 +2,21 @@
 
 ## What's done
 
+### SDD Cycle 3: UML Canvas Remove UI (ARCHIVED 2026-09-13)
+
+- **Remove UI Controls (`uml-canvas-remove-ui`)**: Added three new presentational controls — `RemoveClassControl`, `RemoveAttributeControl`, `RemoveRelationshipControl` — enabling users to delete classes, attributes, and relationships from the canvas.
+  - `RemoveClassControl`: class `<select>` with confirmation step showing exact cascade count (client-derived from `relationships` prop); confirmation required before `RemoveClass` submission.
+  - `RemoveAttributeControl`: class → attribute select chain, immediate submit with no confirmation; resets both selections on refetch if selected ids disappear.
+  - `RemoveRelationshipControl`: relationship `<select>` with endpoint-name-plus-kind labeling (`"ClassName → TargetName (kind)"`), distinguishing multiple relationships between the same class pair; immediate submit with no confirmation.
+- **Backend**: Zero diff — all three remove command shapes (`RemoveClass`, `RemoveAttribute`, `RemoveRelationship`) and their cascade behavior already exist in `apps/uml_documents/schemas.py` and the command bus.
+- **UML Command Union**: Extended `UmlCommandIn` with three new members (DD1); remaining gap is `RenameClass` (no UI collects a new name, proposal Out of Scope).
+- **Stale Selection Prevention (DD2)**: All three controls use derivation-based staleness elimination — selected id persists in `useState`, but rendered selection is `selected = options.find(o => o.id === rawId) ?? null` on every render, collapsing missing ids to null immediately without an effect. Prevents silent no-op backend submissions when a selected id disappears mid-refetch.
+- **Cross-Control Submission Lock (Phase 8)**: Added `isSubmitting` boolean to `useDocument`, set `true` before `submitCommand`'s POST and cleared in `finally`. All six command-submitting controls (`Add*` + `Remove*`) receive `disabled` prop wired to this lock, preventing concurrent submission races where two commands resolve out-of-order, leaving the canvas reflecting only one.
+- **Verification**: 235/235 tests pass (0 regressions), build succeeds, lint clean, backend/ empty diff confirmed. All 4 requirements and 11/11 scenarios fully COMPLIANT. Verdict: **PASS** (0 CRITICAL, 0 WARNING).
+- **Specs**: Delta spec for `web-uml-canvas` merged into `openspec/specs/web-uml-canvas/spec.md` with 4 new requirements: Remove Class Command, Remove Attribute Command, Remove Relationship Command, Stale Selection Reset After Refetch.
+- **Change archived**: `openspec/changes/archive/2026-09-13-uml-canvas-remove-ui/` contains proposal, design, tasks, verify-report, and delta spec.
+- `docs/ai/` updated: `DECISIONS_LOG.md` logged DD1–DD8 (command union, stale-selection derivation, placeholder-option guards, in-component confirmation branches, cascade-count derivation, endpoint-name-plus-kind labeling, form grouping, shared error/submitting blocks); `CURRENT_STATE.md` reflects UML canvas now supports 6 of 7 command shapes (only `RenameClass` remains).
+
 ### SDD Cycle 1: Canonical UML Model, Project Document, Validation Engine (ARCHIVED 2026-09-05)
 
 - **Canonical UML Model (`uml-domain-model`)**: `CanonicalUmlModel` frozen dataclass (alias `UmlModel`) with classes, enumerations, relationships, generation metadata. Supports 8 primitive types (String, Text, Integer, Long, Decimal, Boolean, Date, DateTime) and enumeration references (by id, not name, to survive renames). Multiplicity structured as `(lower: int, upper: int|None)` with parse/format round-trip for UML string syntax.

@@ -1,8 +1,13 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { ApiError } from "@/lib/api";
 import {
   PRIMITIVE_TYPES,
@@ -15,6 +20,7 @@ import {
 type AddAttributeFormProps = {
   classes: UmlClass[];
   onSubmit: (command: UmlCommandIn) => Promise<CommandResult>;
+  disabled?: boolean;
 };
 
 /**
@@ -23,7 +29,7 @@ type AddAttributeFormProps = {
  * "Enumeration types are not offered"). Attribute `id` is generated
  * client-side with `crypto.randomUUID()` (DD10).
  */
-export function AddAttributeForm({ classes, onSubmit }: AddAttributeFormProps) {
+export function AddAttributeForm({ classes, onSubmit, disabled = false }: AddAttributeFormProps) {
   const [classId, setClassId] = useState(classes[0]?.id ?? "");
   const [name, setName] = useState("");
   const [type, setType] = useState<PrimitiveType>(PRIMITIVE_TYPES[0]!);
@@ -51,10 +57,10 @@ export function AddAttributeForm({ classes, onSubmit }: AddAttributeFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="add-attribute-class">Clase</label>
-        <select
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-attribute-class">Clase</Label>
+        <Select
           id="add-attribute-class"
           value={classId}
           onChange={(event) => setClassId(event.target.value)}
@@ -64,12 +70,12 @@ export function AddAttributeForm({ classes, onSubmit }: AddAttributeFormProps) {
               {c.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="add-attribute-name">Nombre del atributo</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-attribute-name">Nombre del atributo</Label>
+        <Input
           id="add-attribute-name"
           type="text"
           value={name}
@@ -78,28 +84,30 @@ export function AddAttributeForm({ classes, onSubmit }: AddAttributeFormProps) {
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="add-attribute-type">Tipo</label>
-        <select
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-attribute-type">Tipo</Label>
+        <Select
           id="add-attribute-type"
           value={type}
           onChange={(event) => setType(event.target.value as PrimitiveType)}
+          className="font-mono"
         >
           {PRIMITIVE_TYPES.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="sm" className="self-start" disabled={submitting || disabled}>
         Agregar atributo
       </Button>
     </form>

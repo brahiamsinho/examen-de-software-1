@@ -1,4 +1,9 @@
+import { AlertCircle } from "lucide-react";
+
 import { ROLE_LABELS } from "@/components/workspace/roleLabels";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 import type { Member, Role } from "@/lib/organizations";
 
 type MemberRowProps = {
@@ -33,15 +38,16 @@ export function MemberRow({
   const error = rowError?.userId === member.user_id ? rowError.message : null;
 
   return (
-    <li className="flex items-center justify-between gap-4 border-b border-border py-2">
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <span>{member.email}</span>
+    <li className="flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0">
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <span className="truncate">{member.email}</span>
           {isSelf ? <span className="text-xs text-muted-foreground">(Tú)</span> : null}
         </div>
 
         {canManage ? (
-          <select
+          <Select
+            className="h-8 w-40"
             value={member.role}
             onChange={(event) =>
               onChangeRole(member.user_id, event.target.value as Exclude<Role, "OWNER">)
@@ -54,28 +60,34 @@ export function MemberRow({
             ) : null}
             <option value="EDITOR">{ROLE_LABELS.EDITOR}</option>
             <option value="VIEWER">{ROLE_LABELS.VIEWER}</option>
-          </select>
+          </Select>
         ) : (
           <span className="text-xs text-muted-foreground">{ROLE_LABELS[member.role]}</span>
         )}
 
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
+          <Alert variant="destructive" className="mt-1">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {canManage && !isSelf ? (
-          <button type="button" onClick={() => onRemove(member.user_id)}>
+          <Button
+            type="button"
+            variant="caution"
+            size="sm"
+            onClick={() => onRemove(member.user_id)}
+          >
             Eliminar
-          </button>
+          </Button>
         ) : null}
         {isSelf ? (
-          <button type="button" onClick={() => onLeave(member.user_id)}>
+          <Button type="button" variant="caution" size="sm" onClick={() => onLeave(member.user_id)}>
             Salir de la organización
-          </button>
+          </Button>
         ) : null}
       </div>
     </li>

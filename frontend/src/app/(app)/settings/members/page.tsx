@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { AddMemberForm } from "@/components/workspace/AddMemberForm";
 import { MembersList } from "@/components/workspace/MembersList";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError } from "@/lib/api";
 import type { Role } from "@/lib/organizations";
 import { useMembers } from "@/state/members";
@@ -21,7 +22,7 @@ function toRowMessage(err: unknown): string {
  * Container (design.md DD4/DD5/DD6): reads `organizationsAtom` /
  * `activeOrgSlugAtom` / `sessionAtom` directly via `useAtomValue` instead of
  * `useOrganizations()`/`useSession()` — those hooks already fetch once each
- * in `AppTopbar`/`SessionGuard`, and a third mount here would add a third
+ * in `AppSidebar`/`SessionGuard`, and a third mount here would add a third
  * `listOrganizations()` GET. `canManage` derives from the already-loaded
  * `Organization.my_role` (`OrgSwitcher`'s established source, DD6) — hiding
  * controls is presentation only, the backend's `require_role` stays the
@@ -81,8 +82,8 @@ export default function MembersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-xl font-semibold">Miembros</h1>
+    <div className="flex w-full max-w-2xl flex-col gap-6 p-8">
+      <h1 className="text-xl font-semibold text-foreground">Miembros</h1>
 
       {!canManage ? (
         <p className="text-sm text-muted-foreground">
@@ -90,17 +91,30 @@ export default function MembersPage() {
         </p>
       ) : null}
 
-      <MembersList
-        members={members}
-        currentUserId={currentUserId}
-        canManage={canManage}
-        rowError={rowError}
-        onChangeRole={handleChangeRole}
-        onRemove={handleRemove}
-        onLeave={handleLeave}
-      />
+      <Card>
+        <CardContent>
+          <MembersList
+            members={members}
+            currentUserId={currentUserId}
+            canManage={canManage}
+            rowError={rowError}
+            onChangeRole={handleChangeRole}
+            onRemove={handleRemove}
+            onLeave={handleLeave}
+          />
+        </CardContent>
+      </Card>
 
-      {canManage ? <AddMemberForm onAdd={addMember} /> : null}
+      {canManage ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Agregar miembro</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AddMemberForm onAdd={addMember} />
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

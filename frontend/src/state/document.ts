@@ -44,6 +44,7 @@ export function useDocument(orgSlug: string | null, docId: string) {
   const [loading, setLoading] = useState(orgSlug !== null);
   const [error, setError] = useState<DocumentError | null>(null);
   const [lastValidation, setLastValidation] = useState<CommandResult["validation"] | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [trackedKey, setTrackedKey] = useState(`${orgSlug}:${docId}`);
 
   const key = `${orgSlug}:${docId}`;
@@ -92,30 +93,43 @@ export function useDocument(orgSlug: string | null, docId: string) {
    * all (CRITICAL 2). If the POST succeeds but the follow-up GET rejects,
    * the already-applied server-side validation is still stored (WARNING 1)
    * before surfacing a distinct, non-generic error to the caller.
+   *
+   * `isSubmitting` is set before the POST starts and cleared in a `finally`
+   * (success or failure), so every command-submitting control can share one
+   * cross-control lock instead of each relying only on its own local
+   * `submitting` state — two commands fired from two different controls in
+   * close succession could otherwise race their `getDocument` refetches and
+   * leave the render transiently reflecting only one command's effect
+   * (post-verify WARNING 3 on uml-canvas-remove-ui).
    */
   const submitCommand = useCallback(
     async (command: UmlCommandIn) => {
       if (orgSlug === null) throw new Error("No active organization");
-      const result = await submitCommandApi(orgSlug, docId, command);
-
-      if (!isValidCommandResult(result)) {
-        throw new Error("La respuesta del servidor tiene un formato inesperado.");
-      }
-
+      setIsSubmitting(true);
       try {
-        setDocument(await getDocumentApi(orgSlug, docId));
-      } catch {
-        setLastValidation(result.validation);
-        throw new Error(
-          "El comando se aplicó pero no se pudo actualizar la vista. Recargá la página.",
-        );
-      }
+        const result = await submitCommandApi(orgSlug, docId, command);
 
-      setLastValidation(result.validation);
-      return result;
+        if (!isValidCommandResult(result)) {
+          throw new Error("La respuesta del servidor tiene un formato inesperado.");
+        }
+
+        try {
+          setDocument(await getDocumentApi(orgSlug, docId));
+        } catch {
+          setLastValidation(result.validation);
+          throw new Error(
+            "El comando se aplicó pero no se pudo actualizar la vista. Recargá la página.",
+          );
+        }
+
+        setLastValidation(result.validation);
+        return result;
+      } finally {
+        setIsSubmitting(false);
+      }
     },
     [orgSlug, docId],
   );
 
-  return { document, loading, error, lastValidation, submitCommand };
+  return { document, loading, error, lastValidation, isSubmitting, submitCommand };
 }

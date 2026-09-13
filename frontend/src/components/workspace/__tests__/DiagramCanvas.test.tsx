@@ -42,13 +42,47 @@ describe("DiagramCanvas — toElements (pure)", () => {
     const nodes = elements.filter((el) => !("source" in el.data));
     expect(nodes).toHaveLength(2);
     const clienteNode = nodes.find((n) => n.data.id === "c1")!;
-    expect(clienteNode.data.label).toContain("Cliente");
-    expect(clienteNode.data.label).toContain("nombre");
+    // The node itself carries no Cytoscape `label` text (empty string) — its
+    // entire visual chrome is a generated SVG background image, the way a
+    // real UML class box (name / divider / attributes) is drawn. Decoding
+    // the data URI proves the box actually contains this class's content.
+    expect(clienteNode.data.label).toBe("");
+    expect(typeof clienteNode.data.width).toBe("number");
+    expect(typeof clienteNode.data.height).toBe("number");
+    const svg = decodeURIComponent((clienteNode.data.bgImage as string).replace("data:image/svg+xml,", ""));
+    expect(svg).toContain("Cliente");
+    expect(svg).toContain("nombre: String");
+
+    const pedidoNode = nodes.find((n) => n.data.id === "c2")!;
+    const pedidoSvg = decodeURIComponent((pedidoNode.data.bgImage as string).replace("data:image/svg+xml,", ""));
+    // A class with zero attributes still renders a complete, valid box
+    // (name + divider), not a broken/empty shell.
+    expect(pedidoSvg).toContain("Pedido");
+    expect(pedidoSvg).toContain("<line");
 
     const edges = elements.filter((el) => "source" in el.data);
     expect(edges).toHaveLength(1);
     expect(edges[0]!.data).toMatchObject({ id: "r1", source: "c1", target: "c2" });
     expect(edges[0]!.data.label).toBe("1 → 0..*");
+  });
+
+  it("escapes a class name containing SVG-significant characters instead of breaking the box markup", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [
+        { id: "c1", name: `<Weird> & "Name"`, visibility: "public", attributes: [], operations: [] },
+      ],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+    const node = elements[0]!;
+    const svg = decodeURIComponent((node.data.bgImage as string).replace("data:image/svg+xml,", ""));
+    expect(svg).toContain("&lt;Weird&gt; &amp; &quot;Name&quot;");
+    expect(svg).not.toContain(`<Weird>`);
   });
 
   it("drops an edge whose endpoint class is missing from model.classes", async () => {
