@@ -1,8 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
+import { CreateDocumentForm } from "@/components/workspace/CreateDocumentForm";
 import { CreateOrgForm } from "@/components/workspace/CreateOrgForm";
 import { OrgEmptyState } from "@/components/workspace/OrgEmptyState";
+import { createDocument } from "@/lib/uml_documents";
 import { useOrganizations } from "@/state/organizations";
 
 /**
@@ -15,10 +19,21 @@ import { useOrganizations } from "@/state/organizations";
  * Empty state renders `OrgEmptyState` + `CreateOrgForm` side by side (spec
  * `web-organization-workspace` § Zero-Organization Empty State — reachable,
  * non-blocking, no onboarding redirect).
+ *
+ * `web-uml-canvas`'s "New Diagram" entry point (DD14) only renders when
+ * `activeOrg` exists, and its handler — not `CreateDocumentForm` itself —
+ * calls `createDocument` then `router.push(/documents/{doc.id})`.
  */
 export default function DashboardPage() {
   const { organizations, activeSlug, createOrganization } = useOrganizations();
   const activeOrg = organizations.find((org) => org.slug === activeSlug) ?? null;
+  const router = useRouter();
+
+  async function handleCreateDocument(input: { name: string }) {
+    const doc = await createDocument(activeOrg!.slug, input);
+    router.push(`/documents/${doc.id}`);
+    return doc;
+  }
 
   if (organizations.length === 0) {
     return (
@@ -40,6 +55,7 @@ export default function DashboardPage() {
         </div>
       ) : null}
       <CreateOrgForm onCreate={createOrganization} />
+      {activeOrg ? <CreateDocumentForm onCreate={handleCreateDocument} /> : null}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DashboardPage from "@/app/(app)/dashboard/page";
 import * as orgsLib from "@/lib/organizations";
+import * as docsLib from "@/lib/uml_documents";
 import { sessionAtom } from "@/state/session";
 
 /**
@@ -13,11 +14,24 @@ import { sessionAtom } from "@/state/session";
  * end-to-end "appears in the list / becomes active without a manual
  * refetch" scenario from task 6.5 — `CreateOrgForm.test.tsx` itself only
  * proves the prop is called correctly, since it no longer owns the hook).
+ *
+ * `web-uml-canvas`'s "Create-Document Entry Point" is wired here too
+ * (design.md DD14): `CreateDocumentForm` only renders when `activeOrg`
+ * exists, and its own handler — not the form — calls `createDocument` then
+ * `router.push`.
  */
 vi.mock("@/lib/organizations", async () => {
   const actual = await vi.importActual<typeof import("@/lib/organizations")>("@/lib/organizations");
   return { ...actual, listOrganizations: vi.fn(), createOrganization: vi.fn() };
 });
+
+vi.mock("@/lib/uml_documents", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/uml_documents")>("@/lib/uml_documents");
+  return { ...actual, createDocument: vi.fn() };
+});
+
+const mockPush = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
 
 function renderPage() {
   return render(
@@ -31,6 +45,8 @@ describe("DashboardPage", () => {
   beforeEach(() => {
     vi.mocked(orgsLib.listOrganizations).mockReset();
     vi.mocked(orgsLib.createOrganization).mockReset();
+    vi.mocked(docsLib.createDocument).mockReset();
+    mockPush.mockReset();
   });
 
   // Precondition-agnostic by design (web-organization-workspace § Zero-Organization Empty
@@ -112,5 +128,43 @@ describe("DashboardPage", () => {
 
     await screen.findByRole("heading", { name: "Crea tu primera organización" });
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
+  });
+
+  // web-uml-canvas § "Create-Document Entry Point".
+  it('hides the "New Diagram" entry point with no active organization', async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Crea tu primera organización" });
+    expect(screen.queryByLabelText("Nombre del diagrama")).not.toBeInTheDocument();
+  });
+
+  it("creating a document from an active organization calls createDocument and navigates to its page", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    vi.mocked(docsLib.createDocument).mockResolvedValueOnce({
+      id: "doc-1",
+      owner_id: "1",
+      revision: 0,
+      metadata: { name: "Ventas", description: "" },
+      model: { classes: [], enumerations: [], relationships: [], generation_metadata: {} },
+      layout: { positions: {} },
+      created_at: "2026-09-12T10:00:00Z",
+      updated_at: "2026-09-12T10:00:00Z",
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: "Acme" });
+
+    fireEvent.change(screen.getByLabelText("Nombre del diagrama"), {
+      target: { value: "Ventas" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Crear diagrama" }));
+
+    expect(docsLib.createDocument).toHaveBeenCalledWith("acme", { name: "Ventas" });
+    await vi.waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/documents/doc-1");
+    });
   });
 });
