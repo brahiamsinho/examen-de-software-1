@@ -24,6 +24,7 @@ describe("AddRelationshipControl", () => {
         classes={classes}
         onSubmit={vi.fn()}
         onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
       />,
     );
 
@@ -38,6 +39,7 @@ describe("AddRelationshipControl", () => {
         classes={classes}
         onSubmit={vi.fn()}
         onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
       />,
     );
 
@@ -53,11 +55,56 @@ describe("AddRelationshipControl", () => {
         classes={classes}
         onSubmit={vi.fn()}
         onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
       />,
     );
 
     expect(screen.getByLabelText("Multiplicidad origen")).toBeInTheDocument();
     expect(screen.getByLabelText("Multiplicidad destino")).toBeInTheDocument();
+  });
+
+  it('clicking "Relación consigo misma" calls onSelectSelf, letting a class relate to itself', () => {
+    const onSelectSelf = vi.fn();
+    render(
+      <AddRelationshipControl
+        pendingSourceId="c1"
+        pendingTargetId={null}
+        classes={classes}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        onSelectSelf={onSelectSelf}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Relación consigo misma" }));
+
+    expect(onSelectSelf).toHaveBeenCalledOnce();
+  });
+
+  it("submits a recursive AddRelationship when source and target are the same class", async () => {
+    const onSubmit = vi.fn().mockResolvedValue({ revision: 2, validation: { is_valid: true, violations: [] } });
+    render(
+      <AddRelationshipControl
+        pendingSourceId="c1"
+        pendingTargetId="c1"
+        classes={classes}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar relación" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "AddRelationship",
+        relationship: expect.objectContaining({
+          source: expect.objectContaining({ class_id: "c1" }),
+          target: expect.objectContaining({ class_id: "c1" }),
+        }),
+      }),
+    );
   });
 
   it("onSubmit builds an association AddRelationship command with a generated id and clears both ids on success", async () => {
@@ -70,6 +117,7 @@ describe("AddRelationshipControl", () => {
         classes={classes}
         onSubmit={onSubmit}
         onCancel={onCancel}
+        onSelectSelf={vi.fn()}
       />,
     );
 

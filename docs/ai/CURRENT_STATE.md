@@ -178,6 +178,24 @@ initialized but not yet used for a real cycle.
   this file. A full backfill of those three cycles' individual design
   decisions is out of `uml-canvas-remove-ui`'s scope and remains pending.
 
+- **SDD Cycle 10** (`uml-document-list`) is **fully implemented**, single PR,
+  additive on both sides (`backend/apps/uml_documents/models.py` and its
+  migrations byte-for-byte unchanged): `/dashboard` now lists an
+  organization's documents instead of only redirecting to one just created.
+  `GET /orgs/{slug}/documents` (`services.list_documents`, gated exactly like
+  the existing single-document read — no `require_role`, so `VIEWER` reads
+  too) returns a lightweight `DocumentSummaryOut` (`id`/`name`/`revision`/
+  `updated_at`, `name` flat unlike `DocumentOut.metadata.name`), newest-updated
+  first. `lib/uml_documents.ts::listDocuments` + `state/documents.ts`'s
+  `useDocuments` (local `useState`, cloned from `useMembers`'s shape, not a
+  Jotai atom) feed the new presentational `DocumentList` (real `next/link`
+  rows, empty-state copy instead of `null` when there are zero documents).
+  The "Nuevo Diagrama" entry point moved into a new "Mis Diagramas" header
+  row, above the list, and now discloses the unmodified `CreateDocumentForm`
+  behind a click instead of always rendering it. 319/319 backend tests pass
+  (8 new), 251/251 frontend tests pass (23 new), zero regressions.
+  `sdd-verify`/`sdd-archive` remain.
+
 ### Mobile
 
 - `mobile/` is a bare Flutter scaffold (default counter-app template plus

@@ -44,4 +44,18 @@ describe("AddAttributeForm", () => {
       expect(screen.getByLabelText("Nombre del atributo")).toHaveValue("");
     });
   });
+
+  it("re-derives the selected class when it mounts with zero classes and one is added later (production bug fix)", async () => {
+    const onSubmit = vi.fn().mockResolvedValue({ revision: 2, validation: { is_valid: true, violations: [] } });
+    const { rerender } = render(<AddAttributeForm classes={[]} onSubmit={onSubmit} />);
+
+    rerender(<AddAttributeForm classes={classes} onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByLabelText("Nombre del atributo"), { target: { value: "nombre" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar atributo" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "AddAttribute", class_id: "c1" }),
+    );
+  });
 });

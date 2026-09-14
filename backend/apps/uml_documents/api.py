@@ -16,7 +16,13 @@ from apps.organizations.constants import Role
 from apps.organizations.permissions import require_role, resolve_membership
 from apps.uml_documents import codec, services
 from apps.uml_documents.errors import InvalidCommandPayloadError
-from apps.uml_documents.schemas import CommandIn, CommandResultOut, DocumentCreateIn, DocumentOut
+from apps.uml_documents.schemas import (
+    CommandIn,
+    CommandResultOut,
+    DocumentCreateIn,
+    DocumentOut,
+    DocumentSummaryOut,
+)
 
 documents_router = Router(auth=django_auth)
 
@@ -32,6 +38,22 @@ def _document_out(document) -> dict:
         "created_at": document.created_at,
         "updated_at": document.updated_at,
     }
+
+
+def _document_summary_out(document) -> dict:
+    return {
+        "id": document.id,
+        "name": document.metadata.name,
+        "revision": document.revision,
+        "updated_at": document.updated_at,
+    }
+
+
+@documents_router.get("", response=list[DocumentSummaryOut])
+def list_documents_view(request: HttpRequest, org_slug: Path[str]):
+    membership = resolve_membership(request, org_slug)  # no require_role — DD3, any member reads
+    documents = services.list_documents(organization=membership.organization)
+    return [_document_summary_out(document) for document in documents]
 
 
 @documents_router.post("", response={201: DocumentOut})

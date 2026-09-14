@@ -19,6 +19,7 @@ type AddRelationshipControlProps = {
   classes: UmlClass[];
   onSubmit: (command: UmlCommandIn) => Promise<CommandResult>;
   onCancel: () => void;
+  onSelectSelf: () => void;
   disabled?: boolean;
 };
 
@@ -29,6 +30,11 @@ type AddRelationshipControlProps = {
  * `AddRelationship` command with `crypto.randomUUID()` (DD10) on submit. A
  * successful submission calls `onCancel` to clear both pending ids — the
  * same reset the container's "tap again = cancel" path performs.
+ *
+ * `onSelectSelf` covers recursive/reflexive relationships (a class related
+ * to itself — e.g. a tree node's `parent`): tapping the same class twice on
+ * the canvas is the container's cancel gesture, so self-relationships need
+ * an explicit affordance here instead of overloading that tap.
  */
 export function AddRelationshipControl({
   pendingSourceId,
@@ -36,6 +42,7 @@ export function AddRelationshipControl({
   classes,
   onSubmit,
   onCancel,
+  onSelectSelf,
   disabled = false,
 }: AddRelationshipControlProps) {
   const [sourceMultiplicity, setSourceMultiplicity] = useState<MultiplicityString>("1");
@@ -56,9 +63,14 @@ export function AddRelationshipControl({
           Origen: <span className="font-mono text-foreground">{sourceClass?.name ?? pendingSourceId}</span>.
           Selecciona la clase destino en el diagrama.
         </p>
-        <Button type="button" variant="outline" size="sm" className="self-start" onClick={onCancel}>
-          Cancelar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onSelectSelf}>
+            Relación consigo misma
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+            Cancelar
+          </Button>
+        </div>
       </div>
     );
   }

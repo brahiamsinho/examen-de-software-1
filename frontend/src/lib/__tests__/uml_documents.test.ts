@@ -7,6 +7,7 @@ import {
   createDocument,
   formatMultiplicity,
   getDocument,
+  listDocuments,
   submitCommand,
 } from "@/lib/uml_documents";
 
@@ -143,6 +144,25 @@ describe("lib/uml_documents", () => {
     vi.mocked(api.apiFetch).mockRejectedValueOnce(error);
 
     await expect(getDocument("acme", documentFixture.id)).rejects.toBe(error);
+  });
+
+  it("listDocuments gets /api/orgs/{slug}/documents with no method override", async () => {
+    const summaries = [
+      { id: "doc-1", name: "Ventas", revision: 4, updated_at: "2026-09-12T10:05:00Z" },
+    ];
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(summaries);
+
+    const result = await listDocuments("a b");
+
+    expect(api.apiFetch).toHaveBeenCalledWith("/api/orgs/a%20b/documents");
+    expect(result).toEqual(summaries);
+  });
+
+  it("listDocuments propagates a rejected apiFetch as ApiError verbatim", async () => {
+    const error = new ApiError({ status: 404, code: "not_found", detail: "Organization not found" });
+    vi.mocked(api.apiFetch).mockRejectedValueOnce(error);
+
+    await expect(listDocuments("acme")).rejects.toBe(error);
   });
 
   describe("formatMultiplicity", () => {

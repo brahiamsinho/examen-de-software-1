@@ -1,5 +1,75 @@
 # Decisions Log
 
+## 2026-09-13 — Cycle 10 apply: implementation complete (uml-document-list)
+
+`sdd-apply` implemented all 20 tasks (Phases 1–9) from
+`openspec/changes/uml-document-list/tasks.md`, following design.md's DD1–DD8
+with strict TDD, single PR. A created document was previously reachable only
+through the redirect that follows its creation; this cycle adds a list so
+`/dashboard` shows every document of the active organization.
+
+**DD1 — `list_documents(*, organization) -> list[ProjectDocument]`, mirroring
+`create_document`/`get_document`.** `[_to_project_document(row) for row in
+UmlDocument.objects.for_organization(organization).order_by("-updated_at")]`.
+Returning a `QuerySet[UmlDocument]` for `api.py` to map, or a `.values()`
+projection reaching into `row.data`, were both rejected: either would break
+the services-module invariant that it is the sole place reassembling a
+`ProjectDocument` from a row + decoded `codec` triple.
+
+**DD2 — New `DocumentSummaryOut(Schema)` with `id`, `name` (flat), `revision`,
+`updated_at` — no `model`/`layout`.** Reusing `DocumentOut` was rejected: its
+`model`/`layout` are full per-class/attribute/relationship encodings that no
+list row renders, and nesting `name` under a `MetadataOut` would drag in a
+required `description` field the list never shows.
+
+**DD3 — `GET ""` on `documents_router`, gated by `resolve_membership` only —
+no `require_role`.** Pinned to `get_document_view`'s existing gate (verified:
+`api.py`'s single-document read has no role check), so a `VIEWER` who can open
+a document can also see it listed. Adding `require_role` here would have been
+an unrequested permission tightening.
+
+**DD4 — `listDocuments(orgSlug)` = `apiFetch<DocumentSummary[]>(base(orgSlug))`,
+no `try/catch`.** Matches every other wrapper in `lib/uml_documents.ts`: a
+swallowed error would render "no tienes diagramas" for what is actually a
+permission or network failure.
+
+**DD5 — `useDocuments(orgSlug)` is local `useState` + a render-time
+tracked-slug reset, cloned from `useMembers`, not a Jotai atom.** A document
+list has exactly one consumer (the dashboard container) — the same condition
+under which `state/document.ts` and `state/members.ts` both rejected a shared
+atom. A module atom would additionally paint the previous org's documents for
+a frame after switching orgs.
+
+**DD6 — `DocumentList` rows are real `<Link href="/documents/{id}">` anchors,
+not `onClick` handlers; zero documents renders empty-state copy, not `null`.**
+A list row is a real destination (unlike `CreateDocumentForm`'s post-mutation
+redirect to an id that does not exist ahead of time), so it needs a real
+anchor for middle-click/new-tab/prefetch. An empty list is a first-run state
+the user must see, unlike `OrgSwitcher`'s "nothing to switch" `null`.
+
+**DD7 — No date column; rows show only `{doc.name}` and `Revisión
+{doc.revision}`.** No date-formatting helper exists in this codebase, and
+locale-dependent formatting in a Client Component risks hydration mismatches.
+`updated_at` is still fetched and still orders the list server-side.
+
+**DD8 — `dashboard/page.tsx`: `useDocuments`/`showCreateForm` called above the
+`organizations.length === 0` early return; a new "Mis Diagramas" section
+discloses the unmodified `CreateDocumentForm` behind a "Nuevo Diagrama"
+button, then renders `{loading ? "Cargando…" : <DocumentList .../>}`.**
+Inlining the form horizontally in the header, or a modal, were both rejected:
+the header control must be a button, `CreateDocumentForm` is a full form, and
+no modal primitive exists in `components/ui/` (already rejected for this
+reason in Cycle 9). Gating the empty state behind `loading` prevents "no
+tienes diagramas" flashing on every mount.
+
+`backend/apps/uml_documents/models.py` and its migrations are byte-for-byte
+unchanged — purely additive on both sides, no schema change. 319/319 backend
+tests pass (8 new), 251/251 frontend tests pass (23 new — 2 in
+`lib/uml_documents.test.ts`, 4 in the new `state/documents.test.ts`, 3 in the
+new `DocumentList.test.tsx`, 5 in the extended `dashboard/page.test.tsx`, plus
+1 in `test_schemas.py` and 2+5 in `test_services.py`/`test_api.py`).
+`sdd-verify`/`sdd-archive` are the remaining steps.
+
 ## 2026-09-13 — Cycle 9 apply: implementation complete (uml-canvas-remove-ui)
 
 `sdd-apply` implemented all 15 tasks (Phases 1–7) from

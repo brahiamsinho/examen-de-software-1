@@ -58,6 +58,44 @@ def test_get_document():
 
 
 @pytest.mark.django_db
+def test_list_documents_returns_only_that_org_rows_newest_updated_first():
+    organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+    other_organization, other_owner, *_rest = make_org_with_roles()
+
+    first = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="First", now=_NOW
+    )
+    third = services.create_document(
+        organization=organization,
+        owner_id=str(owner.id),
+        name="Third",
+        now=_NOW + datetime.timedelta(minutes=10),
+    )
+    second = services.create_document(
+        organization=organization,
+        owner_id=str(owner.id),
+        name="Second",
+        now=_LATER,
+    )
+    services.create_document(
+        organization=other_organization, owner_id=str(other_owner.id), name="Other org", now=_NOW
+    )
+
+    documents = services.list_documents(organization=organization)
+
+    assert [document.id for document in documents] == [third.id, second.id, first.id]
+
+
+@pytest.mark.django_db
+def test_list_documents_returns_empty_list_for_organization_with_no_documents():
+    organization, *_rest = make_org_with_roles()
+
+    documents = services.list_documents(organization=organization)
+
+    assert documents == []
+
+
+@pytest.mark.django_db
 def test_command_from_payload():
     class_id = new_id()
     attribute_id = new_id()

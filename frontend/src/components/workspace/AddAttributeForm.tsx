@@ -28,9 +28,17 @@ type AddAttributeFormProps = {
  * eight `PRIMITIVE_TYPES` — no `enumeration_ref` option this cycle (spec
  * "Enumeration types are not offered"). Attribute `id` is generated
  * client-side with `crypto.randomUUID()` (DD10).
+ *
+ * `classId` is derived fresh every render (DD2 philosophy, same as the
+ * Remove* controls), not just initialized once: `useState(classes[0]?.id ??
+ * "")` alone froze at `""` forever when this form first mounted with zero
+ * classes (a brand-new document) and never re-synced once a class was
+ * added — every submit then silently sent `class_id: ""` and the attribute
+ * was never actually added (bug reported in production).
  */
 export function AddAttributeForm({ classes, onSubmit, disabled = false }: AddAttributeFormProps) {
   const [classId, setClassId] = useState(classes[0]?.id ?? "");
+  const resolvedClassId = classes.some((c) => c.id === classId) ? classId : (classes[0]?.id ?? "");
   const [name, setName] = useState("");
   const [type, setType] = useState<PrimitiveType>(PRIMITIVE_TYPES[0]!);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +51,7 @@ export function AddAttributeForm({ classes, onSubmit, disabled = false }: AddAtt
     try {
       await onSubmit({
         type: "AddAttribute",
-        class_id: classId,
+        class_id: resolvedClassId,
         attribute: { id: crypto.randomUUID(), name, type },
       });
       setName("");
@@ -62,7 +70,7 @@ export function AddAttributeForm({ classes, onSubmit, disabled = false }: AddAtt
         <Label htmlFor="add-attribute-class">Clase</Label>
         <Select
           id="add-attribute-class"
-          value={classId}
+          value={resolvedClassId}
           onChange={(event) => setClassId(event.target.value)}
         >
           {classes.map((c) => (

@@ -46,6 +46,86 @@ class TestCreateDocument:
 
 
 @pytest.mark.django_db
+class TestListDocuments:
+    def test_viewer_lists_documents_for_their_organization(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        auth_client.force_login(owner)
+        auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "First"},
+            content_type="application/json",
+        )
+        second_response = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "Second"},
+            content_type="application/json",
+        )
+        second_id = second_response.json()["id"]
+
+        auth_client.force_login(viewer)
+        response = auth_client.get(f"/api/orgs/{organization.slug}/documents")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 2
+        assert body[0]["id"] == second_id
+        for item in body:
+            assert set(item.keys()) == {"id", "name", "revision", "updated_at"}
+
+    def test_owner_and_editor_can_also_list(self, auth_client):
+        organization, owner, editor, _viewer, _outsider = make_org_with_roles()
+        auth_client.force_login(owner)
+        auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "My Diagram"},
+            content_type="application/json",
+        )
+
+        owner_response = auth_client.get(f"/api/orgs/{organization.slug}/documents")
+        assert owner_response.status_code == 200
+        assert len(owner_response.json()) == 1
+
+        auth_client.force_login(editor)
+        editor_response = auth_client.get(f"/api/orgs/{organization.slug}/documents")
+        assert editor_response.status_code == 200
+        assert len(editor_response.json()) == 1
+
+    def test_cross_tenant_documents_are_absent_not_404(self, auth_client):
+        organization, owner, *_rest = make_org_with_roles()
+        other_organization, other_owner, *_rest = make_org_with_roles()
+        auth_client.force_login(owner)
+        auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "My Diagram"},
+            content_type="application/json",
+        )
+
+        auth_client.force_login(other_owner)
+        response = auth_client.get(f"/api/orgs/{other_organization.slug}/documents")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_non_member_gets_404(self, auth_client):
+        organization, *_rest = make_org_with_roles()
+        outsider = _rest[-1]
+        auth_client.force_login(outsider)
+
+        response = auth_client.get(f"/api/orgs/{organization.slug}/documents")
+
+        assert response.status_code == 404
+
+    def test_empty_organization_returns_empty_list(self, auth_client):
+        organization, owner, *_rest = make_org_with_roles()
+        auth_client.force_login(owner)
+
+        response = auth_client.get(f"/api/orgs/{organization.slug}/documents")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+
+@pytest.mark.django_db
 class TestGetDocument:
     def test_any_member_reads_back_the_persisted_document(self, auth_client):
         organization, owner, _editor, viewer, _outsider = make_org_with_roles()

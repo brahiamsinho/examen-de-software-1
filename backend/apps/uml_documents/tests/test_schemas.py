@@ -95,3 +95,19 @@ def test_command_result_out_instantiates_from_services_shaped_dict():
 def test_validation_out_and_diagnostic_out_instantiate_from_services_shaped_dict():
     schemas.ValidationOut(is_valid=True, violations=[])
     schemas.DiagnosticOut(severity="warning", code="EMPTY_ELEMENT_NAME", message="msg", path="/classes/c1")
+
+
+def test_document_summary_out_serializes_name_flat_not_nested():
+    summary = schemas.DocumentSummaryOut(
+        id=uuid.uuid4(),
+        name="My Diagram",
+        revision=3,
+        updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+    )
+
+    data = summary.model_dump()
+
+    assert data["name"] == "My Diagram"
+    assert "metadata" not in data
+    assert "model" not in data
+    assert "layout" not in data

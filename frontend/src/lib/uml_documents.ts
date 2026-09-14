@@ -152,6 +152,21 @@ export async function getDocument(orgSlug: string, docId: string): Promise<UmlDo
   return apiFetch<UmlDocument>(`${base(orgSlug)}/${encodeURIComponent(docId)}`);
 }
 
+/**
+ * Lightweight list-row shape (design.md DD2/DD4) — `name` is FLAT, unlike
+ * `UmlDocument.metadata.name`. The two are NOT interchangeable.
+ */
+export type DocumentSummary = {
+  id: string;
+  name: string;
+  revision: number;
+  updated_at: string;
+};
+
+export async function listDocuments(orgSlug: string): Promise<DocumentSummary[]> {
+  return apiFetch<DocumentSummary[]>(base(orgSlug));
+}
+
 export async function submitCommand(
   orgSlug: string,
   docId: string,

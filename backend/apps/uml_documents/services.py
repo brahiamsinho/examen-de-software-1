@@ -80,6 +80,14 @@ def get_document(*, organization: Organization, doc_id: UUID) -> ProjectDocument
     return _to_project_document(row)
 
 
+def list_documents(*, organization: Organization) -> list[ProjectDocument]:
+    """Newest-updated first — `UmlDocument.Meta` declares no `ordering`,
+    so the order is stated here or it is undefined (design.md DD1).
+    """
+    rows = UmlDocument.objects.for_organization(organization).order_by("-updated_at")
+    return [_to_project_document(row) for row in rows]
+
+
 def submit_command(
     *, organization: Organization, doc_id: UUID, command: UmlCommand, now: datetime.datetime
 ) -> CommandResult:

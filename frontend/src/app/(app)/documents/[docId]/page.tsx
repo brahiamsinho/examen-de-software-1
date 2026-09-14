@@ -91,6 +91,16 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     setPendingTargetId(null);
   }
 
+  function handleSelfRelationship() {
+    // Explicit affordance for a recursive/reflexive relationship (a class
+    // related to itself): tapping the same node twice is handleNodeTap's
+    // cancel gesture, so this bypasses the canvas entirely and sets the
+    // target directly from the already-pending source.
+    if (effectiveSourceId !== null) {
+      setPendingTargetId(effectiveSourceId);
+    }
+  }
+
   return (
     <div className="flex flex-col">
       <div className="flex items-baseline justify-between gap-4 border-b border-border px-6 py-4">
@@ -105,7 +115,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
       <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="h-[32rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
+          <div className="h-[44rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
             <DiagramCanvas
               model={document.model}
               revision={document.revision}
@@ -159,6 +169,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               classes={document.model.classes}
               onSubmit={submitCommand}
               onCancel={handleCancelRelationship}
+              onSelectSelf={handleSelfRelationship}
               disabled={isSubmitting}
             />
           </div>

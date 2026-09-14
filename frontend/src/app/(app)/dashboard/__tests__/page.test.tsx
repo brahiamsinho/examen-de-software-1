@@ -27,7 +27,7 @@ vi.mock("@/lib/organizations", async () => {
 
 vi.mock("@/lib/uml_documents", async () => {
   const actual = await vi.importActual<typeof import("@/lib/uml_documents")>("@/lib/uml_documents");
-  return { ...actual, createDocument: vi.fn() };
+  return { ...actual, createDocument: vi.fn(), listDocuments: vi.fn() };
 });
 
 const mockPush = vi.fn();
@@ -46,6 +46,7 @@ describe("DashboardPage", () => {
     vi.mocked(orgsLib.listOrganizations).mockReset();
     vi.mocked(orgsLib.createOrganization).mockReset();
     vi.mocked(docsLib.createDocument).mockReset();
+    vi.mocked(docsLib.listDocuments).mockReset().mockResolvedValue([]);
     mockPush.mockReset();
   });
 
@@ -136,6 +137,7 @@ describe("DashboardPage", () => {
     renderPage();
 
     await screen.findByRole("heading", { name: "Crea tu primera organización" });
+    expect(screen.queryByRole("button", { name: "Nuevo Diagrama" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Nombre del diagrama")).not.toBeInTheDocument();
   });
 
@@ -157,6 +159,7 @@ describe("DashboardPage", () => {
     renderPage();
     await screen.findByRole("heading", { name: "Acme" });
 
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo Diagrama" }));
     fireEvent.change(screen.getByLabelText("Nombre del diagrama"), {
       target: { value: "Ventas" },
     });
@@ -166,5 +169,110 @@ describe("DashboardPage", () => {
     await vi.waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/documents/doc-1");
     });
+  });
+
+  // web-uml-canvas § "Dashboard Document List" and "Create-Document Entry Point" (modified).
+  it('renders "Mis Diagramas" heading and "Nuevo Diagrama" button together in a header row', async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Mis Diagramas" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nuevo Diagrama" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nombre del diagrama")).not.toBeInTheDocument();
+  });
+
+  // Post-verify WARNING 2: the header row's DOM position relative to
+  // DocumentList was structurally true but never asserted at runtime.
+  it('places the "Mis Diagramas" header above the document list in DOM order', async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    vi.mocked(docsLib.listDocuments).mockReset().mockResolvedValueOnce([
+      { id: "doc-1", name: "Ventas", revision: 1, updated_at: "2026-09-12T10:05:00Z" },
+    ]);
+
+    const { container } = renderPage();
+    await screen.findByRole("heading", { name: "Mis Diagramas" });
+    await screen.findByRole("link", { name: /Ventas/ });
+
+    const html = container.innerHTML;
+    const headingIndex = html.indexOf("Mis Diagramas");
+    const listIndex = html.indexOf("Ventas");
+
+    expect(headingIndex).toBeGreaterThan(-1);
+    expect(listIndex).toBeGreaterThan(headingIndex);
+  });
+
+  it('clicking "Nuevo Diagrama" reveals CreateDocumentForm', async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    renderPage();
+    await screen.findByRole("heading", { name: "Mis Diagramas" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo Diagrama" }));
+
+    expect(screen.getByLabelText("Nombre del diagrama")).toBeInTheDocument();
+  });
+
+  it("passes the hook's documents down to DocumentList", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    vi.mocked(docsLib.listDocuments).mockReset().mockResolvedValueOnce([
+      { id: "doc-1", name: "Ventas", revision: 4, updated_at: "2026-09-12T10:05:00Z" },
+    ]);
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Mis Diagramas" });
+    expect(await screen.findByRole("link", { name: /Ventas/ })).toHaveAttribute(
+      "href",
+      "/documents/doc-1",
+    );
+    expect(docsLib.listDocuments).toHaveBeenCalledWith("acme");
+  });
+
+  it("shows a loading placeholder instead of the empty state while documents are loading", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const },
+    ]);
+    vi.mocked(docsLib.listDocuments).mockReset().mockImplementation(() => new Promise(() => {}));
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Mis Diagramas" });
+    expect(screen.getByText("Cargando…")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Todavía no tienes diagramas. Crea el primero con «Nuevo Diagrama»."),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides "Nuevo Diagrama" for a VIEWER, who would always get a 403 on submit (post-verify WARNING)', async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "VIEWER" as const },
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Mis Diagramas" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nuevo Diagrama" })).not.toBeInTheDocument();
+  });
+
+  it('shows "Nuevo Diagrama" for an EDITOR, not just OWNER', async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([
+      { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "EDITOR" as const },
+    ]);
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: "Nuevo Diagrama" })).toBeInTheDocument();
+  });
+
+  it("the zero-organization branch renders OrgEmptyState + CreateOrgForm and calls no document request", async () => {
+    vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([]);
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Crea tu primera organización" });
+    expect(screen.getByRole("button", { name: "Crear organización" })).toBeInTheDocument();
+    expect(docsLib.listDocuments).not.toHaveBeenCalled();
   });
 });

@@ -106,6 +106,17 @@ class DocumentOut(Schema):
     updated_at: datetime
 
 
+class DocumentSummaryOut(Schema):
+    """Lightweight list-row shape (design.md DD2) — `name` is FLAT, not
+    nested under `metadata` like `DocumentOut`. No `model`/`layout`: a
+    list row never needs the full decoded diagram."""
+
+    id: UUID
+    name: str
+    revision: int
+    updated_at: datetime
+
+
 class DiagnosticOut(Schema):
     severity: str
     code: str
