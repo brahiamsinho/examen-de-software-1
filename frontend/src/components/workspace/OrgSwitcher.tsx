@@ -9,10 +9,12 @@ type OrgSwitcherProps = {
 
 /**
  * Presentational (design.md "components/workspace ... presentational, no
- * fetch"): receives state from its container (`AppTopbar`, which owns the
+ * fetch"): receives state from its container (`AppSidebar`, which owns the
  * single `useOrganizations()` call) instead of fetching independently — this
  * also avoids a second `listOrganizations()` request from a sibling hook
- * instance.
+ * instance. Renders as a vertical list (sidebar redesign) with the active
+ * org's own `aria-pressed` styling the row's background and, via `group`,
+ * its child text color.
  */
 export function OrgSwitcher({ organizations, activeSlug, onSelect }: OrgSwitcherProps) {
   if (organizations.length === 0) {
@@ -20,17 +22,19 @@ export function OrgSwitcher({ organizations, activeSlug, onSelect }: OrgSwitcher
   }
 
   return (
-    <ul className="flex items-center gap-2" aria-label="Organizaciones">
+    <ul className="flex flex-col gap-0.5" aria-label="Organizaciones">
       {organizations.map((org) => (
         <li key={org.slug}>
           <button
             type="button"
             aria-pressed={org.slug === activeSlug}
             onClick={() => onSelect(org.slug)}
-            className="flex flex-col items-start rounded-md px-2 py-1 text-left text-sm aria-pressed:bg-muted"
+            className="group flex w-full flex-col items-start rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-background aria-pressed:bg-accent aria-pressed:hover:bg-accent"
           >
-            <span className="font-medium">{org.name}</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground group-aria-pressed:text-accent-foreground">
+              {org.name}
+            </span>
+            <span className="text-xs text-muted-foreground group-aria-pressed:text-accent-foreground/80">
               {ROLE_LABELS[org.my_role ?? ""] ?? org.my_role}
             </span>
           </button>

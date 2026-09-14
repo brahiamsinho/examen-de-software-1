@@ -1,5 +1,166 @@
 # Decisions Log
 
+## 2026-09-13 — Cycle 10 apply: implementation complete (uml-document-list)
+
+`sdd-apply` implemented all 20 tasks (Phases 1–9) from
+`openspec/changes/uml-document-list/tasks.md`, following design.md's DD1–DD8
+with strict TDD, single PR. A created document was previously reachable only
+through the redirect that follows its creation; this cycle adds a list so
+`/dashboard` shows every document of the active organization.
+
+**DD1 — `list_documents(*, organization) -> list[ProjectDocument]`, mirroring
+`create_document`/`get_document`.** `[_to_project_document(row) for row in
+UmlDocument.objects.for_organization(organization).order_by("-updated_at")]`.
+Returning a `QuerySet[UmlDocument]` for `api.py` to map, or a `.values()`
+projection reaching into `row.data`, were both rejected: either would break
+the services-module invariant that it is the sole place reassembling a
+`ProjectDocument` from a row + decoded `codec` triple.
+
+**DD2 — New `DocumentSummaryOut(Schema)` with `id`, `name` (flat), `revision`,
+`updated_at` — no `model`/`layout`.** Reusing `DocumentOut` was rejected: its
+`model`/`layout` are full per-class/attribute/relationship encodings that no
+list row renders, and nesting `name` under a `MetadataOut` would drag in a
+required `description` field the list never shows.
+
+**DD3 — `GET ""` on `documents_router`, gated by `resolve_membership` only —
+no `require_role`.** Pinned to `get_document_view`'s existing gate (verified:
+`api.py`'s single-document read has no role check), so a `VIEWER` who can open
+a document can also see it listed. Adding `require_role` here would have been
+an unrequested permission tightening.
+
+**DD4 — `listDocuments(orgSlug)` = `apiFetch<DocumentSummary[]>(base(orgSlug))`,
+no `try/catch`.** Matches every other wrapper in `lib/uml_documents.ts`: a
+swallowed error would render "no tienes diagramas" for what is actually a
+permission or network failure.
+
+**DD5 — `useDocuments(orgSlug)` is local `useState` + a render-time
+tracked-slug reset, cloned from `useMembers`, not a Jotai atom.** A document
+list has exactly one consumer (the dashboard container) — the same condition
+under which `state/document.ts` and `state/members.ts` both rejected a shared
+atom. A module atom would additionally paint the previous org's documents for
+a frame after switching orgs.
+
+**DD6 — `DocumentList` rows are real `<Link href="/documents/{id}">` anchors,
+not `onClick` handlers; zero documents renders empty-state copy, not `null`.**
+A list row is a real destination (unlike `CreateDocumentForm`'s post-mutation
+redirect to an id that does not exist ahead of time), so it needs a real
+anchor for middle-click/new-tab/prefetch. An empty list is a first-run state
+the user must see, unlike `OrgSwitcher`'s "nothing to switch" `null`.
+
+**DD7 — No date column; rows show only `{doc.name}` and `Revisión
+{doc.revision}`.** No date-formatting helper exists in this codebase, and
+locale-dependent formatting in a Client Component risks hydration mismatches.
+`updated_at` is still fetched and still orders the list server-side.
+
+**DD8 — `dashboard/page.tsx`: `useDocuments`/`showCreateForm` called above the
+`organizations.length === 0` early return; a new "Mis Diagramas" section
+discloses the unmodified `CreateDocumentForm` behind a "Nuevo Diagrama"
+button, then renders `{loading ? "Cargando…" : <DocumentList .../>}`.**
+Inlining the form horizontally in the header, or a modal, were both rejected:
+the header control must be a button, `CreateDocumentForm` is a full form, and
+no modal primitive exists in `components/ui/` (already rejected for this
+reason in Cycle 9). Gating the empty state behind `loading` prevents "no
+tienes diagramas" flashing on every mount.
+
+`backend/apps/uml_documents/models.py` and its migrations are byte-for-byte
+unchanged — purely additive on both sides, no schema change. 319/319 backend
+tests pass (8 new), 251/251 frontend tests pass (23 new — 2 in
+`lib/uml_documents.test.ts`, 4 in the new `state/documents.test.ts`, 3 in the
+new `DocumentList.test.tsx`, 5 in the extended `dashboard/page.test.tsx`, plus
+1 in `test_schemas.py` and 2+5 in `test_services.py`/`test_api.py`).
+`sdd-verify`/`sdd-archive` are the remaining steps.
+
+## 2026-09-13 — Cycle 9 apply: implementation complete (uml-canvas-remove-ui)
+
+`sdd-apply` implemented all 15 tasks (Phases 1–7) from
+`openspec/changes/uml-canvas-remove-ui/tasks.md`, following design.md's
+DD1–DD8 with strict TDD, single PR, frontend-only (`backend/` diff empty —
+`RemoveClass`/`RemoveAttribute`/`RemoveRelationship` already existed on the
+command bus and were only unreachable from the UI). This closes the
+create/destroy gap left deliberately open by the prior `uml-canvas-ui`
+cycle: a diagram could previously only grow.
+
+**DD1 — Three new `UmlCommandIn` members, fields copied verbatim from the
+Pydantic schemas.** `{type: "RemoveClass"; class_id}`,
+`{type: "RemoveAttribute"; class_id; attribute_id}` (both fields required —
+attribute ids are only unique within a class), `{type: "RemoveRelationship";
+relationship_id}` (only one field — a relationship id is globally unique).
+The union's stale "only three commands" comment now names the six wired
+shapes and calls out `RenameClass` as the sole remaining gap. Guessing a
+generic escape-hatch shape was rejected — the two asymmetric remove payloads
+would only surface a wrong-shape 422 at runtime, not at compile time.
+
+**DD2 — Stale selection eliminated by derivation, not an effect.** Every
+control stores only the raw selected id in `useState` and re-derives
+`options.find(o => o.id === rawId) ?? null` on every render, feeding
+`value={selected?.id ?? ""}` to its `<select>`. A `useEffect` clearing a
+dead id was rejected — it fires *after* a render that already holds the
+dead id, so a fast submit between refetch and effect could still post a
+stale id, which is exactly the silent no-op this cycle exists to prevent.
+
+**DD3 — Leading placeholder option, submit disabled on `null`.** Every
+`<select>` renders `<option value="">...` and its submit control is
+`disabled` when the derived selection is `null`, so a destructive control
+never arrives pre-aimed at something the user never chose. Preselecting
+`options[0]` (as `AddAttributeForm` does) was rejected for these three
+controls; `AddAttributeForm`'s own init-only preselect shares DD2's
+staleness bug but is out of scope this cycle (recorded as an open item).
+
+**DD4 — `RemoveClassControl`'s confirmation is a second render branch, not
+`window.confirm()`.** A `confirming` boolean swaps the select for a warning
+plus `Confirmar eliminación`/`Cancelar`, the same early-return-on-state
+shape `AddRelationshipControl` already uses for pending-source/pending-target.
+`window.confirm()` was rejected as untestable under RTL/jsdom without
+stubbing a global and as the one UI primitive this codebase uses nowhere;
+no modal primitive exists in `components/ui/` and introducing one for a
+single call site was judged out of scope.
+
+**DD5 — Cascade count is derived at render, never stored.** `RemoveClassControl`
+computes `relationships.filter(r => r.source.class_id === id ||
+r.target.class_id === id).length` fresh on every render (including inside
+the confirm branch), mirroring `remove_class`'s own source-or-target filter
+and `page.tsx`'s pre-existing `danglingRelationshipCount` derivation. Per
+design.md's explicit rationale, the confirmation branch always appears
+(spec: class removal always confirms) but the "también N relación(es)" line
+is omitted when the count is 0 rather than rendering a "0 relación(es)"
+line — a deliberate, documented refinement of the spec's literal wording,
+not a silent deviation.
+
+**DD6 — Relationship options are labelled by endpoint names and kind, not
+multiplicity.** `` `${name(source)} → ${name(target)} (${kind})` `` with
+`name(id) = classes.find(c => c.id === id)?.name ?? id`. Reusing the canvas
+edge label (`formatMultiplicity`) was rejected — multiplicity does not
+disambiguate two relationships between the same class pair. Dangling
+relationships are listed, not filtered, using the raw `class_id` fallback:
+`toElements` already drops them from the canvas, so this control is the
+only way to remove one.
+
+**DD7 — All three controls render after the existing `Add*` block, under a
+new `<h2>Eliminar</h2>` heading, in class → attribute → relationship order.**
+`ValidationPanel` stays above the forms, unmoved. Interleaving each `Remove*`
+beside its `Add*` was rejected — grouping destructive controls behind one
+heading reduces the chance of a mis-click landing on a remove select while
+adding.
+
+**DD8 — Error handling and submit locking copied verbatim from
+`AddAttributeForm`/`AddRelationshipControl`.** `useState` `error`/
+`submitting`, `catch (err) { err instanceof ApiError ? err.detail : "Ocurrió
+un error inesperado. Intenta de nuevo." }`, `<p role="alert"
+className="text-sm text-destructive">`, `variant="destructive"` buttons. A
+shared `useCommandSubmit` hook extraction was rejected this cycle — it would
+rewrite three already-verified components; logged as tech debt for a future
+cycle now that 6 of 7 command shapes duplicate the block.
+
+All 4 modified `web-uml-canvas` requirements pass their scenarios; the full
+frontend suite and `npm run lint` are clean (Phase 7); `git diff --stat --
+backend` is empty. `sdd-verify`/`sdd-archive` remain.
+
+*Process note*: the three preceding cycles that actually built the canvas
+domain (`uml-canvas-ui`, `uml-command-bus`, `uml-document-persistence`, all
+merged 2026-09-12 per `git log`) never got a `docs/ai/DECISIONS_LOG.md`/
+`CURRENT_STATE.md` sync entry — a pre-existing gap this apply does not
+attempt to backfill, since it is out of this change's assigned scope.
+
 ## 2026-09-11 — Cycle 6 apply: implementation complete (email-verification-password-reset)
 
 `sdd-apply` implemented all 24 tasks (Phases 1–7) from

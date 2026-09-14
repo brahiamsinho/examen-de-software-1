@@ -23,6 +23,10 @@ from apps.organizations.api import (
     organizations_router,
     register_exception_handlers as register_organization_exception_handlers,
 )
+from apps.uml_documents.api import (
+    documents_router,
+    register_exception_handlers as register_uml_documents_exception_handlers,
+)
 from apps.users.api import auth_router, register_exception_handlers as register_user_exception_handlers
 
 api = NinjaAPI()
@@ -36,5 +40,7 @@ def health(request):
 api.add_router("/auth", auth_router, tags=["auth"])
 api.add_router("/orgs", organizations_router, tags=["organizations"])
 api.add_router("/orgs/{org_slug}/members", memberships_router, tags=["memberships"])
+api.add_router("/orgs/{org_slug}/documents", documents_router, tags=["documents"])
 register_user_exception_handlers(api)
 register_organization_exception_handlers(api)
+register_uml_documents_exception_handlers(api)

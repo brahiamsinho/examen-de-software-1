@@ -2,6 +2,35 @@
 
 ## What's done
 
+### SDD Cycle 4: UML Document List (ARCHIVED 2026-09-13)
+
+- **Document List Endpoint (`uml-document-list`)**: Added `GET /orgs/{org_slug}/documents` endpoint returning a lightweight summary of every document in the organization, ordered newest-updated-first, gated exactly like the existing document read (any member, VIEWER+).
+  - Backend: `list_documents(*, organization)` service in `services.py`, `DocumentSummaryOut` schema in `schemas.py`, registered endpoint in `api.py` with `resolve_membership` gate (DD1–DD3).
+  - Frontend: `listDocuments(orgSlug)` fetch + `DocumentSummary` type in `lib/uml_documents.ts` (DD4); `useDocuments(orgSlug)` container hook with local state + render-time slug tracking in new `state/documents.ts` (DD5); presentational `DocumentList` component with rows linking to `/documents/{id}` and empty state in new `components/workspace/DocumentList.tsx` (DD6–DD7).
+  - Dashboard Integration: `dashboard/page.tsx` now calls `useDocuments`, renders "Mis Diagramas" header with "Nuevo Diagrama" button (disclosure) above the list, shows loading state during fetch (DD8).
+- **Backend**: Zero diff — no model, migration, or command-bus changes. Three files modified additively: `services.py`, `schemas.py`, `api.py`. 319/319 tests pass.
+- **Frontend**: Two files created (`state/documents.ts`, `components/workspace/DocumentList.tsx`), two modified (`lib/uml_documents.ts`, `dashboard/page.tsx`). 254/254 tests pass, including 3 new regression tests for VIEWER-hides-button, EDITOR-shows-button, and DOM-order assertions.
+- **Architecture Decisions**: DD1–DD8 logged to `docs/ai/DECISIONS_LOG.md` covering sole-reassembler invariant, lightweight summary schema, read-gate parity, hook shape (local state + render-time reset, not atom), link-based navigation, no-date-column (server-order already captures intent), and hooks above conditional early return.
+- **Verification**: 573/573 tests pass (319 backend + 254 frontend, including 3 new regression tests re-run fresh this cycle). Build succeeds (docker compose build + next build). Lint clean (frontend; backend has no configured linter per project). Models/migrations diff empty. All 20 implementation tasks complete and independently re-confirmed against source. Verdict: **PASS** (0 CRITICAL, 0 WARNING).
+- **Specs**: Delta specs for `uml-document-persistence` (1 ADDED: Document List) and `web-uml-canvas` (1 ADDED: Dashboard Document List + 1 MODIFIED: Create-Document Entry Point) merged into main specs via `gentle-ai sdd-archive-compose`. Spec compliance: 10/10 scenarios fully COMPLIANT (up from 9/10 + 1 PARTIAL after prior cycle's WARNINGs were fixed).
+- **Change archived**: `openspec/changes/archive/2026-09-13-uml-document-list/` contains proposal, design (8 DD table), tasks (20/20 complete), verify-report (PASS, both prior WARNINGs fixed), and delta specs.
+- `docs/ai/` updated: `DECISIONS_LOG.md` appended DD1–DD8; `CURRENT_STATE.md` notes `/dashboard` now lists organization documents with empty state.
+
+### SDD Cycle 3: UML Canvas Remove UI (ARCHIVED 2026-09-13)
+
+- **Remove UI Controls (`uml-canvas-remove-ui`)**: Added three new presentational controls — `RemoveClassControl`, `RemoveAttributeControl`, `RemoveRelationshipControl` — enabling users to delete classes, attributes, and relationships from the canvas.
+  - `RemoveClassControl`: class `<select>` with confirmation step showing exact cascade count (client-derived from `relationships` prop); confirmation required before `RemoveClass` submission.
+  - `RemoveAttributeControl`: class → attribute select chain, immediate submit with no confirmation; resets both selections on refetch if selected ids disappear.
+  - `RemoveRelationshipControl`: relationship `<select>` with endpoint-name-plus-kind labeling (`"ClassName → TargetName (kind)"`), distinguishing multiple relationships between the same class pair; immediate submit with no confirmation.
+- **Backend**: Zero diff — all three remove command shapes (`RemoveClass`, `RemoveAttribute`, `RemoveRelationship`) and their cascade behavior already exist in `apps/uml_documents/schemas.py` and the command bus.
+- **UML Command Union**: Extended `UmlCommandIn` with three new members (DD1); remaining gap is `RenameClass` (no UI collects a new name, proposal Out of Scope).
+- **Stale Selection Prevention (DD2)**: All three controls use derivation-based staleness elimination — selected id persists in `useState`, but rendered selection is `selected = options.find(o => o.id === rawId) ?? null` on every render, collapsing missing ids to null immediately without an effect. Prevents silent no-op backend submissions when a selected id disappears mid-refetch.
+- **Cross-Control Submission Lock (Phase 8)**: Added `isSubmitting` boolean to `useDocument`, set `true` before `submitCommand`'s POST and cleared in `finally`. All six command-submitting controls (`Add*` + `Remove*`) receive `disabled` prop wired to this lock, preventing concurrent submission races where two commands resolve out-of-order, leaving the canvas reflecting only one.
+- **Verification**: 235/235 tests pass (0 regressions), build succeeds, lint clean, backend/ empty diff confirmed. All 4 requirements and 11/11 scenarios fully COMPLIANT. Verdict: **PASS** (0 CRITICAL, 0 WARNING).
+- **Specs**: Delta spec for `web-uml-canvas` merged into `openspec/specs/web-uml-canvas/spec.md` with 4 new requirements: Remove Class Command, Remove Attribute Command, Remove Relationship Command, Stale Selection Reset After Refetch.
+- **Change archived**: `openspec/changes/archive/2026-09-13-uml-canvas-remove-ui/` contains proposal, design, tasks, verify-report, and delta spec.
+- `docs/ai/` updated: `DECISIONS_LOG.md` logged DD1–DD8 (command union, stale-selection derivation, placeholder-option guards, in-component confirmation branches, cascade-count derivation, endpoint-name-plus-kind labeling, form grouping, shared error/submitting blocks); `CURRENT_STATE.md` reflects UML canvas now supports 6 of 7 command shapes (only `RenameClass` remains).
+
 ### SDD Cycle 1: Canonical UML Model, Project Document, Validation Engine (ARCHIVED 2026-09-05)
 
 - **Canonical UML Model (`uml-domain-model`)**: `CanonicalUmlModel` frozen dataclass (alias `UmlModel`) with classes, enumerations, relationships, generation metadata. Supports 8 primitive types (String, Text, Integer, Long, Decimal, Boolean, Date, DateTime) and enumeration references (by id, not name, to survive renames). Multiplicity structured as `(lower: int, upper: int|None)` with parse/format round-trip for UML string syntax.

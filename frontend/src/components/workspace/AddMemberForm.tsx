@@ -1,8 +1,13 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { ApiError } from "@/lib/api";
 import type { Member } from "@/lib/organizations";
 
@@ -43,10 +48,10 @@ export function AddMemberForm({ onAdd }: AddMemberFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="add-member-email">Correo electrónico</label>
-        <input
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-member-email">Correo electrónico</Label>
+        <Input
           id="add-member-email"
           type="email"
           value={email}
@@ -55,25 +60,26 @@ export function AddMemberForm({ onAdd }: AddMemberFormProps) {
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="add-member-role">Rol</label>
-        <select
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="add-member-role">Rol</Label>
+        <Select
           id="add-member-role"
           value={role}
           onChange={(event) => setRole(event.target.value as "EDITOR" | "VIEWER")}
         >
           <option value="EDITOR">Editor</option>
           <option value="VIEWER">Lector</option>
-        </select>
+        </Select>
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="sm" className="self-start" disabled={submitting}>
         Agregar miembro
       </Button>
     </form>
