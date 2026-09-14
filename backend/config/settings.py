@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "corsheaders",
     # Local (future feature apps live under backend/apps/)
     "apps.uml_modeling",
+    "apps.uml_commands",
     "apps.users",
     "apps.organizations",
 ]
