@@ -85,6 +85,29 @@ describe("DiagramCanvas — toElements (pure)", () => {
     expect(svg).not.toContain(`<Weird>`);
   });
 
+  it("tags a recursive relationship (source === target) with the self-loop class for loop geometry", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [{ id: "c1", name: "Nodo", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [
+        {
+          id: "r1",
+          kind: "association",
+          source: { class_id: "c1", multiplicity: { lower: 0, upper: 1 }, role: null },
+          target: { class_id: "c1", multiplicity: { lower: 0, upper: 1 }, role: null },
+          name: null,
+        },
+      ],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+    const edge = elements.find((el) => "source" in el.data)!;
+    expect(edge.classes).toBe("self-loop");
+  });
+
   it("drops an edge whose endpoint class is missing from model.classes", async () => {
     const { toElements } = await import("@/components/workspace/DiagramCanvas");
 
@@ -116,7 +139,13 @@ const { cyMock } = vi.hoisted(() => ({
     json: vi.fn(),
     layout: vi.fn(() => ({ run: vi.fn() })),
     nodes: vi.fn(() => ({ removeClass: vi.fn() })),
-    getElementById: vi.fn(() => ({ addClass: vi.fn() })),
+    getElementById: vi.fn(
+      (): { addClass: ReturnType<typeof vi.fn>; length: number; position: () => { x: number; y: number } } => ({
+        addClass: vi.fn(),
+        length: 0,
+        position: () => ({ x: 0, y: 0 }),
+      }),
+    ),
   },
 }));
 
@@ -179,6 +208,58 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     expect(cyMock.layout).toHaveBeenCalledOnce();
   });
 
+  it("keeps existing classes fixed in place and only lays out a newly added class (production UX fix)", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const oneClass: UmlModel = {
+      classes: [{ id: "c1", name: "A", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+    const twoClasses: UmlModel = {
+      ...oneClass,
+      classes: [...oneClass.classes, { id: "c2", name: "B", visibility: "public", attributes: [], operations: [] }],
+    };
+    cyMock.getElementById.mockReturnValue({
+      length: 1,
+      position: () => ({ x: 10, y: 20 }),
+      addClass: vi.fn(),
+    });
+
+    const { rerender } = render(<DiagramCanvas model={oneClass} revision={1} />);
+    cyMock.layout.mockClear();
+
+    rerender(<DiagramCanvas model={twoClasses} revision={2} />);
+
+    expect(cyMock.layout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        randomize: false,
+        fixedNodeConstraint: [{ nodeId: "c1", position: { x: 10, y: 20 } }],
+      }),
+    );
+  });
+
+  it("skips re-layout entirely when a revision change adds no new class (attribute/relationship-only edit)", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const model: UmlModel = {
+      classes: [{ id: "c1", name: "A", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+
+    const { rerender } = render(<DiagramCanvas model={model} revision={1} />);
+    cyMock.layout.mockClear();
+    cyMock.json.mockClear();
+
+    // Same class ids as before — e.g. an attribute was added to c1.
+    // Revision bumps but no new class exists, so nothing should be moved.
+    rerender(<DiagramCanvas model={{ ...model }} revision={2} />);
+
+    expect(cyMock.json).toHaveBeenCalledOnce();
+    expect(cyMock.layout).not.toHaveBeenCalled();
+  });
+
   it("routes the tap handler through onNodeTapRef to the latest onNodeTap", async () => {
     const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
 
@@ -206,7 +287,7 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     const removeClass = vi.fn();
     cyMock.nodes.mockReturnValue({ removeClass });
     const addClass = vi.fn();
-    cyMock.getElementById.mockReturnValue({ addClass });
+    cyMock.getElementById.mockReturnValue({ addClass, length: 1, position: () => ({ x: 0, y: 0 }) });
 
     const { rerender } = render(
       <DiagramCanvas model={emptyModel} revision={1} highlightedClassId={null} />,

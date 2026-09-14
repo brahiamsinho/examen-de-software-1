@@ -138,6 +138,27 @@ const STYLE: cytoscape.StylesheetStyle[] = [
       "text-background-shape": "roundrectangle",
     },
   },
+  {
+    // A recursive/reflexive relationship (source === target, tagged in
+    // toElements) needs explicit loop geometry. Per Cytoscape's own docs,
+    // `loop-direction` is measured from 12 o'clock, clockwise (default
+    // `-45deg`); `loop-sweep` is the angle between the leaving/returning
+    // edges (default `-90deg`). `0deg` here points the loop straight up,
+    // clear of the wide rectangular box (unlike the small circular nodes
+    // Cytoscape's own examples assume), and `control-point-step-size` is
+    // enlarged so the arc is unmistakably visible. The main `edge`
+    // selector's default label placement sits at the edge's geometric
+    // midpoint, which for a self-loop can land back on the node itself —
+    // `text-margin-y` pushes the multiplicity label up into the loop's
+    // open arc instead.
+    selector: "edge.self-loop",
+    style: {
+      "loop-direction": "0deg",
+      "loop-sweep": "-90deg",
+      "control-point-step-size": 100,
+      "text-margin-y": -28,
+    },
+  },
 ];
 
 /**
@@ -170,6 +191,9 @@ export function toElements(model: UmlModel): ElementDefinition[] {
         target: r.target.class_id,
         label: `${formatMultiplicity(r.source.multiplicity)} → ${formatMultiplicity(r.target.multiplicity)}`,
       },
+      // Recursive/reflexive relationship (a class related to itself):
+      // needs explicit loop geometry, see the `edge.self-loop` selector.
+      classes: r.source.class_id === r.target.class_id ? "self-loop" : undefined,
     }));
 
   return [...nodes, ...edges];
@@ -193,6 +217,11 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const onNodeTapRef = useRef(onNodeTap);
+  // Tracks which class ids already had a position from a prior layout run,
+  // so only genuinely new classes get laid out on each update — a full
+  // fcose re-layout on every mutation (add attribute, remove element, …)
+  // was rearranging the whole diagram on every edit (reported UX bug).
+  const laidOutClassIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // Keeps the ref current after every render (not during render, which
@@ -217,14 +246,54 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
   useEffect(() => {
     // UPDATE — revision-keyed (DD4). `cy.json({elements})` diffs
     // (adds/updates/removes) rather than rebuilding, preserving the
-    // instance and its handlers.
+    // instance, its handlers, AND every existing node's position.
     const cy = cyRef.current;
     if (!cy) return;
+
+    const currentClassIds = model.classes.map((c) => c.id);
+    const previouslyLaidOut = laidOutClassIdsRef.current;
+    const isFirstLayout = previouslyLaidOut.size === 0;
+    const newClassIds = currentClassIds.filter((id) => !previouslyLaidOut.has(id));
+
+    // Capture already-placed classes' current positions BEFORE syncing new
+    // elements in, so fcose can pin them (`fixedNodeConstraint`) and only
+    // find a spot for whatever is actually new.
+    const fixedNodeConstraint = isFirstLayout
+      ? undefined
+      : currentClassIds
+          .filter((id) => previouslyLaidOut.has(id) && cy.getElementById(id).length > 0)
+          .map((id) => ({ nodeId: id, position: cy.getElementById(id).position() }));
+
     cy.json({ elements: toElements(model) });
-    // `animate` is an fcose-specific option (`@types/cytoscape-fcose`'s
-    // `FcoseLayoutOptions`) not present on cytoscape's generic
-    // `BaseLayoutOptions` that `cy.layout()`'s signature is typed against.
-    cy.layout({ name: "fcose", animate: false } as cytoscape.LayoutOptions & { animate?: boolean }).run();
+
+    // Only re-layout when there's something new to place. A pure
+    // attribute/relationship/removal edit touches zero new classes, so the
+    // diagram's existing positions are left completely undisturbed.
+    if (isFirstLayout || newClassIds.length > 0) {
+      // `animate`/`nodeSeparation`/`padding`/`randomize`/`fixedNodeConstraint`
+      // are fcose-specific options (`@types/cytoscape-fcose`'s
+      // `FcoseLayoutOptions`) not present on cytoscape's generic
+      // `BaseLayoutOptions` that `cy.layout()`'s signature is typed
+      // against. `nodeSeparation`/`padding` widen fcose's tightly-packed
+      // default spacing; `randomize: false` plus `fixedNodeConstraint`
+      // keeps every already-placed class exactly where it is.
+      cy.layout({
+        name: "fcose",
+        animate: false,
+        nodeSeparation: 160,
+        padding: 80,
+        randomize: isFirstLayout,
+        fixedNodeConstraint,
+      } as cytoscape.LayoutOptions & {
+        animate?: boolean;
+        nodeSeparation?: number;
+        padding?: number;
+        randomize?: boolean;
+        fixedNodeConstraint?: { nodeId: string; position: cytoscape.Position }[];
+      }).run();
+    }
+
+    laidOutClassIdsRef.current = new Set(currentClassIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision]);
 
