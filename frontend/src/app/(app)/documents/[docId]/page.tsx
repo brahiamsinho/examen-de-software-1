@@ -115,7 +115,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
       <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="h-[44rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
+          <div className="h-[calc(100vh-12rem)] min-h-[36rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
             <DiagramCanvas
               model={document.model}
               revision={document.revision}
