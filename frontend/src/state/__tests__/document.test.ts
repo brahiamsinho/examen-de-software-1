@@ -20,7 +20,12 @@ vi.mock("@/lib/uml_documents", async () => {
     getDocument: vi.fn(),
     createDocument: vi.fn(),
     submitCommand: vi.fn(),
-    openDocumentSocket: vi.fn(() => ({ close: vi.fn() })),
+    openDocumentSocket: vi.fn(() => ({
+      close: vi.fn(),
+      sendClaim: vi.fn(),
+      sendPosition: vi.fn(),
+      sendRelease: vi.fn(),
+    })),
   };
 });
 
@@ -386,5 +391,139 @@ describe("state/document useDocument() — realtime socket", () => {
 
     act(() => vi.advanceTimersByTime(20_000));
     expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Node lock state + live position wiring (design.md DD4, DD9, DD11).
+ * `locks` is plain `useState` (low-frequency, belongs in render); live
+ * position frames bypass React entirely via `positionListenerRef`, and
+ * `sendPosition` is throttled to at most one frame per 50ms window while
+ * always flushing the final coalesced position (never silently dropping
+ * the last frame before `release`).
+ */
+describe("state/document useDocument() — locks and live position (DD4/DD9/DD11)", () => {
+  function mockConnection() {
+    return {
+      close: vi.fn(),
+      sendClaim: vi.fn(),
+      sendPosition: vi.fn(),
+      sendRelease: vi.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(docsLib.getDocument).mockReset();
+    vi.mocked(docsLib.openDocumentSocket).mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("node.locked/node.unlocked update locks state, keyed by class id", async () => {
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onNodeLocked?.({ type: "node.locked", class_id: "c1", owner_label: "Ana", mine: false });
+    });
+    expect(result.current.locks).toEqual({ c1: { ownerLabel: "Ana", mine: false } });
+
+    act(() => {
+      handlers.onNodeUnlocked?.({ type: "node.unlocked", class_id: "c1" });
+    });
+    expect(result.current.locks).toEqual({});
+  });
+
+  it("node.locks replaces the entire locks snapshot on join", async () => {
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onNodeLocks?.({
+        type: "node.locks",
+        locks: [{ class_id: "c1", owner_label: "Ana", mine: false }],
+      });
+    });
+
+    expect(result.current.locks).toEqual({ c1: { ownerLabel: "Ana", mine: false } });
+  });
+
+  it("node.position for a foreign node calls positionListenerRef.current with (classId, x, y)", async () => {
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+    const handlers = lastSocketHandlers();
+
+    const listener = vi.fn();
+    result.current.positionListenerRef.current = listener;
+
+    act(() => {
+      handlers.onNodePosition?.({ type: "node.position", class_id: "c1", x: 5, y: 6, mine: false });
+    });
+
+    expect(listener).toHaveBeenCalledWith("c1", 5, 6);
+  });
+
+  it("sendClaim/sendRelease pass straight through to the socket connection", async () => {
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+
+    act(() => {
+      result.current.sendClaim("c1");
+      result.current.sendRelease("c1", 9, 9);
+    });
+
+    expect(connection.sendClaim).toHaveBeenCalledWith("c1");
+    expect(connection.sendRelease).toHaveBeenCalledWith("c1", 9, 9);
+  });
+
+  it("sendPosition emits at most one frame per 50ms window and always flushes the final coalesced position", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValue(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.sendPosition("c1", 1, 1);
+    });
+    // Leading edge: the first call in a window fires immediately.
+    expect(connection.sendPosition).toHaveBeenCalledTimes(1);
+    expect(connection.sendPosition).toHaveBeenLastCalledWith("c1", 1, 1);
+
+    act(() => {
+      result.current.sendPosition("c1", 2, 2);
+      result.current.sendPosition("c1", 3, 3);
+    });
+    // Coalesced — still only the leading call so far.
+    expect(connection.sendPosition).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    // Trailing edge flushes exactly the LAST coalesced position.
+    expect(connection.sendPosition).toHaveBeenCalledTimes(2);
+    expect(connection.sendPosition).toHaveBeenLastCalledWith("c1", 3, 3);
   });
 });

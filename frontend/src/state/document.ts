@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import {
@@ -9,6 +9,14 @@ import {
   type UmlCommandIn,
   type UmlDocument,
 } from "@/lib/uml_documents";
+
+/** Mirrors `DiagramCanvas`'s local `LockState` structurally (DD9, DD12). */
+export type LockState = { ownerLabel: string; mine: boolean };
+
+/** Client throttle for `node.position` (DD4): 20 Hz, well above the ~12 Hz
+ * fusion threshold for perceived-continuous motion, and a third of a raw
+ * 60 Hz `mousemove` stream. */
+const _POSITION_THROTTLE_MS = 50;
 
 /** Close codes DD13 treats as terminal — a revoked or unauthenticated
  * client must never hammer the handshake in a reconnect loop. */
@@ -53,6 +61,23 @@ export function useDocument(orgSlug: string | null, docId: string) {
   const [lastValidation, setLastValidation] = useState<CommandResult["validation"] | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [trackedKey, setTrackedKey] = useState(`${orgSlug}:${docId}`);
+  // Low-frequency (DD11) — genuinely belongs in render, unlike live
+  // positions below.
+  const [locks, setLocks] = useState<Record<string, LockState>>({});
+
+  const connectionRef = useRef<ReturnType<typeof openDocumentSocket> | null>(null);
+  // Live positions bypass React state entirely (DD11): `DiagramCanvas`
+  // writes its imperative Cytoscape-apply handler into this ref on mount,
+  // and the socket's `node.position` handler below calls through it
+  // directly — a `setState` at 20 Hz per dragger would re-render the whole
+  // page for data only Cytoscape consumes.
+  const positionListenerRef = useRef<((classId: string, x: number, y: number) => void) | null>(null);
+  // Same ref-as-latest-handler idiom (DD12): a claim loss is rare, but the
+  // snap-back is still an imperative "restore this exact node's position"
+  // action, not a state change anything else in the tree reads.
+  const claimRejectedListenerRef = useRef<((classId: string) => void) | null>(null);
+  const positionThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPositionRef = useRef<{ classId: string; x: number; y: number } | null>(null);
 
   const key = `${orgSlug}:${docId}`;
   if (key !== trackedKey) {
@@ -61,6 +86,7 @@ export function useDocument(orgSlug: string | null, docId: string) {
     setError(null);
     setLastValidation(null);
     setLoading(orgSlug !== null);
+    setLocks({});
   }
 
   useEffect(() => {
@@ -135,7 +161,42 @@ export function useDocument(orgSlug: string | null, docId: string) {
             connect();
           }, delay);
         },
+        onNodeLocked: (payload) => {
+          if (cancelled) return;
+          setLocks((prev) => ({
+            ...prev,
+            [payload.class_id]: { ownerLabel: payload.owner_label, mine: payload.mine },
+          }));
+        },
+        onNodeUnlocked: (payload) => {
+          if (cancelled) return;
+          setLocks((prev) => {
+            if (!(payload.class_id in prev)) return prev;
+            const next = { ...prev };
+            delete next[payload.class_id];
+            return next;
+          });
+        },
+        onNodeLocks: (payload) => {
+          if (cancelled) return;
+          const next: Record<string, LockState> = {};
+          for (const entry of payload.locks) {
+            next[entry.class_id] = { ownerLabel: entry.owner_label, mine: entry.mine };
+          }
+          setLocks(next);
+        },
+        onNodePosition: (payload) => {
+          // The owner's own drag already renders locally in real time
+          // (DD9) — only a foreign frame needs to move anything here.
+          if (cancelled || payload.mine) return;
+          positionListenerRef.current?.(payload.class_id, payload.x, payload.y);
+        },
+        onClaimRejected: (payload) => {
+          if (cancelled) return;
+          claimRejectedListenerRef.current?.(payload.class_id);
+        },
       });
+      connectionRef.current = socket;
     };
 
     connect();
@@ -144,8 +205,47 @@ export function useDocument(orgSlug: string | null, docId: string) {
       cancelled = true;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
       socket?.close();
+      connectionRef.current = null;
     };
   }, [orgSlug, docId]);
+
+  const sendClaim = useCallback((classId: string) => {
+    connectionRef.current?.sendClaim(classId);
+  }, []);
+
+  const sendRelease = useCallback((classId: string, x: number | null, y: number | null) => {
+    connectionRef.current?.sendRelease(classId, x, y);
+  }, []);
+
+  /**
+   * Throttled `node.position` sender (design.md DD4, Testing Strategy):
+   * leading-edge send is immediate, then further calls within the same
+   * 50ms window are coalesced into "pending" and flushed exactly once at
+   * the trailing edge — so at most one frame goes out per window, and the
+   * very last coalesced position is never silently dropped.
+   */
+  const sendPosition = useCallback((classId: string, x: number, y: number) => {
+    // A plain local recursive closure, not another hook value: the
+    // trailing edge re-schedules itself directly so this window keeps
+    // flushing pending calls without `sendPosition` ever referencing its
+    // own `useCallback` identity before it settles.
+    const flushPending = () => {
+      positionThrottleTimerRef.current = null;
+      const pending = pendingPositionRef.current;
+      pendingPositionRef.current = null;
+      if (pending) {
+        connectionRef.current?.sendPosition(pending.classId, pending.x, pending.y);
+        positionThrottleTimerRef.current = setTimeout(flushPending, _POSITION_THROTTLE_MS);
+      }
+    };
+
+    if (positionThrottleTimerRef.current === null) {
+      connectionRef.current?.sendPosition(classId, x, y);
+      positionThrottleTimerRef.current = setTimeout(flushPending, _POSITION_THROTTLE_MS);
+    } else {
+      pendingPositionRef.current = { classId, x, y };
+    }
+  }, []);
 
   /**
    * POSTs, then `await getDocument(...)` and writes both the refetched
@@ -196,5 +296,18 @@ export function useDocument(orgSlug: string | null, docId: string) {
     [orgSlug, docId],
   );
 
-  return { document, loading, error, lastValidation, isSubmitting, submitCommand };
+  return {
+    document,
+    loading,
+    error,
+    lastValidation,
+    isSubmitting,
+    submitCommand,
+    locks,
+    positionListenerRef,
+    claimRejectedListenerRef,
+    sendClaim,
+    sendPosition,
+    sendRelease,
+  };
 }

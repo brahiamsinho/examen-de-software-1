@@ -199,12 +199,16 @@ describe("lib/uml_documents", () => {
   describe("openDocumentSocket", () => {
     class MockWebSocket {
       static instances: MockWebSocket[] = [];
+      static readonly OPEN = 1;
+      static readonly CONNECTING = 0;
       url: string;
       onopen: (() => void) | null = null;
       onmessage: ((event: { data: string }) => void) | null = null;
       onclose: ((event: unknown) => void) | null = null;
       onerror: ((event: unknown) => void) | null = null;
       closed = false;
+      readyState = 1;
+      send = vi.fn();
 
       constructor(url: string | URL) {
         this.url = url.toString();
@@ -264,6 +268,108 @@ describe("lib/uml_documents", () => {
       socket.onmessage?.({ data: JSON.stringify({ type: "something.else", document: {} }) });
 
       expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Lock/position message dispatch (design.md Message Contract, task 4.3):
+     * one handler per inbound `type`, undispatched types are ignored, all
+     * without touching `onMessage`'s `document.update` path.
+     */
+    it("dispatches node.locked/node.unlocked/node.position/node.locks/node.claim_rejected to their own handlers", () => {
+      const onNodeLocked = vi.fn();
+      const onNodeUnlocked = vi.fn();
+      const onNodePosition = vi.fn();
+      const onNodeLocks = vi.fn();
+      const onClaimRejected = vi.fn();
+      const onMessage = vi.fn();
+
+      openDocumentSocket("acme", documentFixture.id, {
+        onMessage,
+        onClose: vi.fn(),
+        onNodeLocked,
+        onNodeUnlocked,
+        onNodePosition,
+        onNodeLocks,
+        onClaimRejected,
+      });
+      const socket = MockWebSocket.instances[0]!;
+
+      const locked = { type: "node.locked", class_id: "c1", owner_label: "Ana", mine: true };
+      socket.onmessage?.({ data: JSON.stringify(locked) });
+      expect(onNodeLocked).toHaveBeenCalledWith(locked);
+
+      const unlocked = { type: "node.unlocked", class_id: "c1" };
+      socket.onmessage?.({ data: JSON.stringify(unlocked) });
+      expect(onNodeUnlocked).toHaveBeenCalledWith(unlocked);
+
+      const position = { type: "node.position", class_id: "c1", x: 1, y: 2, mine: false };
+      socket.onmessage?.({ data: JSON.stringify(position) });
+      expect(onNodePosition).toHaveBeenCalledWith(position);
+
+      const locks = { type: "node.locks", locks: [{ class_id: "c1", owner_label: "Ana", mine: false }] };
+      socket.onmessage?.({ data: JSON.stringify(locks) });
+      expect(onNodeLocks).toHaveBeenCalledWith(locks);
+
+      const rejected = { type: "node.claim_rejected", class_id: "c1", owner_label: "Ana" };
+      socket.onmessage?.({ data: JSON.stringify(rejected) });
+      expect(onClaimRejected).toHaveBeenCalledWith(rejected);
+
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    it("returned sendClaim/sendPosition/sendRelease send the matching JSON frame when the socket is open", () => {
+      const connection = openDocumentSocket("acme", documentFixture.id, {
+        onMessage: vi.fn(),
+        onClose: vi.fn(),
+      });
+      const socket = MockWebSocket.instances[0]!;
+
+      connection.sendClaim("c1");
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "node.claim", class_id: "c1" }));
+
+      connection.sendPosition("c1", 1.5, 2.5);
+      expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "node.position", class_id: "c1", x: 1.5, y: 2.5 }),
+      );
+
+      connection.sendRelease("c1", 3.5, 4.5);
+      expect(socket.send).toHaveBeenCalledWith(
+        JSON.stringify({ type: "node.release", class_id: "c1", x: 3.5, y: 4.5 }),
+      );
+
+      // node.release accepts null coordinates (the RemoveClass-mid-drag
+      // case, DD8) — the lock is released and the durable write is skipped.
+      connection.sendRelease("c1", null, null);
+      expect(socket.send).toHaveBeenLastCalledWith(
+        JSON.stringify({ type: "node.release", class_id: "c1", x: null, y: null }),
+      );
+    });
+
+    it("send helpers are no-ops while the socket is not open", () => {
+      const connection = openDocumentSocket("acme", documentFixture.id, {
+        onMessage: vi.fn(),
+        onClose: vi.fn(),
+      });
+      const socket = MockWebSocket.instances[0]!;
+      socket.readyState = MockWebSocket.CONNECTING;
+
+      connection.sendClaim("c1");
+      connection.sendPosition("c1", 1, 2);
+      connection.sendRelease("c1", 1, 2);
+
+      expect(socket.send).not.toHaveBeenCalled();
+    });
+
+    it("close() still closes the underlying socket", () => {
+      const connection = openDocumentSocket("acme", documentFixture.id, {
+        onMessage: vi.fn(),
+        onClose: vi.fn(),
+      });
+      const socket = MockWebSocket.instances[0]!;
+
+      connection.close();
+
+      expect(socket.closed).toBe(true);
     });
   });
 });

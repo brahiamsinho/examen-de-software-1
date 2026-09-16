@@ -22,9 +22,11 @@ vi.mock("@/components/workspace/DiagramCanvas", () => ({
   DiagramCanvas: ({
     model,
     onNodeTap,
+    onClaim,
   }: {
     model: UmlModel;
     onNodeTap?: (classId: string) => void;
+    onClaim?: (classId: string) => void;
   }) => (
     <div>
       {model.classes.map((c) => (
@@ -32,6 +34,7 @@ vi.mock("@/components/workspace/DiagramCanvas", () => ({
           Tap {c.name}
         </button>
       ))}
+      {onClaim ? <button onClick={() => onClaim("c1")}>Claim c1</button> : null}
     </div>
   ),
 }));
@@ -411,5 +414,81 @@ describe("DocumentPage", () => {
     expect(
       screen.queryByText(/no se muestran por referirse a una clase inexistente/i),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Realtime node lock affordance (design.md DD12, task 6.3): the page wires
+ * `useDocument`'s `locks`/`sendClaim`/`sendPosition`/`sendRelease` into
+ * `DiagramCanvas` and renders one "{owner} está moviendo {class}" line per
+ * foreign-held lock (never for a lock this client itself holds).
+ */
+describe("DocumentPage — realtime node lock affordance (DD12)", () => {
+  beforeEach(() => {
+    useDocumentMock.mockReset();
+  });
+
+  it('renders "{owner} está moviendo {class}" for a foreign-held lock', async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+      locks: { c1: { ownerLabel: "Ana", mine: false } },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText(/Ana está moviendo Cliente/)).toBeInTheDocument();
+  });
+
+  it("renders no affordance when there are no foreign-held locks", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+      locks: {},
+    });
+
+    renderPage();
+
+    await screen.findByText("Tap Cliente");
+    expect(screen.queryByText(/está moviendo/)).not.toBeInTheDocument();
+  });
+
+  it("does not render the affordance for a lock this client itself holds (mine: true)", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+      locks: { c1: { ownerLabel: "Ana", mine: true } },
+    });
+
+    renderPage();
+
+    await screen.findByText("Tap Cliente");
+    expect(screen.queryByText(/está moviendo/)).not.toBeInTheDocument();
+  });
+
+  it("wires sendClaim from useDocument through DiagramCanvas's onClaim prop", async () => {
+    const sendClaim = vi.fn();
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+      sendClaim,
+    });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByText("Claim c1"));
+    expect(sendClaim).toHaveBeenCalledWith("c1");
   });
 });

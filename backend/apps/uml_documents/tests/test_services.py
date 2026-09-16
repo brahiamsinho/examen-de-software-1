@@ -22,6 +22,7 @@ from apps.uml_modeling.domain.elements import (
     UmlAttribute,
     Visibility,
 )
+from apps.uml_modeling.documents import Position
 from apps.uml_modeling.domain.ids import new_id
 from apps.uml_modeling.domain.model import CanonicalUmlModel
 from apps.uml_modeling.domain.types import Multiplicity, PrimitiveType
@@ -412,3 +413,142 @@ def test_submit_command_concurrent_calls_do_not_lose_updates():
     assert errors == []
     final = services.get_document(organization=organization, doc_id=document.id)
     assert final.revision == start_revision + 2
+
+
+# --- DD8: layout persistence via non-command path (design.md DD8, tasks 2.1/2.2) --
+
+
+@pytest.mark.django_db
+def test_save_layout_position_bumps_revision_by_one_and_leaves_model_unchanged():
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Layout", now=_NOW
+    )
+    class_id = new_id()
+    services.submit_command(
+        organization=organization,
+        doc_id=document.id,
+        command=commands.AddClass(class_id=class_id, name="Order"),
+        now=_NOW,
+    )
+    before = services.get_document(organization=organization, doc_id=document.id)
+
+    updated = services.save_layout_position(
+        organization=organization,
+        doc_id=document.id,
+        class_id=str(class_id),
+        position=Position(x=10.0, y=20.0),
+        now=_LATER,
+    )
+
+    assert updated.revision == before.revision + 1
+    assert updated.model == before.model
+    assert updated.layout.positions[class_id] == Position(x=10.0, y=20.0)
+
+    persisted = services.get_document(organization=organization, doc_id=document.id)
+    assert persisted.revision == updated.revision
+    assert persisted.layout.positions[class_id] == Position(x=10.0, y=20.0)
+
+
+@pytest.mark.django_db
+def test_save_layout_position_for_absent_class_id_writes_nothing_and_does_not_bump_revision():
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Layout", now=_NOW
+    )
+    before = services.get_document(organization=organization, doc_id=document.id)
+
+    updated = services.save_layout_position(
+        organization=organization,
+        doc_id=document.id,
+        class_id="does-not-exist",
+        position=Position(x=1.0, y=2.0),
+        now=_LATER,
+    )
+
+    assert updated.revision == before.revision
+    assert updated.layout.positions == before.layout.positions
+
+    persisted = services.get_document(organization=organization, doc_id=document.id)
+    assert persisted.revision == before.revision
+    assert persisted.layout.positions == before.layout.positions
+
+
+@pytest.mark.django_db
+def test_save_layout_position_prunes_a_stale_entry_for_a_removed_class_on_next_persist():
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Layout", now=_NOW
+    )
+    class_a = new_id()
+    class_b = new_id()
+    services.submit_command(
+        organization=organization,
+        doc_id=document.id,
+        command=commands.AddClass(class_id=class_a, name="A"),
+        now=_NOW,
+    )
+    services.submit_command(
+        organization=organization,
+        doc_id=document.id,
+        command=commands.AddClass(class_id=class_b, name="B"),
+        now=_NOW,
+    )
+    services.save_layout_position(
+        organization=organization,
+        doc_id=document.id,
+        class_id=str(class_a),
+        position=Position(x=1.0, y=1.0),
+        now=_NOW,
+    )
+    services.save_layout_position(
+        organization=organization,
+        doc_id=document.id,
+        class_id=str(class_b),
+        position=Position(x=2.0, y=2.0),
+        now=_NOW,
+    )
+    services.submit_command(
+        organization=organization,
+        doc_id=document.id,
+        command=commands.RemoveClass(class_id=class_a),
+        now=_LATER,
+    )
+
+    updated = services.save_layout_position(
+        organization=organization,
+        doc_id=document.id,
+        class_id=str(class_b),
+        position=Position(x=3.0, y=3.0),
+        now=_LATER,
+    )
+
+    assert class_a not in updated.layout.positions
+    assert updated.layout.positions[class_b] == Position(x=3.0, y=3.0)
+
+
+@pytest.mark.django_db
+def test_save_layout_position_broadcasts_exactly_once_after_commit(django_capture_on_commit_callbacks):
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Layout", now=_NOW
+    )
+    class_id = new_id()
+    services.submit_command(
+        organization=organization,
+        doc_id=document.id,
+        command=commands.AddClass(class_id=class_id, name="Order"),
+        now=_NOW,
+    )
+
+    with mock.patch("apps.uml_documents.services.broadcast_document") as mock_broadcast:
+        with django_capture_on_commit_callbacks(execute=True):
+            updated = services.save_layout_position(
+                organization=organization,
+                doc_id=document.id,
+                class_id=str(class_id),
+                position=Position(x=5.0, y=5.0),
+                now=_LATER,
+            )
+
+    mock_broadcast.assert_called_once_with(document=updated)

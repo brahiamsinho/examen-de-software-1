@@ -22,7 +22,7 @@ from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_documents import codec, schemas
 from apps.uml_documents.errors import InvalidCommandPayloadError
 from apps.uml_documents.models import UmlDocument
-from apps.uml_modeling.documents import DiagramLayout, ProjectDocument, ProjectMetadata
+from apps.uml_modeling.documents import DiagramLayout, Position, ProjectDocument, ProjectMetadata
 from apps.uml_modeling.domain.elements import (
     Relationship,
     RelationshipEnd,
@@ -133,6 +133,43 @@ def submit_command(
     _save(row, result.document)
     transaction.on_commit(lambda: broadcast_document(document=result.document))
     return result
+
+
+@transaction.atomic
+def save_layout_position(
+    *,
+    organization: Organization,
+    doc_id: UUID,
+    class_id: str,
+    position: Position,
+    now: datetime.datetime,
+) -> ProjectDocument:
+    """Sibling to `submit_command`, deliberately NOT routed through
+    `dispatcher.apply()` or any `UmlCommand` variant (design.md DD8):
+    ephemeral node claims never touch Postgres or `revision`, but a
+    released drag's final position is durable, and this is that write.
+    Takes the same `@transaction.atomic` + `_get_row(for_update=True)`
+    row lock `submit_command` already takes, so the two write paths can
+    never race each other on the same document.
+
+    A `class_id` absent from the document's current model (removed by a
+    `RemoveClass` mid-drag) returns the document UNCHANGED — no write, no
+    `revision` bump (DD8's `RemoveClass` case). Every persisted entry
+    whose class id is no longer live is pruned on every successful call,
+    which is self-healing and needs no migration.
+    """
+    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    document = _to_project_document(row)
+    live = {c.id for c in document.model.classes}
+    target = ElementId(class_id)
+    if target not in live:
+        return document
+    positions = {cid: p for cid, p in document.layout.positions.items() if cid in live}
+    positions[target] = position
+    updated = document.with_layout(DiagramLayout(positions=positions), now=now)
+    _save(row, updated)
+    transaction.on_commit(lambda: broadcast_document(document=updated))
+    return updated
 
 
 def command_from_payload(payload: "schemas.CommandIn") -> UmlCommand:

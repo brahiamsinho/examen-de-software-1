@@ -195,11 +195,48 @@ export function attributeTypeLabel(t: AttributeType): string {
   return typeof t === "string" ? t : t.enumeration_ref.enumeration_id;
 }
 
+/**
+ * Node lock/position message shapes (design.md Message Contract, DD9):
+ * server->client group events re-derive `mine` per connection and never
+ * carry `owner_token` — these types mirror that wire shape exactly, one
+ * field set per inbound `type`.
+ */
+export type NodeLockedIn = { type: "node.locked"; class_id: string; owner_label: string; mine: boolean };
+export type NodeUnlockedIn = { type: "node.unlocked"; class_id: string };
+export type NodePositionIn = {
+  type: "node.position";
+  class_id: string;
+  x: number;
+  y: number;
+  mine: boolean;
+};
+export type NodeLockEntry = { class_id: string; owner_label: string; mine: boolean };
+export type NodeLocksIn = { type: "node.locks"; locks: NodeLockEntry[] };
+export type NodeClaimRejectedIn = { type: "node.claim_rejected"; class_id: string; owner_label: string };
+
 export type DocumentSocketHandlers = {
   onOpen?: () => void;
   onMessage: (document: UmlDocument) => void;
   onClose: (event: { code: number }) => void;
   onError?: (event: unknown) => void;
+  onNodeLocked?: (payload: NodeLockedIn) => void;
+  onNodeUnlocked?: (payload: NodeUnlockedIn) => void;
+  onNodePosition?: (payload: NodePositionIn) => void;
+  onNodeLocks?: (payload: NodeLocksIn) => void;
+  onClaimRejected?: (payload: NodeClaimRejectedIn) => void;
+};
+
+/**
+ * `openDocumentSocket`'s return value (design.md's DiagramCanvas
+ * Interfaces/Contracts block): `close()` plus one send helper per inbound
+ * client->server message kind, so `state/document.ts` never touches the
+ * raw `WebSocket` or reconstructs a frame shape itself.
+ */
+export type DocumentSocketConnection = {
+  close: () => void;
+  sendClaim: (classId: string) => void;
+  sendPosition: (classId: string, x: number, y: number) => void;
+  sendRelease: (classId: string, x: number | null, y: number | null) => void;
 };
 
 /**
@@ -213,21 +250,55 @@ export function openDocumentSocket(
   orgSlug: string,
   docId: string,
   handlers: DocumentSocketHandlers,
-): WebSocket {
+): DocumentSocketConnection {
   const path = `/ws/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/`;
   const socket = new WebSocket(new URL(path, wsUrl));
 
   socket.onopen = () => handlers.onOpen?.();
 
   socket.onmessage = (event: { data: unknown }) => {
-    const payload = JSON.parse(event.data as string) as { type: string; document: UmlDocument };
-    if (payload.type === "document.update") {
-      handlers.onMessage(payload.document);
+    const payload = JSON.parse(event.data as string) as { type: string } & Record<string, unknown>;
+    switch (payload.type) {
+      case "document.update":
+        handlers.onMessage((payload as unknown as { document: UmlDocument }).document);
+        break;
+      case "node.locked":
+        handlers.onNodeLocked?.(payload as unknown as NodeLockedIn);
+        break;
+      case "node.unlocked":
+        handlers.onNodeUnlocked?.(payload as unknown as NodeUnlockedIn);
+        break;
+      case "node.position":
+        handlers.onNodePosition?.(payload as unknown as NodePositionIn);
+        break;
+      case "node.locks":
+        handlers.onNodeLocks?.(payload as unknown as NodeLocksIn);
+        break;
+      case "node.claim_rejected":
+        handlers.onClaimRejected?.(payload as unknown as NodeClaimRejectedIn);
+        break;
+      default:
+        break;
     }
   };
 
   socket.onclose = (event: { code: number }) => handlers.onClose(event);
   socket.onerror = (event: unknown) => handlers.onError?.(event);
 
-  return socket;
+  // A frame sent while the socket isn't OPEN would throw synchronously
+  // (native `WebSocket.send`'s `InvalidStateError`) — every helper guards
+  // on `readyState` instead of letting a stray drag-end frame during
+  // reconnect crash the caller.
+  const send = (payload: object) => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(payload));
+    }
+  };
+
+  return {
+    close: () => socket.close(),
+    sendClaim: (classId) => send({ type: "node.claim", class_id: classId }),
+    sendPosition: (classId, x, y) => send({ type: "node.position", class_id: classId, x, y }),
+    sendRelease: (classId, x, y) => send({ type: "node.release", class_id: classId, x, y }),
+  };
 }

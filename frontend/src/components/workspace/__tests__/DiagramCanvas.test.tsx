@@ -209,6 +209,43 @@ describe("DiagramCanvas — toElements (pure)", () => {
     const edges = elements.filter((el) => "source" in el.data);
     expect(edges).toHaveLength(0);
   });
+
+  it("seeds position from layout.positions for a persisted class id and omits it for an unplaced one (DD13)", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [
+        { id: "c1", name: "Cliente", visibility: "public", attributes: [], operations: [] },
+        { id: "c2", name: "Pedido", visibility: "public", attributes: [], operations: [] },
+      ],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+    const layout = { positions: { c1: { x: 120.5, y: -40.0 } } };
+
+    const elements = toElements(model, layout);
+
+    const c1Node = elements.find((el) => el.data.id === "c1")!;
+    expect(c1Node.position).toEqual({ x: 120.5, y: -40.0 });
+    const c2Node = elements.find((el) => el.data.id === "c2")!;
+    expect(c2Node.position).toBeUndefined();
+  });
+
+  it("defaults to an empty layout (no seeded positions) when the second argument is omitted", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [{ id: "c1", name: "Cliente", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+
+    expect(elements[0]!.position).toBeUndefined();
+  });
 });
 
 /**
@@ -259,16 +296,44 @@ const { cyMock } = vi.hoisted(() => ({
     destroy: vi.fn(),
     json: vi.fn(),
     layout: vi.fn(() => ({ run: vi.fn() })),
-    nodes: vi.fn(() => ({ removeClass: vi.fn() })),
+    nodes: vi.fn(() => ({ removeClass: vi.fn(), forEach: vi.fn() })),
     getElementById: vi.fn(
-      (): { addClass: ReturnType<typeof vi.fn>; length: number; position: () => { x: number; y: number } } => ({
+      (): {
+        addClass: ReturnType<typeof vi.fn>;
+        removeClass: ReturnType<typeof vi.fn>;
+        ungrabify: ReturnType<typeof vi.fn>;
+        grabify: ReturnType<typeof vi.fn>;
+        length: number;
+        position: ReturnType<typeof vi.fn>;
+      } => ({
         addClass: vi.fn(),
+        removeClass: vi.fn(),
+        ungrabify: vi.fn(),
+        grabify: vi.fn(),
         length: 0,
-        position: () => ({ x: 0, y: 0 }),
+        position: vi.fn(() => ({ x: 0, y: 0 })),
       }),
     ),
   },
 }));
+
+/** A fake Cytoscape node, shaped like `cy.getElementById(id)`'s return. */
+function createNodeMock(id: string, initialPosition = { x: 0, y: 0 }) {
+  let position = initialPosition;
+  return {
+    id: () => id,
+    addClass: vi.fn(),
+    removeClass: vi.fn(),
+    ungrabify: vi.fn(),
+    grabify: vi.fn(),
+    length: 1,
+    position: vi.fn((next?: { x: number; y: number }) => {
+      if (next === undefined) return position;
+      position = next;
+      return undefined;
+    }),
+  };
+}
 
 vi.mock("cytoscape", () => {
   const cytoscapeFn = vi.fn(() => cyMock);
@@ -342,9 +407,9 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
       classes: [...oneClass.classes, { id: "c2", name: "B", visibility: "public", attributes: [], operations: [] }],
     };
     cyMock.getElementById.mockReturnValue({
+      ...createNodeMock("unused"),
       length: 1,
-      position: () => ({ x: 10, y: 20 }),
-      addClass: vi.fn(),
+      position: vi.fn(() => ({ x: 10, y: 20 })),
     });
 
     const { rerender } = render(<DiagramCanvas model={oneClass} revision={1} />);
@@ -400,11 +465,13 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
 
     expect(onNodeTapA).not.toHaveBeenCalled();
     expect(onNodeTapB).toHaveBeenCalledWith("c1");
-    // Mount binds 3 node-scoped handlers once: tap (DD9), and grab/free
-    // (DD12's drag guard) — each registered exactly once.
-    expect(cyMock.on).toHaveBeenCalledTimes(3);
+    // Mount binds 4 node-scoped handlers once: tap (DD9), and
+    // grab/drag/free (DD11/DD12's claim/live-position/release + drag
+    // guard) — each registered exactly once.
+    expect(cyMock.on).toHaveBeenCalledTimes(4);
     expect(cyMock.on).toHaveBeenCalledWith("tap", "node", expect.any(Function));
     expect(cyMock.on).toHaveBeenCalledWith("grab", "node", expect.any(Function));
+    expect(cyMock.on).toHaveBeenCalledWith("drag", "node", expect.any(Function));
     expect(cyMock.on).toHaveBeenCalledWith("free", "node", expect.any(Function));
   });
 
@@ -425,10 +492,15 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     cyMock.json.mockClear();
     cyMock.layout.mockClear();
 
-    const grabHandler = cyMock.on.mock.calls.find(([event]) => event === "grab")![2] as () => void;
-    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as () => void;
+    const grabHandler = cyMock.on.mock.calls.find(([event]) => event === "grab")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    const node = createNodeMock("c1");
 
-    grabHandler();
+    grabHandler({ target: node });
 
     // A remote update arrives mid-drag: the sync must be deferred, not
     // applied immediately.
@@ -436,7 +508,7 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     expect(cyMock.json).not.toHaveBeenCalled();
 
     // The drag ends: exactly one deferred sync flushes.
-    freeHandler();
+    freeHandler({ target: node });
     expect(cyMock.json).toHaveBeenCalledOnce();
   });
 
@@ -446,22 +518,30 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     const { rerender } = render(<DiagramCanvas model={emptyModel} revision={1} />);
     cyMock.json.mockClear();
 
-    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as () => void;
+    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    const node = createNodeMock("c1");
 
     rerender(<DiagramCanvas model={emptyModel} revision={2} />);
     expect(cyMock.json).toHaveBeenCalledOnce();
 
     cyMock.json.mockClear();
-    freeHandler();
+    freeHandler({ target: node });
     expect(cyMock.json).not.toHaveBeenCalled();
   });
 
   it("toggles the selected-source class on highlightedClassId change without re-running layout", async () => {
     const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
     const removeClass = vi.fn();
-    cyMock.nodes.mockReturnValue({ removeClass });
+    cyMock.nodes.mockReturnValue({ removeClass, forEach: vi.fn() });
     const addClass = vi.fn();
-    cyMock.getElementById.mockReturnValue({ addClass, length: 1, position: () => ({ x: 0, y: 0 }) });
+    cyMock.getElementById.mockReturnValue({
+      ...createNodeMock("unused"),
+      addClass,
+      length: 1,
+      position: vi.fn(() => ({ x: 0, y: 0 })),
+    });
 
     const { rerender } = render(
       <DiagramCanvas model={emptyModel} revision={1} highlightedClassId={null} />,
@@ -474,5 +554,159 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     expect(cyMock.getElementById).toHaveBeenCalledWith("c1");
     expect(addClass).toHaveBeenCalledWith("selected-source");
     expect(cyMock.layout).not.toHaveBeenCalled();
+  });
+
+  // --- Phase 6: drag emits claim/live-position/release, foreign lock
+  // rendering, claim rejection, remote live frames (design.md DD11/DD12) ---
+
+  it("grabbing a node calls onClaim with the class id before the drag proceeds", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const onClaim = vi.fn();
+
+    render(<DiagramCanvas model={emptyModel} revision={1} onClaim={onClaim} />);
+
+    const grabHandler = cyMock.on.mock.calls.find(([event]) => event === "grab")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    grabHandler({ target: createNodeMock("c1", { x: 5, y: 7 }) });
+
+    expect(onClaim).toHaveBeenCalledWith("c1");
+  });
+
+  it("dragging a node calls onLivePosition with its current coordinates on every drag tick", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const onLivePosition = vi.fn();
+
+    render(<DiagramCanvas model={emptyModel} revision={1} onLivePosition={onLivePosition} />);
+
+    const dragHandler = cyMock.on.mock.calls.find(([event]) => event === "drag")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    dragHandler({ target: createNodeMock("c1", { x: 11, y: 22 }) });
+
+    expect(onLivePosition).toHaveBeenCalledWith("c1", 11, 22);
+  });
+
+  it("releasing a node calls onRelease with its final coordinates exactly once", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const onRelease = vi.fn();
+
+    render(<DiagramCanvas model={emptyModel} revision={1} onRelease={onRelease} />);
+
+    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    freeHandler({ target: createNodeMock("c1", { x: 33, y: 44 }) });
+
+    expect(onRelease).toHaveBeenCalledTimes(1);
+    expect(onRelease).toHaveBeenCalledWith("c1", 33, 44);
+  });
+
+  it("ungrabifies and tags a foreign-held node with .locked-remote; releasing the lock re-grabifies and untags it", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const node = createNodeMock("c1");
+    cyMock.nodes.mockReturnValue({
+      removeClass: vi.fn(),
+      forEach: vi.fn((cb: (n: ReturnType<typeof createNodeMock>) => void) => cb(node)),
+    });
+
+    const { rerender } = render(
+      <DiagramCanvas model={emptyModel} revision={1} locks={{ c1: { ownerLabel: "Ana", mine: false } }} />,
+    );
+
+    expect(node.ungrabify).toHaveBeenCalled();
+    expect(node.addClass).toHaveBeenCalledWith("locked-remote");
+
+    rerender(<DiagramCanvas model={emptyModel} revision={1} locks={{}} />);
+
+    expect(node.grabify).toHaveBeenCalled();
+    expect(node.removeClass).toHaveBeenCalledWith("locked-remote");
+  });
+
+  it("node.claim_rejected (via claimRejectedListenerRef) restores the node's stashed grab-start position", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const claimRejectedListenerRef = { current: null as ((classId: string) => void) | null };
+    const restoreTarget = createNodeMock("c1");
+    cyMock.getElementById.mockReturnValue(restoreTarget);
+
+    render(
+      <DiagramCanvas model={emptyModel} revision={1} claimRejectedListenerRef={claimRejectedListenerRef} />,
+    );
+
+    const grabHandler = cyMock.on.mock.calls.find(([event]) => event === "grab")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    grabHandler({ target: createNodeMock("c1", { x: 100, y: 200 }) });
+
+    expect(claimRejectedListenerRef.current).toBeTypeOf("function");
+    claimRejectedListenerRef.current!("c1");
+
+    expect(restoreTarget.position).toHaveBeenCalledWith({ x: 100, y: 200 });
+  });
+
+  it("positionListenerRef moves a node imperatively via getElementById(...).position(...) without calling cy.json again", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const positionListenerRef = {
+      current: null as ((classId: string, x: number, y: number) => void) | null,
+    };
+    const target = createNodeMock("c1");
+    cyMock.getElementById.mockReturnValue(target);
+
+    render(<DiagramCanvas model={emptyModel} revision={1} positionListenerRef={positionListenerRef} />);
+    cyMock.json.mockClear();
+
+    expect(positionListenerRef.current).toBeTypeOf("function");
+    positionListenerRef.current!("c1", 42, 84);
+
+    expect(target.position).toHaveBeenCalledWith({ x: 42, y: 84 });
+    expect(cyMock.json).not.toHaveBeenCalled();
+  });
+
+  it("an empty layout.positions still runs the full first-layout fcose path with randomize: true (DD13 fallback)", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+
+    render(<DiagramCanvas model={emptyModel} revision={1} layout={{ positions: {} }} />);
+
+    expect(cyMock.layout).toHaveBeenCalledWith(expect.objectContaining({ name: "fcose", randomize: true }));
+  });
+
+  it("removing the held class mid-drag does not crash; free still fires and the deferred sync flushes cleanly (task 7.1, Local Node Removed While Held Drops the Local Lock)", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const oneClass: UmlModel = {
+      classes: [{ id: "c1", name: "A", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+    const noClasses: UmlModel = { ...oneClass, classes: [] };
+    const onRelease = vi.fn();
+
+    const { rerender } = render(<DiagramCanvas model={oneClass} revision={1} onRelease={onRelease} />);
+    cyMock.json.mockClear();
+
+    const grabHandler = cyMock.on.mock.calls.find(([event]) => event === "grab")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as (e: {
+      target: ReturnType<typeof createNodeMock>;
+    }) => void;
+    const node = createNodeMock("c1", { x: 7, y: 8 });
+
+    grabHandler({ target: node });
+
+    // The class is removed by a `RemoveClass` command from any client
+    // while still held locally — the drag guard defers the sync instead
+    // of yanking the node out from under the user's cursor.
+    expect(() =>
+      rerender(<DiagramCanvas model={noClasses} revision={2} onRelease={onRelease} />),
+    ).not.toThrow();
+    expect(cyMock.json).not.toHaveBeenCalled();
+
+    // The drag ends: release still fires with the node's last position,
+    // and the deferred sync (now against the class-less model) flushes
+    // without crashing — cy.json's own diffing removes the node.
+    expect(() => freeHandler({ target: node })).not.toThrow();
+    expect(onRelease).toHaveBeenCalledWith("c1", 7, 8);
+    expect(cyMock.json).toHaveBeenCalledOnce();
   });
 });

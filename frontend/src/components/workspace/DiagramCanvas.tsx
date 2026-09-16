@@ -2,9 +2,14 @@
 
 import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import fcose from "cytoscape-fcose";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
-import { attributeTypeLabel, formatMultiplicity, type UmlModel } from "@/lib/uml_documents";
+import {
+  attributeTypeLabel,
+  formatMultiplicity,
+  type DiagramLayout,
+  type UmlModel,
+} from "@/lib/uml_documents";
 
 // Module scope, guarded by nothing (design.md DD5): `cytoscape.use` on an
 // already-registered extension warns, and module scope runs once per bundle.
@@ -25,6 +30,7 @@ const ATTR_TEXT = "#3A3A3A";
 const EDGE_LINE = "#9CA3AF";
 const EDGE_TEXT = "#4B4B4B";
 const SELECTED_BORDER = "#3454D1"; // --primary
+const LOCKED_REMOTE_BORDER = "#D97706"; // amber-600, distinct from SELECTED_BORDER's blue
 
 const SANS_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const MONO_FONT_STACK = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
@@ -120,6 +126,15 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     style: { "border-width": 3, "border-color": SELECTED_BORDER, "border-style": "solid" },
   },
   {
+    // Foreign-held node (design.md DD12): `ungrabify()` on the same node
+    // is what actually prevents a local drag (no `grab` event fires at
+    // all) — this class is purely the visual affordance identifying it as
+    // locked, dashed and amber so it reads distinctly from the solid blue
+    // `selected-source` border above.
+    selector: "node.locked-remote",
+    style: { "border-width": 2, "border-color": LOCKED_REMOTE_BORDER, "border-style": "dashed" },
+  },
+  {
     selector: "edge",
     style: {
       label: "data(label)",
@@ -213,12 +228,17 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
  * class is missing from `model.classes` is dropped rather than crashing
  * Cytoscape.
  */
-export function toElements(model: UmlModel): ElementDefinition[] {
+export function toElements(
+  model: UmlModel,
+  layout: DiagramLayout = { positions: {} },
+): ElementDefinition[] {
   const nodes: ElementDefinition[] = model.classes.map((c) => {
     const attributeLines = c.attributes.map((a) => `- ${a.name}: ${attributeTypeLabel(a.type)}`);
     const box = classBoxSvgDataUri(c.name, attributeLines);
+    const position = layout.positions[c.id];
     return {
       data: { id: c.id, label: "", bgImage: box.uri, width: box.width, height: box.height },
+      ...(position ? { position: { x: position.x, y: position.y } } : {}),
     };
   });
 
@@ -248,12 +268,24 @@ export function toElements(model: UmlModel): ElementDefinition[] {
   return [...nodes, ...edges];
 }
 
+type LockState = { ownerLabel: string; mine: boolean };
+
 type DiagramCanvasProps = {
   model: UmlModel;
   revision: number;
+  layout?: DiagramLayout;
+  locks?: Record<string, LockState>;
+  positionListenerRef?: RefObject<((classId: string, x: number, y: number) => void) | null>;
+  claimRejectedListenerRef?: RefObject<((classId: string) => void) | null>;
   onNodeTap?: (classId: string) => void;
   highlightedClassId?: string | null;
+  onClaim?: (classId: string) => void;
+  onLivePosition?: (classId: string, x: number, y: number) => void;
+  onRelease?: (classId: string, x: number, y: number) => void;
 };
+
+const EMPTY_LAYOUT: DiagramLayout = { positions: {} };
+const EMPTY_LOCKS: Record<string, LockState> = {};
 
 /**
  * Hand-rolled Cytoscape seam (design.md's Technical Approach): one mount
@@ -262,15 +294,43 @@ type DiagramCanvasProps = {
  * effect's deps (DD4): `revision` is the server's own change marker and
  * `model` gets a fresh identity on every refetch.
  */
-export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }: DiagramCanvasProps) {
+export function DiagramCanvas({
+  model,
+  revision,
+  layout = EMPTY_LAYOUT,
+  locks = EMPTY_LOCKS,
+  positionListenerRef,
+  claimRejectedListenerRef,
+  onNodeTap,
+  highlightedClassId,
+  onClaim,
+  onLivePosition,
+  onRelease,
+}: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const onNodeTapRef = useRef(onNodeTap);
+  const onClaimRef = useRef(onClaim);
+  const onLivePositionRef = useRef(onLivePosition);
+  const onReleaseRef = useRef(onRelease);
+  // Latest `locks` for `applyLocks` below (DD12) — read through a ref, not
+  // closed over directly, since `applyLocks` also runs inside the
+  // revision-keyed update effect whose closure is NOT recreated on every
+  // `locks` change.
+  const locksRef = useRef(locks);
+  // Stashes each node's position at the moment it was grabbed (DD12), so a
+  // lost claim race can snap it back exactly where the drag started.
+  const grabStartPosRef = useRef<Record<string, { x: number; y: number }>>({});
   // Tracks which class ids already had a position from a prior layout run,
   // so only genuinely new classes get laid out on each update — a full
   // fcose re-layout on every mutation (add attribute, remove element, …)
   // was rearranging the whole diagram on every edit (reported UX bug).
-  const laidOutClassIdsRef = useRef<Set<string>>(new Set());
+  // Seeded from `layout.positions` on mount (DD13) instead of the empty
+  // set: a persisted class flows straight into the existing
+  // `fixedNodeConstraint` branch below, and only a genuinely unplaced
+  // class counts as "new" — an empty `layout` (or the default) leaves this
+  // identical to the pre-DD13 empty-set seed.
+  const laidOutClassIdsRef = useRef<Set<string>>(new Set(Object.keys(layout.positions)));
   // Drag guard (design.md DD12): a remote update mid-drag must not
   // re-layout under the user's cursor. `draggingRef` gates the update
   // effect below; `pendingUpdateRef` remembers a sync was skipped so the
@@ -282,30 +342,104 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
   const syncModelRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    // Keeps the ref current after every render (not during render, which
+    // Keeps the refs current after every render (not during render, which
     // the `react-hooks/refs` rule forbids as a ref mutation outside an
     // effect/event handler) — same "latest callback" intent as DD9.
     onNodeTapRef.current = onNodeTap;
+    onClaimRef.current = onClaim;
+    onLivePositionRef.current = onLivePosition;
+    onReleaseRef.current = onRelease;
   });
+
+  // Ungrabifies + tags every foreign-held node (DD12): `ungrabify()` is
+  // what actually PREVENTS a local drag (no `grab` event fires at all),
+  // never merely rejects one after the fact. `mine: true` and "not in
+  // `locks` at all" share the same grabify/untag branch — both mean this
+  // connection may freely start a drag on that node.
+  const applyLocks = (cy: Core) => {
+    cy.nodes().forEach((node) => {
+      const lock = locksRef.current[node.id()];
+      if (lock && !lock.mine) {
+        node.ungrabify();
+        node.addClass("locked-remote");
+      } else {
+        node.grabify();
+        node.removeClass("locked-remote");
+      }
+    });
+  };
+
+  useEffect(() => {
+    // Runs on every `locks` change (join snapshot, a fresh claim
+    // broadcast, a release) — independent of `revision`, since a lock
+    // change never touches `model`/`layout`.
+    locksRef.current = locks;
+    const cy = cyRef.current;
+    if (cy) applyLocks(cy);
+  }, [locks]);
+
+  useEffect(() => {
+    // Live positions bypass React state entirely (DD11): writes this
+    // mount's imperative apply-handler into the caller's ref so
+    // `useDocument`'s `node.position` socket handler can move a node
+    // directly, with zero re-render and zero `cy.json`.
+    if (!positionListenerRef) return;
+    positionListenerRef.current = (classId, x, y) => {
+      cyRef.current?.getElementById(classId).position({ x, y });
+    };
+    return () => {
+      positionListenerRef.current = null;
+    };
+  }, [positionListenerRef]);
+
+  useEffect(() => {
+    // Same ref-as-latest-handler idiom, for the rare claim-rejected path
+    // (DD12): snaps the node back to exactly where its drag started.
+    if (!claimRejectedListenerRef) return;
+    claimRejectedListenerRef.current = (classId) => {
+      const cy = cyRef.current;
+      const stashed = grabStartPosRef.current[classId];
+      if (cy && stashed) {
+        cy.getElementById(classId).position(stashed);
+      }
+    };
+    return () => {
+      claimRejectedListenerRef.current = null;
+    };
+  }, [claimRejectedListenerRef]);
 
   useEffect(() => {
     // MOUNT — runs once (DD4). The `tap` handler is bound once here and
     // calls through `onNodeTapRef` for the latest callback (DD9): the `[]`
     // dependency list would otherwise capture the first render's closure.
-    // `grab`/`free` (DD12) stash/flush through refs for the same reason.
+    // `grab`/`drag`/`free` (DD11/DD12) stash/flush through refs for the
+    // same reason.
     const cy = cytoscape({ container: containerRef.current!, elements: [], style: STYLE });
     cy.on("tap", "node", (e) => onNodeTapRef.current?.(e.target.id()));
-    cy.on("grab", "node", () => {
+    cy.on("grab", "node", (e) => {
       draggingRef.current = true;
+      const node = e.target;
+      const classId = node.id();
+      grabStartPosRef.current[classId] = { ...node.position() };
+      onClaimRef.current?.(classId);
     });
-    cy.on("free", "node", () => {
+    cy.on("drag", "node", (e) => {
+      const node = e.target;
+      const pos = node.position();
+      onLivePositionRef.current?.(node.id(), pos.x, pos.y);
+    });
+    cy.on("free", "node", (e) => {
       draggingRef.current = false;
+      const node = e.target;
+      const pos = node.position();
+      onReleaseRef.current?.(node.id(), pos.x, pos.y);
       if (pendingUpdateRef.current) {
         pendingUpdateRef.current = false;
         syncModelRef.current();
       }
     });
     cyRef.current = cy;
+    applyLocks(cy);
     return () => {
       cy.destroy();
       cyRef.current = null;
@@ -334,7 +468,7 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
             .filter((id) => previouslyLaidOut.has(id) && cy.getElementById(id).length > 0)
             .map((id) => ({ nodeId: id, position: cy.getElementById(id).position() }));
 
-      cy.json({ elements: toElements(model) });
+      cy.json({ elements: toElements(model, layout) });
 
       // Only re-layout when there's something new to place. A pure
       // attribute/relationship/removal edit touches zero new classes, so
@@ -364,6 +498,10 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
       }
 
       laidOutClassIdsRef.current = new Set(currentClassIds);
+      // Newly-synced nodes default to grabbable — reapply the current
+      // lock snapshot so a class that arrives already foreign-held (e.g.
+      // added by another client while locked) starts ungrabified too.
+      applyLocks(cy);
     };
 
     // Always point the ref at THIS run's closure (over the current

@@ -31,7 +31,19 @@ import { activeOrgSlugAtom } from "@/state/organizations";
 export default function DocumentPage({ params }: { params: Promise<{ docId: string }> }) {
   const { docId } = use(params);
   const orgSlug = useAtomValue(activeOrgSlugAtom);
-  const { document, error, lastValidation, isSubmitting, submitCommand } = useDocument(orgSlug, docId);
+  const {
+    document,
+    error,
+    lastValidation,
+    isSubmitting,
+    submitCommand,
+    locks = {},
+    positionListenerRef,
+    claimRejectedListenerRef,
+    sendClaim,
+    sendPosition,
+    sendRelease,
+  } = useDocument(orgSlug, docId);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
 
@@ -63,6 +75,13 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const danglingRelationshipCount = document.model.relationships.filter(
     (r) => !classIds.has(r.source.class_id) || !classIds.has(r.target.class_id),
   ).length;
+
+  // "{owner} está moviendo {class}" affordance (design.md DD12) — one line
+  // per lock held by ANOTHER connection; a lock this client itself holds
+  // (`mine: true`) needs no affordance, since that user already sees the
+  // node moving under their own cursor.
+  const classNameById = new Map(document.model.classes.map((c) => [c.id, c.name]));
+  const foreignLocks = Object.entries(locks).filter(([, lock]) => !lock.mine);
 
   // Derived, not stored (same DD2 philosophy as the Remove* controls): if
   // the class pinned by the click-click flow was removed via
@@ -119,10 +138,27 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
             <DiagramCanvas
               model={document.model}
               revision={document.revision}
+              layout={document.layout}
+              locks={locks}
+              positionListenerRef={positionListenerRef}
+              claimRejectedListenerRef={claimRejectedListenerRef}
               onNodeTap={handleNodeTap}
               highlightedClassId={effectiveSourceId}
+              onClaim={sendClaim}
+              onLivePosition={sendPosition}
+              onRelease={sendRelease}
             />
           </div>
+
+          {foreignLocks.length > 0 ? (
+            <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+              {foreignLocks.map(([classId, lock]) => (
+                <p key={classId}>
+                  {lock.ownerLabel} está moviendo {classNameById.get(classId) ?? classId}
+                </p>
+              ))}
+            </div>
+          ) : null}
 
           {danglingRelationshipCount > 0 ? (
             <Alert variant="caution">

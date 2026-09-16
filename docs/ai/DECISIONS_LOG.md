@@ -1,5 +1,83 @@
 # Decisions Log
 
+## 2026-09-15 — Cycle 13 apply: implementation complete (uml-node-position-sync)
+
+`sdd-apply` implemented all 21 tasks (Phases 1–7) from
+`openspec/changes/2026-09-15-uml-node-position-sync/tasks.md` with strict
+TDD, single PR (`size:exception`, ~1150-1250 estimated lines, accepted by
+the user over the 800-line budget). Cycle 12 made `DocumentConsumer`
+read-only fan-out; this cycle gives it its first `receive_json` so a class
+node can be dragged live, with an ephemeral Redis lock arbitrating who
+holds it and a durable Postgres write firing once per release.
+
+**DD1/DD2/DD3 — `backend/apps/uml_documents/locks.py`: a lazy module-level
+sync `redis.Redis` (reusing `settings.REDIS_HOST`/`REDIS_PORT`, no new env
+var), key `uml-lock:{doc_id}:{class_id}`, value `f"{token}|{label}"`,
+`claim` = `SET NX PX`, `release`/`refresh` as registered Lua scripts.**
+`redis` is promoted to a direct `requirements/base.txt` line since it's now
+a real import, not only `channels-redis`'s transitive pull-in. One
+implementation correction versus the design sketch: the Lua scripts must
+extract the token substring via `string.match(current, '^([^|]*)|')` before
+comparing to `ARGV[1]`, since the stored value is `"token|label"`, not the
+bare token — a literal `GET == ARGV[1]` (as design.md's pseudocode shows)
+never matches. `refresh` doubles as the per-frame authorization check: a
+live-position frame only broadcasts when it returns `1`.
+
+**DD4/DD10 — TTL 10s, client throttle 50ms (20Hz); `connect()` sends one
+`node.locks` snapshot via `SCAN` (never `KEYS`) right after `accept()`.**
+20Hz reads as continuous motion and cuts a 60Hz `mousemove` stream to a
+third of the `group_send` publishes; the TTL is 200× the refresh cadence so
+a GC pause can't drop a live lock, with `disconnect()` (DD7) as the fast
+path and TTL only the backstop.
+
+**DD5/DD6 — Two lock domains stay disjoint: Redis claims never consult the
+Postgres row lock or vice versa. `receive_json` re-resolves membership AND
+`require_role(OWNER, EDITOR)` on every inbound message; a `VIEWER` is
+silently refused, never closed, and keeps receiving broadcasts.** Prior
+cycle's DD4 (membership-only at `connect()`) is unchanged and correct for a
+read subscription; it would under-authorize now that the socket writes.
+
+**DD7/DD9 — `disconnect()` iterates `self.held`, releases each via the Lua
+script, and `group_send`s one `node.unlocked` per id — no durable write.
+Group handlers (`node_locked`/`node_unlocked`/`node_position`) re-derive
+`mine` per connection and never forward `owner_token`.** `node.locked` with
+`mine: true` doubles as the claim-accepted ack, so no separate ack frame is
+needed and no token ever reaches a browser.
+
+**DD8 — `services.save_layout_position`, a `submit_command` sibling under
+the same `@transaction.atomic` + `_get_row(for_update=True)` lock, calling
+the already-built `ProjectDocument.with_layout`. Never routes through
+`dispatcher.apply()`; the `UmlCommand` union has zero diff.** Prunes any
+layout entry whose class id is absent from the live model on every
+successful persist (self-healing, no migration) and returns the document
+UNCHANGED — no write, no revision bump — when the target class itself is
+gone (the `RemoveClass`-mid-drag case). Verified end-to-end in
+`test_consumers.py`: a lock survives its class being removed by another
+client without erroring or stranding, and the same class id remains freely
+claimable afterward.
+
+**DD11/DD12/DD13 — Frontend: `locks` stays `useState` (low-frequency,
+belongs in render); live positions bypass React entirely via a stable
+`positionListenerRef` `DiagramCanvas` writes its imperative apply-handler
+into on mount. A foreign-held node is `ungrabify()`d (prevention, not
+cancellation) plus a dashed-amber `.locked-remote` style; the owner label
+renders as a "{label} está moviendo {class}" line under the canvas in
+`page.tsx`. Claim is optimistic — the drag starts locally and
+`node.claim_rejected` (relayed through a `claimRejectedListenerRef`
+mirroring `positionListenerRef`'s exact idiom, since design.md's prop
+sketch didn't enumerate it but task 6.1's RED requirement needs an
+imperative snap-back channel) restores the position stashed in
+`grabStartPosRef` at `grab` time. `toElements(model, layout)` seeds
+`position` from `layout.positions`; the `layout` parameter defaults to
+`{positions: {}}` rather than being required, so the ~10 pre-existing
+`toElements(model)` call sites in `DiagramCanvas.test.tsx` needed no
+mechanical rewrite — behavior is identical to design.md's literal
+non-optional signature either way.
+
+359/359 backend tests pass, 317/317 frontend tests pass, `npm run lint` and
+`npx tsc --noEmit` both clean. `sdd-verify`/`sdd-archive` are the remaining
+steps.
+
 ## 2026-09-14 — Cycle 12 design: real-time UML collaboration over Channels (realtime-uml-collaboration)
 
 `sdd-design` produced

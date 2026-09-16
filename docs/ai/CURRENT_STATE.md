@@ -326,6 +326,37 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   project's docker-lifecycle convention. Full regression:
   339/339 backend (`pytest`) and 293/293 frontend (`vitest run`) pass, plus
   clean `eslint`/`tsc --noEmit`/`next build`.
+- **SDD Cycle 13** (`2026-09-15-uml-node-position-sync`) is **implemented**
+  (Phases 1–7 of `tasks.md`). **The document socket is now bidirectional** —
+  Cycle 12 gave `DocumentConsumer` only `document_update`; this cycle adds
+  its first `receive_json`, handling `node.claim`/`node.position`/
+  `node.release` with a per-message `require_role(OWNER, EDITOR)` re-check.
+  Dragging a class node now claims it via a new ephemeral Redis lock module
+  (`apps/uml_documents/locks.py` — `SET NX PX` + owner-token compare-and-
+  delete/compare-and-expire Lua scripts, TTL 10s, key
+  `uml-lock:{doc_id}:{class_id}`), streams throttled (50ms) live positions
+  to every other connection with **zero database write**, and on release
+  persists the final position through a new `services.save_layout_position`
+  — a `submit_command` sibling under the same row lock that never touches
+  `dispatcher.apply()` or the `UmlCommand` union. **`ProjectDocument.layout`
+  is now live**: `with_layout` (built in Cycle 1, never called in
+  production before this cycle) has its first real caller, and `layout` is
+  pruned of any class id absent from the current model on every persisted
+  release. The two lock domains stay deliberately disjoint — a held Redis
+  claim never blocks, delays, or is consulted by `RemoveClass` or any other
+  `UmlCommand`, verified end-to-end in `test_consumers.py`. On the
+  frontend, `toElements` (`DiagramCanvas.tsx`) now seeds each node's
+  initial position from `document.layout.positions` instead of always
+  running a full `fcose` layout on load; a foreign-held node is
+  `ungrabify()`d with a dashed-amber affordance, and `state/document.ts`
+  exposes `sendClaim`/`sendPosition`/`sendRelease` plus a `locks` state and
+  a ref-based live-position listener so a remote drag moves a node with
+  zero re-render. 359/359 backend tests pass (20 new, across the new
+  `test_locks.py` and additions to `test_services.py`/`test_consumers.py`),
+  317/317 frontend tests pass (24 new, across `DiagramCanvas.test.tsx`,
+  `document.test.ts`, `uml_documents.test.ts`, `page.test.tsx`), clean
+  `eslint`/`tsc --noEmit`. `sdd-verify`/`sdd-archive` are the remaining
+  steps.
 
 ### Domain
 
