@@ -28,16 +28,7 @@ documents_router = Router(auth=django_auth)
 
 
 def _document_out(document) -> dict:
-    return {
-        "id": document.id,
-        "owner_id": document.owner_id,
-        "revision": document.revision,
-        "metadata": {"name": document.metadata.name, "description": document.metadata.description},
-        "model": codec._encode_model(document.model),
-        "layout": codec._encode_layout(document.layout),
-        "created_at": document.created_at,
-        "updated_at": document.updated_at,
-    }
+    return codec.document_out(document)
 
 
 def _document_summary_out(document) -> dict:

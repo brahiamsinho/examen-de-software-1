@@ -271,6 +271,15 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
   // fcose re-layout on every mutation (add attribute, remove element, …)
   // was rearranging the whole diagram on every edit (reported UX bug).
   const laidOutClassIdsRef = useRef<Set<string>>(new Set());
+  // Drag guard (design.md DD12): a remote update mid-drag must not
+  // re-layout under the user's cursor. `draggingRef` gates the update
+  // effect below; `pendingUpdateRef` remembers a sync was skipped so the
+  // `free` handler can flush it exactly once. `syncModelRef` always points
+  // at the update effect's LATEST closure (over the current `model`), so
+  // the mount-bound `free` handler never syncs stale data.
+  const draggingRef = useRef(false);
+  const pendingUpdateRef = useRef(false);
+  const syncModelRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     // Keeps the ref current after every render (not during render, which
@@ -283,8 +292,19 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
     // MOUNT — runs once (DD4). The `tap` handler is bound once here and
     // calls through `onNodeTapRef` for the latest callback (DD9): the `[]`
     // dependency list would otherwise capture the first render's closure.
+    // `grab`/`free` (DD12) stash/flush through refs for the same reason.
     const cy = cytoscape({ container: containerRef.current!, elements: [], style: STYLE });
     cy.on("tap", "node", (e) => onNodeTapRef.current?.(e.target.id()));
+    cy.on("grab", "node", () => {
+      draggingRef.current = true;
+    });
+    cy.on("free", "node", () => {
+      draggingRef.current = false;
+      if (pendingUpdateRef.current) {
+        pendingUpdateRef.current = false;
+        syncModelRef.current();
+      }
+    });
     cyRef.current = cy;
     return () => {
       cy.destroy();
@@ -299,50 +319,66 @@ export function DiagramCanvas({ model, revision, onNodeTap, highlightedClassId }
     const cy = cyRef.current;
     if (!cy) return;
 
-    const currentClassIds = model.classes.map((c) => c.id);
-    const previouslyLaidOut = laidOutClassIdsRef.current;
-    const isFirstLayout = previouslyLaidOut.size === 0;
-    const newClassIds = currentClassIds.filter((id) => !previouslyLaidOut.has(id));
+    const syncModel = () => {
+      const currentClassIds = model.classes.map((c) => c.id);
+      const previouslyLaidOut = laidOutClassIdsRef.current;
+      const isFirstLayout = previouslyLaidOut.size === 0;
+      const newClassIds = currentClassIds.filter((id) => !previouslyLaidOut.has(id));
 
-    // Capture already-placed classes' current positions BEFORE syncing new
-    // elements in, so fcose can pin them (`fixedNodeConstraint`) and only
-    // find a spot for whatever is actually new.
-    const fixedNodeConstraint = isFirstLayout
-      ? undefined
-      : currentClassIds
-          .filter((id) => previouslyLaidOut.has(id) && cy.getElementById(id).length > 0)
-          .map((id) => ({ nodeId: id, position: cy.getElementById(id).position() }));
+      // Capture already-placed classes' current positions BEFORE syncing
+      // new elements in, so fcose can pin them (`fixedNodeConstraint`) and
+      // only find a spot for whatever is actually new.
+      const fixedNodeConstraint = isFirstLayout
+        ? undefined
+        : currentClassIds
+            .filter((id) => previouslyLaidOut.has(id) && cy.getElementById(id).length > 0)
+            .map((id) => ({ nodeId: id, position: cy.getElementById(id).position() }));
 
-    cy.json({ elements: toElements(model) });
+      cy.json({ elements: toElements(model) });
 
-    // Only re-layout when there's something new to place. A pure
-    // attribute/relationship/removal edit touches zero new classes, so the
-    // diagram's existing positions are left completely undisturbed.
-    if (isFirstLayout || newClassIds.length > 0) {
-      // `animate`/`nodeSeparation`/`padding`/`randomize`/`fixedNodeConstraint`
-      // are fcose-specific options (`@types/cytoscape-fcose`'s
-      // `FcoseLayoutOptions`) not present on cytoscape's generic
-      // `BaseLayoutOptions` that `cy.layout()`'s signature is typed
-      // against. `nodeSeparation`/`padding` widen fcose's tightly-packed
-      // default spacing; `randomize: false` plus `fixedNodeConstraint`
-      // keeps every already-placed class exactly where it is.
-      cy.layout({
-        name: "fcose",
-        animate: false,
-        nodeSeparation: 160,
-        padding: 80,
-        randomize: isFirstLayout,
-        fixedNodeConstraint,
-      } as cytoscape.LayoutOptions & {
-        animate?: boolean;
-        nodeSeparation?: number;
-        padding?: number;
-        randomize?: boolean;
-        fixedNodeConstraint?: { nodeId: string; position: cytoscape.Position }[];
-      }).run();
+      // Only re-layout when there's something new to place. A pure
+      // attribute/relationship/removal edit touches zero new classes, so
+      // the diagram's existing positions are left completely undisturbed.
+      if (isFirstLayout || newClassIds.length > 0) {
+        // `animate`/`nodeSeparation`/`padding`/`randomize`/`fixedNodeConstraint`
+        // are fcose-specific options (`@types/cytoscape-fcose`'s
+        // `FcoseLayoutOptions`) not present on cytoscape's generic
+        // `BaseLayoutOptions` that `cy.layout()`'s signature is typed
+        // against. `nodeSeparation`/`padding` widen fcose's tightly-packed
+        // default spacing; `randomize: false` plus `fixedNodeConstraint`
+        // keeps every already-placed class exactly where it is.
+        cy.layout({
+          name: "fcose",
+          animate: false,
+          nodeSeparation: 160,
+          padding: 80,
+          randomize: isFirstLayout,
+          fixedNodeConstraint,
+        } as cytoscape.LayoutOptions & {
+          animate?: boolean;
+          nodeSeparation?: number;
+          padding?: number;
+          randomize?: boolean;
+          fixedNodeConstraint?: { nodeId: string; position: cytoscape.Position }[];
+        }).run();
+      }
+
+      laidOutClassIdsRef.current = new Set(currentClassIds);
+    };
+
+    // Always point the ref at THIS run's closure (over the current
+    // `model`), so a `free` event firing later flushes fresh data — never
+    // whatever `model` was current the last time dragging started.
+    syncModelRef.current = syncModel;
+
+    if (draggingRef.current) {
+      // DD12: a remote update mid-drag must not re-layout under the
+      // user's cursor. Defer the sync until the `free` handler flushes it.
+      pendingUpdateRef.current = true;
+      return;
     }
 
-    laidOutClassIdsRef.current = new Set(currentClassIds);
+    syncModel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision]);
 

@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api";
 import * as docsLib from "@/lib/uml_documents";
@@ -20,8 +20,15 @@ vi.mock("@/lib/uml_documents", async () => {
     getDocument: vi.fn(),
     createDocument: vi.fn(),
     submitCommand: vi.fn(),
+    openDocumentSocket: vi.fn(() => ({ close: vi.fn() })),
   };
 });
+
+/** Returns the `handlers` object passed to the most recent `openDocumentSocket` call. */
+function lastSocketHandlers() {
+  const calls = vi.mocked(docsLib.openDocumentSocket).mock.calls;
+  return calls[calls.length - 1]![2];
+}
 
 const documentA = {
   id: "doc-a",
@@ -247,5 +254,137 @@ describe("state/document useDocument()", () => {
 
     expect(submitError).toBeInstanceOf(Error);
     expect(result.current.isSubmitting).toBe(false);
+  });
+});
+
+/**
+ * The realtime socket effect (design.md DD11/DD13): opens on
+ * `[orgSlug, docId]`, merges every incoming/refetched document
+ * monotonically by revision, refetches once on every successful open
+ * (including the first), reconnects with capped exponential backoff on a
+ * non-terminal close, and never reconnects after 4401/4403/4404.
+ */
+describe("state/document useDocument() — realtime socket", () => {
+  beforeEach(() => {
+    vi.mocked(docsLib.getDocument).mockReset();
+    vi.mocked(docsLib.openDocumentSocket).mockReset();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => ({ close: vi.fn() }) as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("opens a socket keyed on the current orgSlug/docId", async () => {
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    renderHook(() => useDocument("acme", "doc-a"));
+
+    await waitFor(() =>
+      expect(docsLib.openDocumentSocket).toHaveBeenCalledWith("acme", "doc-a", expect.any(Object)),
+    );
+  });
+
+  it("mergeRemote: a lower/equal incoming revision keeps the exact same object identity", async () => {
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+
+    const before = result.current.document;
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onMessage({ ...documentA, revision: documentA.revision });
+    });
+
+    expect(result.current.document).toBe(before);
+  });
+
+  it("mergeRemote: a higher incoming revision replaces the document", async () => {
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+
+    const handlers = lastSocketHandlers();
+    const incoming = { ...documentA, revision: documentA.revision + 1 };
+
+    act(() => {
+      handlers.onMessage(incoming);
+    });
+
+    expect(result.current.document).toEqual(incoming);
+  });
+
+  it("every successful open — including the first — triggers exactly one getDocument() call, merged monotonically", async () => {
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+
+    const refetched = { ...documentA, revision: documentA.revision + 1 };
+    vi.mocked(docsLib.getDocument).mockClear();
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(refetched);
+
+    const handlers = lastSocketHandlers();
+    await act(async () => {
+      handlers.onOpen?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(docsLib.getDocument).toHaveBeenCalledTimes(1);
+    expect(result.current.document).toEqual(refetched);
+  });
+
+  it.each([4401, 4403, 4404])("close code %d schedules no reconnect", async (code) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+
+    const handlers = lastSocketHandlers();
+    act(() => handlers.onClose({ code }));
+    act(() => vi.advanceTimersByTime(20_000));
+
+    expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1);
+  });
+
+  it("a non-terminal close reconnects with capped exponential backoff (1s, 2s, 4s, 8s, 10s)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(docsLib.getDocument).mockResolvedValue(documentA);
+    renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+
+    const closeAndExpectDelay = (delayMs: number, expectedCallsAfter: number) => {
+      act(() => lastSocketHandlers().onClose({ code: 1006 }));
+      act(() => vi.advanceTimersByTime(delayMs - 1));
+      expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(expectedCallsAfter - 1);
+      act(() => vi.advanceTimersByTime(1));
+      expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(expectedCallsAfter);
+    };
+
+    closeAndExpectDelay(1_000, 2);
+    closeAndExpectDelay(2_000, 3);
+    closeAndExpectDelay(4_000, 4);
+    closeAndExpectDelay(8_000, 5);
+    closeAndExpectDelay(10_000, 6);
+    // Stays capped at 10s, does not keep growing.
+    closeAndExpectDelay(10_000, 7);
+  });
+
+  it("unmount closes the socket and clears the pending reconnect timer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+    const { unmount } = renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+
+    const socketResult = vi.mocked(docsLib.openDocumentSocket).mock.results[0]!;
+    const socket = socketResult.value as { close: ReturnType<typeof vi.fn> };
+
+    act(() => lastSocketHandlers().onClose({ code: 1006 }));
+    unmount();
+
+    expect(socket.close).toHaveBeenCalledOnce();
+
+    act(() => vi.advanceTimersByTime(20_000));
+    expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1);
   });
 });

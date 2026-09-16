@@ -23,6 +23,14 @@ function readApiUrl(): string {
 export const apiUrl = readApiUrl();
 
 /**
+ * WebSocket base URL for the realtime document socket (design.md DD9's
+ * `lib/env.ts` block), derived from `apiUrl` rather than a new env var
+ * (config.yaml "never hardcode URLs") — `http`/`https` map to `ws`/`wss`
+ * one-to-one, so no separate `NEXT_PUBLIC_WS_URL` is needed.
+ */
+export const wsUrl = apiUrl.replace(/^http/, "ws");
+
+/**
  * Base URL the *Next.js server process* uses to reach the API. Inside the
  * frontend container `localhost` is the container itself, so a server-side
  * fetch to `apiUrl` would ECONNREFUSED; Compose sets INTERNAL_API_URL=

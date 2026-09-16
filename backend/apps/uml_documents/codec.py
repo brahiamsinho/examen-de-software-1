@@ -41,6 +41,25 @@ def from_json(data: dict) -> tuple[ProjectMetadata, CanonicalUmlModel, DiagramLa
     )
 
 
+def document_out(document) -> dict:
+    """The wire shape of a full `ProjectDocument` (design.md DD6) —
+    promoted from `api._document_out`, composed from the existing
+    `_encode_model`/`_encode_layout`. Reused verbatim as the WS broadcast
+    payload (DD7), so a broadcast and a `GET .../documents/{docId}` stay
+    byte-identical by construction.
+    """
+    return {
+        "id": document.id,
+        "owner_id": document.owner_id,
+        "revision": document.revision,
+        "metadata": {"name": document.metadata.name, "description": document.metadata.description},
+        "model": _encode_model(document.model),
+        "layout": _encode_layout(document.layout),
+        "created_at": document.created_at,
+        "updated_at": document.updated_at,
+    }
+
+
 # --- metadata --------------------------------------------------------------
 
 def _encode_metadata(metadata: ProjectMetadata) -> dict:

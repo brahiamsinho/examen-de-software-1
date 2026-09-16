@@ -89,6 +89,19 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
+# --- Realtime channel layer (design.md DD8) -------------------------------
+# Discrete host/port env vars defaulting to the Compose service name, matching
+# DATABASES' shape immediately below — never a `localhost` fallback.
+REDIS_HOST = env("REDIS_HOST", default="redis")
+REDIS_PORT = env.int("REDIS_PORT", default=6379)
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [(REDIS_HOST, REDIS_PORT)]},
+    }
+}
+
 # --- Database -------------------------------------------------------------
 # Built from discrete POSTGRES_* env vars (matching the docker-compose `db`
 # service) rather than a single DATABASE_URL, so the same variable names are

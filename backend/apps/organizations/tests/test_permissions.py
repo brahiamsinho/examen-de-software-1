@@ -13,6 +13,47 @@ from apps.users.tests.factories import make_user
 
 
 @pytest.mark.django_db
+class TestResolveMembershipForUser:
+    """`resolve_membership_for_user(user, org_slug)` (design.md DD4) — the
+    user-level extraction the WS consumer authorizes with. Its HTTP sibling
+    `resolve_membership(request, org_slug)` becomes a one-line delegate; the
+    two must return the same row and raise `Http404` identically.
+    """
+
+    def test_member_resolves_own_membership(self):
+        org, owner, editor, viewer, outsider = make_org_with_roles()
+
+        membership = permissions.resolve_membership_for_user(owner, org.slug)
+
+        assert membership.user_id == owner.id
+        assert membership.organization_id == org.id
+        assert membership.role == Role.OWNER
+
+    def test_unknown_slug_raises_404(self):
+        outsider = make_user()
+
+        with pytest.raises(Http404):
+            permissions.resolve_membership_for_user(outsider, "does-not-exist")
+
+    def test_non_member_raises_404(self):
+        org, owner, editor, viewer, outsider = make_org_with_roles()
+
+        with pytest.raises(Http404):
+            permissions.resolve_membership_for_user(outsider, org.slug)
+
+    def test_matches_resolve_membership_for_the_same_user_and_slug(self):
+        org, owner, editor, viewer, outsider = make_org_with_roles()
+        request = RequestFactory().get(f"/api/orgs/{org.slug}")
+        request.user = owner
+
+        from_request = permissions.resolve_membership(request, org.slug)
+        from_user = permissions.resolve_membership_for_user(owner, org.slug)
+
+        assert from_request.id == from_user.id
+        assert from_request.role == from_user.role
+
+
+@pytest.mark.django_db
 class TestResolveMembership:
     def test_member_resolves_own_membership(self):
         org, owner, editor, viewer, outsider = make_org_with_roles()

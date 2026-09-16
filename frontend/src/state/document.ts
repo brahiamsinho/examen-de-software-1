@@ -3,11 +3,18 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
 import {
   getDocument as getDocumentApi,
+  openDocumentSocket,
   submitCommand as submitCommandApi,
   type CommandResult,
   type UmlCommandIn,
   type UmlDocument,
 } from "@/lib/uml_documents";
+
+/** Close codes DD13 treats as terminal — a revoked or unauthenticated
+ * client must never hammer the handshake in a reconnect loop. */
+const _TERMINAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
+const _INITIAL_BACKOFF_MS = 1000;
+const _MAX_BACKOFF_MS = 10_000;
 
 /**
  * Distinguishes a genuine 404 (`ApiError` with `status === 404`) from any
@@ -79,6 +86,64 @@ export function useDocument(orgSlug: string | null, docId: string) {
 
     return () => {
       cancelled = true;
+    };
+  }, [orgSlug, docId]);
+
+  /**
+   * Realtime socket effect (design.md DD11/DD13), independent of the
+   * fetch-on-mount effect above (its own refetch on open is deliberately
+   * redundant — the monotonic merge below bails out on an equal revision,
+   * so it costs nothing). Reconnects with capped exponential backoff
+   * (1s→2s→4s→8s→10s) on any non-terminal close; `4401`/`4403`/`4404` are
+   * terminal, so a revoked or unauthenticated client never hammers the
+   * handshake in a loop.
+   */
+  useEffect(() => {
+    if (orgSlug === null) return;
+
+    let cancelled = false;
+    let socket: ReturnType<typeof openDocumentSocket> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoffMs = _INITIAL_BACKOFF_MS;
+
+    const mergeRemote = (incoming: UmlDocument) => {
+      setDocument((prev) => (prev !== null && incoming.revision <= prev.revision ? prev : incoming));
+    };
+
+    const connect = () => {
+      socket = openDocumentSocket(orgSlug, docId, {
+        onOpen: () => {
+          backoffMs = _INITIAL_BACKOFF_MS;
+          getDocumentApi(orgSlug, docId)
+            .then((fetched) => {
+              if (!cancelled) mergeRemote(fetched);
+            })
+            .catch(() => {
+              // A refetch failure on open is not fatal: the socket stays
+              // open and later broadcasts still arrive.
+            });
+        },
+        onMessage: (incoming) => {
+          if (!cancelled) mergeRemote(incoming);
+        },
+        onClose: (event) => {
+          if (cancelled || _TERMINAL_CLOSE_CODES.has(event.code)) return;
+          const delay = backoffMs;
+          backoffMs = Math.min(backoffMs * 2, _MAX_BACKOFF_MS);
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, delay);
+        },
+      });
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      socket?.close();
     };
   }, [orgSlug, docId]);
 

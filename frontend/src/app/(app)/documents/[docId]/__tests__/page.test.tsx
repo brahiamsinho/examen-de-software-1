@@ -316,6 +316,61 @@ describe("DocumentPage", () => {
     expect(screen.queryByText(/Selecciona la clase destino/)).not.toBeInTheDocument();
   });
 
+  it("a remote update that keeps the pinned class present does not disrupt the pending relationship selection (verify-report.md CRITICAL-2)", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    const store = createStore();
+    store.set(activeOrgSlugAtom, "acme");
+    const { rerender } = render(
+      <Provider store={store}>
+        <DocumentPage params={paramsPromise("doc-1")} />
+      </Provider>,
+    );
+
+    // tap A (source = Cliente) starts the click-click gesture
+    fireEvent.click(await screen.findByText("Tap Cliente"));
+    expect(screen.getByText(/Selecciona la clase destino/)).toBeInTheDocument();
+
+    // Simulate a remote-origin document update arriving over the socket
+    // (the same state useDocument's socket effect would produce): the
+    // pinned class (Cliente/c1) is still present, only unrelated metadata
+    // and revision changed.
+    const documentAfterRemoteUpdate = {
+      ...document,
+      revision: document.revision + 1,
+      metadata: { ...document.metadata, name: "Ventas (actualizado remotamente)" },
+    };
+    useDocumentMock.mockReturnValue({
+      document: documentAfterRemoteUpdate,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    rerender(
+      <Provider store={store}>
+        <DocumentPage params={paramsPromise("doc-1")} />
+      </Provider>,
+    );
+
+    // The pending source selection survives the remote update: the
+    // "pick a target" affordance for the pinned class is still shown.
+    expect(screen.getByText(/Selecciona la clase destino/)).toBeInTheDocument();
+
+    // The gesture remains completable: tapping a target now still opens
+    // the ready-to-submit relationship form.
+    fireEvent.click(screen.getByText("Tap Pedido"));
+    expect(screen.getByLabelText("Multiplicidad origen")).toBeInTheDocument();
+    expect(screen.getByLabelText("Multiplicidad destino")).toBeInTheDocument();
+  });
+
   it("disables all 6 command-submitting controls while isSubmitting is true (post-verify WARNING 3 on uml-canvas-remove-ui)", async () => {
     useDocumentMock.mockReturnValue({
       document,

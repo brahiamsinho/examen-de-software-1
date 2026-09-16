@@ -1,7 +1,14 @@
 """Structural regression guard (DD1): `models.py`, `codec.py`,
 `services.py`, and `schemas.py` must import only from `apps.uml_modeling`,
 `apps.uml_commands`, `apps.organizations`, the Python standard library, and
-Django/ninja/pydantic. No import of `apps.users` is allowed.
+Django/ninja/pydantic/channels/asgiref. No import of `apps.users` is allowed.
+
+`channels`/`asgiref` were added to the allowlist by the
+`realtime-uml-collaboration` cycle (design.md DD2/DD3): `services.py`'s
+`broadcast_document` calls `channels.layers.get_channel_layer()` (wrapped
+by `asgiref.sync.async_to_sync`, since channel layers are async-only) from
+inside the `transaction.on_commit` callback — this is the one seam where
+the persistence layer talks to the realtime transport, by design.
 
 `apps.organizations` is *allowed*, not forbidden: `uml_documents` is a real
 persisted, tenant-scoped Django app (structurally the same kind of app as
@@ -41,6 +48,8 @@ _ALLOWED_PREFIXES = (
     "django",
     "ninja",
     "pydantic",
+    "channels",
+    "asgiref",
 )
 
 

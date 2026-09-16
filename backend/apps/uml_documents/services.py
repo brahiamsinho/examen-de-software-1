@@ -10,6 +10,9 @@ Every Access).
 import datetime
 from uuid import UUID
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.db import transaction
 from django.http import Http404
 
 from apps.organizations.models import Organization
@@ -53,11 +56,36 @@ def _save(row: UmlDocument, document: ProjectDocument) -> None:
     row.save()
 
 
-def _get_row(*, organization: Organization, doc_id: UUID) -> UmlDocument:
+def _get_row(
+    *, organization: Organization, doc_id: UUID, for_update: bool = False
+) -> UmlDocument:
+    """`for_update=True` chains `.select_for_update()` AFTER the tenant
+    filter (design.md DD1) — the lock is taken on the already-scoped row,
+    it never widens the queryset. `for_update` defaults to `False` because
+    this function also backs `get_document`, whose GET view runs outside
+    any transaction; an unconditional lock there would raise
+    `TransactionManagementError`.
+    """
+    qs = UmlDocument.objects.for_organization(organization)
+    if for_update:
+        qs = qs.select_for_update()
     try:
-        return UmlDocument.objects.for_organization(organization).get(id=doc_id)
+        return qs.get(id=doc_id)
     except UmlDocument.DoesNotExist as exc:
         raise Http404("Document not found") from exc
+
+
+def broadcast_document(*, document: ProjectDocument) -> None:
+    """Fans a `document.update` event out to every socket subscribed to
+    this document's group (design.md DD2/DD3/DD6/DD7). Always called via
+    `transaction.on_commit`, never inline, so a reader can always `SELECT`
+    the revision being broadcast.
+    """
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"uml-doc-{document.id}",
+        {"type": "document.update", "document": codec.document_out(document)},
+    )
 
 
 def create_document(
@@ -88,13 +116,22 @@ def list_documents(*, organization: Organization) -> list[ProjectDocument]:
     return [_to_project_document(row) for row in rows]
 
 
+@transaction.atomic
 def submit_command(
     *, organization: Organization, doc_id: UUID, command: UmlCommand, now: datetime.datetime
 ) -> CommandResult:
-    row = _get_row(organization=organization, doc_id=doc_id)
+    """Serialized under a per-document row lock (design.md DD1): the
+    decorator opens the transaction `select_for_update()` needs, matching
+    `users/services.py:40`/`organizations/services.py:68` style. On
+    success, the resulting document is broadcast to the document's group
+    once the transaction actually commits (DD2) — never inline, which
+    would publish a revision no reader can yet `SELECT`.
+    """
+    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
     document = _to_project_document(row)
     result = apply(document, command, now=now)
     _save(row, result.document)
+    transaction.on_commit(lambda: broadcast_document(document=result.document))
     return result
 
 

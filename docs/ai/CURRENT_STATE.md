@@ -281,6 +281,51 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   (3) `email-validator` was added as a new, small dependency to support
   `EmailStr` in the schemas — the proposal's "no new dependency" line is
   now inaccurate by that one package.
+- **SDD Cycle 12** (`2026-09-14-realtime-uml-collaboration`) is **implemented**
+  (Phases 1–7 of `tasks.md`; Phase 8 verification below). Two members of one
+  organization now see each other's edits on one UML document with no
+  reload: `submit_command` (`apps/uml_documents/services.py`) is
+  `@transaction.atomic` and locks the row with `_get_row(...,
+  for_update=True)` chained AFTER `.for_organization(...)` (DD1 — closes a
+  lost-update race between two concurrent commands that predated this
+  feature), then broadcasts the resulting document via
+  `transaction.on_commit` (DD2) to a sync `DocumentConsumer`
+  (`apps/uml_documents/consumers.py`) joined to group `uml-doc-{doc_id}`
+  (DD3). The consumer authorizes with membership only — no `require_role`
+  (DD4), via the new `resolve_membership_for_user(user, org_slug)` extracted
+  in `apps/organizations/permissions.py` — and re-authorizes on every
+  relay, closing `4403` if membership was revoked (DD5). The wire payload is
+  the existing `DocumentOut`, promoted from `api._document_out` to
+  `codec.document_out(document)` (DD6/DD7), so a broadcast and a `GET
+  .../documents/{docId}` stay byte-identical. `config/asgi.py`'s
+  `"websocket"` route now serves `apps/uml_documents/routing.py` through
+  `OriginValidator(AuthMiddlewareStack(URLRouter(...)),
+  CORS_ALLOWED_ORIGINS)` (DD9) — no new env var, no CSRF equivalent (the
+  socket performs no writes). `CHANNEL_LAYERS` uses
+  `channels_redis.core.RedisChannelLayer` from discrete `REDIS_HOST`/
+  `REDIS_PORT` env vars (DD8; a new `redis:7-alpine` Compose service with a
+  healthcheck backs it). On the frontend, `useDocument`
+  (`state/document.ts`) gained a second effect that opens
+  `openDocumentSocket` (`lib/uml_documents.ts`, the sole place that builds a
+  WS URL, derived from `lib/env.ts`'s `wsUrl`), merges every
+  incoming/refetched document monotonically by revision so a duplicate or
+  out-of-order delivery costs zero re-renders (DD11), and reconnects with
+  capped exponential backoff (1s→2s→4s→8s→10s) on any non-terminal close —
+  `4401`/`4403`/`4404` are terminal, so a revoked/unauthenticated client
+  never hammers the handshake (DD13). `DiagramCanvas.tsx` gained a
+  `draggingRef`/`pendingUpdateRef` guard so a remote update mid-drag defers
+  its `cy.json()`/layout sync until the `free` event, instead of
+  re-laying-out under the user's cursor (DD12); `pendingSourceId`/
+  `pendingTargetId` needed no guard — verified unreachable from
+  `useDocument`, so `app/(app)/documents/[docId]/page.tsx` has zero diff
+  from this cycle. The "does `runserver` serve WebSocket in dev?" question
+  is resolved as yes (DD10, `daphne` precedes `django.contrib.staticfiles`
+  in `INSTALLED_APPS`) — the acceptance banner readback and the
+  Redis-service healthcheck still need one `docker compose build && docker
+  compose up` restart to observe, deferred to the maintainer per this
+  project's docker-lifecycle convention. Full regression:
+  339/339 backend (`pytest`) and 293/293 frontend (`vitest run`) pass, plus
+  clean `eslint`/`tsc --noEmit`/`next build`.
 
 ### Domain
 

@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
+import { wsUrl } from "@/lib/env";
 import {
   attributeTypeLabel,
   createDocument,
   formatMultiplicity,
   getDocument,
   listDocuments,
+  openDocumentSocket,
   submitCommand,
 } from "@/lib/uml_documents";
 
@@ -186,6 +188,82 @@ describe("lib/uml_documents", () => {
 
     it("returns the enumeration id for an EnumerationRef", () => {
       expect(attributeTypeLabel({ enumeration_ref: { enumeration_id: "e1" } })).toBe("e1");
+    });
+  });
+
+  /**
+   * `openDocumentSocket` is the sole place that builds a WS URL
+   * (design.md DD11/DD13) — everything else in the app reaches it through
+   * `useDocument`'s socket effect.
+   */
+  describe("openDocumentSocket", () => {
+    class MockWebSocket {
+      static instances: MockWebSocket[] = [];
+      url: string;
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      closed = false;
+
+      constructor(url: string | URL) {
+        this.url = url.toString();
+        MockWebSocket.instances.push(this);
+      }
+
+      close() {
+        this.closed = true;
+      }
+    }
+
+    beforeEach(() => {
+      MockWebSocket.instances = [];
+      vi.stubGlobal("WebSocket", MockWebSocket);
+    });
+
+    it("builds the WS URL from wsUrl and wires onopen/onmessage/onclose/onerror", () => {
+      const onOpen = vi.fn();
+      const onMessage = vi.fn();
+      const onClose = vi.fn();
+      const onError = vi.fn();
+
+      openDocumentSocket("acme", documentFixture.id, { onOpen, onMessage, onClose, onError });
+
+      const socket = MockWebSocket.instances[0]!;
+      expect(socket.url).toBe(`${wsUrl}/ws/orgs/acme/documents/${documentFixture.id}/`);
+
+      socket.onopen?.();
+      expect(onOpen).toHaveBeenCalledOnce();
+
+      socket.onmessage?.({
+        data: JSON.stringify({ type: "document.update", document: documentFixture }),
+      });
+      expect(onMessage).toHaveBeenCalledWith(documentFixture);
+
+      const closeEvent = { code: 4401 };
+      socket.onclose?.(closeEvent);
+      expect(onClose).toHaveBeenCalledWith(closeEvent);
+
+      const errorEvent = {};
+      socket.onerror?.(errorEvent);
+      expect(onError).toHaveBeenCalledWith(errorEvent);
+    });
+
+    it("encodes orgSlug and docId into the path", () => {
+      openDocumentSocket("a b", "doc/1", { onMessage: vi.fn(), onClose: vi.fn() });
+
+      const socket = MockWebSocket.instances[0]!;
+      expect(socket.url).toBe(`${wsUrl}/ws/orgs/a%20b/documents/doc%2F1/`);
+    });
+
+    it("ignores a message whose type is not document.update", () => {
+      const onMessage = vi.fn();
+      openDocumentSocket("acme", documentFixture.id, { onMessage, onClose: vi.fn() });
+
+      const socket = MockWebSocket.instances[0]!;
+      socket.onmessage?.({ data: JSON.stringify({ type: "something.else", document: {} }) });
+
+      expect(onMessage).not.toHaveBeenCalled();
     });
   });
 });

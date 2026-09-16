@@ -3,8 +3,13 @@ command submission (design.md's Data Flow; spec's Document Creation,
 Document Read, Command Submission requirements).
 """
 import datetime
+import threading
+import time
+from unittest import mock
 
 import pytest
+from django.db import connection, transaction
+from django.db.transaction import TransactionManagementError
 from django.http import Http404
 
 from apps.organizations.tests.factories import make_org_with_roles
@@ -235,3 +240,175 @@ def test_submit_command_persists_invalid_result_with_diagnostics():
     persisted = services.get_document(organization=organization, doc_id=document.id)
     assert persisted.revision == result.document.revision
     assert len(persisted.model.relationships) == 1
+
+
+# --- DD1: locked row read (design.md DD1, tasks 2.1/2.2) --------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_row_for_update_outside_transaction_raises_transaction_management_error():
+    """`select_for_update()` is only legal inside a transaction. `_get_row`
+    also backs `get_document`'s non-transactional GET view, so calling it
+    with `for_update=True` outside any transaction must raise rather than
+    silently locking nothing.
+    """
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Locked", now=_NOW
+    )
+
+    with pytest.raises(TransactionManagementError):
+        services._get_row(organization=organization, doc_id=document.id, for_update=True)
+
+
+@pytest.mark.django_db
+def test_get_row_for_update_inside_submit_command_does_not_raise():
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Locked", now=_NOW
+    )
+
+    result = services.submit_command(
+        organization=organization,
+        doc_id=document.id,
+        command=commands.AddClass(class_id=new_id(), name="Locked"),
+        now=_NOW,
+    )
+
+    assert result.document.revision == document.revision + 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_row_for_update_still_enforces_tenant_scoping():
+    """The lock never bypasses `for_organization` — org B's lookup on org
+    A's `doc_id` still 404s, because `.select_for_update()` chains AFTER
+    the tenant filter, not instead of it.
+    """
+    organization, owner, *_rest = make_org_with_roles()
+    other_organization, *_rest_other = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Locked", now=_NOW
+    )
+
+    with transaction.atomic():
+        with pytest.raises(Http404):
+            services._get_row(organization=other_organization, doc_id=document.id, for_update=True)
+
+
+# --- DD2/DD7: broadcast after commit (design.md DD2, task 2.6) -------------
+# `transaction.on_commit` callbacks never fire under the default
+# `pytest.mark.django_db` wrapper — `django_capture_on_commit_callbacks` (or
+# `transaction=True`) is required, per this cycle's testing gotcha.
+
+
+@pytest.mark.django_db
+def test_submit_command_broadcasts_exactly_once_after_commit(django_capture_on_commit_callbacks):
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Broadcast", now=_NOW
+    )
+
+    with mock.patch("apps.uml_documents.services.broadcast_document") as mock_broadcast:
+        with django_capture_on_commit_callbacks(execute=True):
+            result = services.submit_command(
+                organization=organization,
+                doc_id=document.id,
+                command=commands.AddClass(class_id=new_id(), name="Order"),
+                now=_NOW,
+            )
+
+    mock_broadcast.assert_called_once_with(document=result.document)
+
+
+@pytest.mark.django_db
+def test_submit_command_does_not_broadcast_when_apply_raises(django_capture_on_commit_callbacks):
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Broadcast", now=_NOW
+    )
+
+    with mock.patch("apps.uml_documents.services.apply", side_effect=RuntimeError("boom")):
+        with mock.patch("apps.uml_documents.services.broadcast_document") as mock_broadcast:
+            with django_capture_on_commit_callbacks(execute=True):
+                with pytest.raises(RuntimeError):
+                    services.submit_command(
+                        organization=organization,
+                        doc_id=document.id,
+                        command=commands.AddClass(class_id=new_id(), name="Order"),
+                        now=_NOW,
+                    )
+
+    mock_broadcast.assert_not_called()
+
+
+# --- DD1: concurrent submissions, no lost update (task 2.8) -----------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_submit_command_concurrent_calls_do_not_lose_updates():
+    """Two concurrent `submit_command` calls on one document both persist;
+    the final `revision` is exactly `n + 2` — the row lock (DD1) serializes
+    the second call behind the first's commit instead of both reading the
+    same starting revision and one write clobbering the other.
+    """
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Concurrent", now=_NOW
+    )
+    start_revision = document.revision
+
+    a_holds_lock = threading.Event()
+    b_attempted = threading.Event()
+    release_a = threading.Event()
+    real_apply = services.apply
+
+    def instrumented_apply(document_, command_, *, now):
+        # Only the first call through (thread A, which got the lock first)
+        # pauses here — it deliberately holds the row lock open until
+        # thread B has had a chance to block on it.
+        if not a_holds_lock.is_set():
+            a_holds_lock.set()
+            b_attempted.wait(timeout=2)
+            release_a.wait(timeout=2)
+        return real_apply(document_, command_, now=now)
+
+    results: dict[str, object] = {}
+    errors: list[Exception] = []
+
+    def run(label: str, class_name: str) -> None:
+        try:
+            results[label] = services.submit_command(
+                organization=organization,
+                doc_id=document.id,
+                command=commands.AddClass(class_id=new_id(), name=class_name),
+                now=_NOW,
+            )
+        except Exception as exc:  # pragma: no cover - surfaced via errors list
+            errors.append(exc)
+        finally:
+            connection.close()
+
+    # This test's subject is DD1 (locking), not DD2 (broadcast) — the
+    # broadcast fan-out is covered separately by
+    # test_submit_command_broadcasts_exactly_once_after_commit and has its
+    # own Redis-backed channel layer dependency, orthogonal to row locking.
+    with (
+        mock.patch("apps.uml_documents.services.apply", side_effect=instrumented_apply),
+        mock.patch("apps.uml_documents.services.broadcast_document"),
+    ):
+        thread_a = threading.Thread(target=run, args=("a", "A"))
+        thread_b = threading.Thread(target=run, args=("b", "B"))
+        thread_a.start()
+        assert a_holds_lock.wait(timeout=2)
+        thread_b.start()
+        # Give thread B a moment to reach `_get_row(for_update=True)` and
+        # actually block on Postgres' row lock before releasing thread A.
+        time.sleep(0.2)
+        b_attempted.set()
+        release_a.set()
+        thread_a.join(timeout=5)
+        thread_b.join(timeout=5)
+
+    assert errors == []
+    final = services.get_document(organization=organization, doc_id=document.id)
+    assert final.revision == start_revision + 2

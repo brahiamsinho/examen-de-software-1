@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api";
+import { wsUrl } from "@/lib/env";
 
 /**
  * Domain client for `apps/uml_documents` (design.md's `lib/uml_documents.ts`
@@ -192,4 +193,41 @@ export function formatMultiplicity(m: Multiplicity): string {
 /** A primitive string renders as itself; an `EnumerationRef` renders its enum id. */
 export function attributeTypeLabel(t: AttributeType): string {
   return typeof t === "string" ? t : t.enumeration_ref.enumeration_id;
+}
+
+export type DocumentSocketHandlers = {
+  onOpen?: () => void;
+  onMessage: (document: UmlDocument) => void;
+  onClose: (event: { code: number }) => void;
+  onError?: (event: unknown) => void;
+};
+
+/**
+ * The sole place that builds a WS URL (design.md DD9/DD11/DD13), mirroring
+ * the HTTP route `/api/orgs/{slug}/documents/{docId}` at
+ * `ws/orgs/{slug}/documents/{docId}/`. A thin transport seam: reconnect,
+ * backoff, and the monotonic-revision merge all live in `useDocument`
+ * (`state/document.ts`), not here.
+ */
+export function openDocumentSocket(
+  orgSlug: string,
+  docId: string,
+  handlers: DocumentSocketHandlers,
+): WebSocket {
+  const path = `/ws/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/`;
+  const socket = new WebSocket(new URL(path, wsUrl));
+
+  socket.onopen = () => handlers.onOpen?.();
+
+  socket.onmessage = (event: { data: unknown }) => {
+    const payload = JSON.parse(event.data as string) as { type: string; document: UmlDocument };
+    if (payload.type === "document.update") {
+      handlers.onMessage(payload.document);
+    }
+  };
+
+  socket.onclose = (event: { code: number }) => handlers.onClose(event);
+  socket.onerror = (event: unknown) => handlers.onError?.(event);
+
+  return socket;
 }

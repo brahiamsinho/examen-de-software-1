@@ -400,7 +400,60 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
 
     expect(onNodeTapA).not.toHaveBeenCalled();
     expect(onNodeTapB).toHaveBeenCalledWith("c1");
-    expect(cyMock.on).toHaveBeenCalledOnce();
+    // Mount binds 3 node-scoped handlers once: tap (DD9), and grab/free
+    // (DD12's drag guard) — each registered exactly once.
+    expect(cyMock.on).toHaveBeenCalledTimes(3);
+    expect(cyMock.on).toHaveBeenCalledWith("tap", "node", expect.any(Function));
+    expect(cyMock.on).toHaveBeenCalledWith("grab", "node", expect.any(Function));
+    expect(cyMock.on).toHaveBeenCalledWith("free", "node", expect.any(Function));
+  });
+
+  it("performs no cy.json() while draggingRef is set on a revision bump, and the free event flushes exactly one deferred sync (DD12)", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const oneClass: UmlModel = {
+      classes: [{ id: "c1", name: "A", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+    const twoClasses: UmlModel = {
+      ...oneClass,
+      classes: [...oneClass.classes, { id: "c2", name: "B", visibility: "public", attributes: [], operations: [] }],
+    };
+
+    const { rerender } = render(<DiagramCanvas model={oneClass} revision={1} />);
+    cyMock.json.mockClear();
+    cyMock.layout.mockClear();
+
+    const grabHandler = cyMock.on.mock.calls.find(([event]) => event === "grab")![2] as () => void;
+    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as () => void;
+
+    grabHandler();
+
+    // A remote update arrives mid-drag: the sync must be deferred, not
+    // applied immediately.
+    rerender(<DiagramCanvas model={twoClasses} revision={2} />);
+    expect(cyMock.json).not.toHaveBeenCalled();
+
+    // The drag ends: exactly one deferred sync flushes.
+    freeHandler();
+    expect(cyMock.json).toHaveBeenCalledOnce();
+  });
+
+  it("a revision bump while not dragging syncs immediately, and free with no pending update is a no-op (DD12)", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+
+    const { rerender } = render(<DiagramCanvas model={emptyModel} revision={1} />);
+    cyMock.json.mockClear();
+
+    const freeHandler = cyMock.on.mock.calls.find(([event]) => event === "free")![2] as () => void;
+
+    rerender(<DiagramCanvas model={emptyModel} revision={2} />);
+    expect(cyMock.json).toHaveBeenCalledOnce();
+
+    cyMock.json.mockClear();
+    freeHandler();
+    expect(cyMock.json).not.toHaveBeenCalled();
   });
 
   it("toggles the selected-source class on highlightedClassId change without re-running layout", async () => {

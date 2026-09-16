@@ -1,5 +1,137 @@
 # Decisions Log
 
+## 2026-09-14 — Cycle 12 design: real-time UML collaboration over Channels (realtime-uml-collaboration)
+
+`sdd-design` produced
+`openspec/changes/2026-09-14-realtime-uml-collaboration/design.md` for the
+first realtime cycle: two members of one organization editing the same UML
+document currently cannot see each other's work, because `useDocument` fetches
+once on mount and refetches only after its *own* `submitCommand()`. The chosen
+shape is result-broadcast — `dispatcher.apply()` stays untouched, HTTP POST
+remains the only write transport, and the WebSocket is read-only fan-out.
+This entry is the `config.yaml` `rules.design` dual documentation of DD1–DD13;
+nothing is implemented yet.
+
+**DD1 — `submit_command` becomes `@transaction.atomic`, and `_get_row` gains a
+`for_update: bool = False` flag that chains `.select_for_update()` *after*
+`.for_organization(...)`.** The flag exists because `_get_row` is shared with
+`get_document`, whose GET view runs outside any transaction — an unconditional
+lock would raise `TransactionManagementError` on the read path. The decorator
+(not a `with` block) matches `users/services.py:40` and
+`organizations/services.py:68/118/134`. Tenant scoping is preserved because
+`for_organization` applies `WHERE organization_id = …` before
+`select_for_update()` appends `FOR UPDATE`; `select_for_update()` never widens
+a queryset, and `TenantScopedManager.get_queryset()` raises
+`TenantScopeViolation` on any unscoped access anyway.
+
+**DD2 — The broadcast is emitted via `transaction.on_commit(...)` after
+`_save`, closing over the in-memory `result.document`.** Copies
+`users/services.py:73` in style. Broadcasting inline would publish a revision
+that readers cannot yet `SELECT`; closing over the dataclass rather than the
+ORM row means the post-commit callback issues zero queries. A `post_save`
+signal was rejected because it would also fire for `create_document`, which
+has no group to address.
+
+**DD3 — A sync `DocumentConsumer(JsonWebsocketConsumer)` in
+`uml_documents/consumers.py`, routed at
+`ws/orgs/<org_slug>/documents/<doc_id>/`, joins group `uml-doc-{doc_id}`.**
+Every line of this codebase is sync ORM, so a sync consumer running in
+Channels' thread pool calls the membership/document queries directly with no
+`database_sync_to_async` wrapper and no async fork of `resolve_membership`.
+The group key is the document UUID alone because authorization — not the group
+name — enforces tenancy; embedding the slug would falsely imply the name is a
+security boundary.
+
+**DD4 — `connect()` authorizes with membership only, deliberately WITHOUT
+`require_role`, via a new `resolve_membership_for_user(user, org_slug)`
+extracted from `resolve_membership`.** This is a documented correction to the
+proposal's wording: the WS is a read subscription, and the read endpoint it
+mirrors (`get_document_view`) has no role gate — `api.py:54` carries an
+explicit `# no require_role — DD3, any member reads`. Requiring OWNER/EDITOR
+would lock a `VIEWER` out of live updates for a document it can already `GET`.
+Extracting the user-level function keeps `permissions.py`'s stated invariant
+("Nothing else in the app decides authorization") true, and its 20 HTTP
+callers stay byte-identical. Unauthenticated closes `4401`; unknown-org,
+non-member, and unknown-doc all close `4404`, preserving
+`resolve_membership`'s "indistinguishable by design" contract over WS.
+
+**DD5 — Authorization is re-run in the group-message handler before each
+relay; failure closes `4403`. Document deletion needs no separate handling.**
+A revoked member must stop receiving data at the exact moment data would leak,
+and that moment is the outbound message — one indexed `Membership` lookup per
+delivered broadcast. A timer would add machinery and still leak for up to one
+interval. Deletion is covered for free: broadcasts originate only from
+`submit_command`, which cannot run against a deleted row, so the client's next
+`getDocument()` 404s through `useDocument`'s existing `notFound` branch.
+
+**DD6/DD7 — The payload is the EXISTING `DocumentOut`.** `api._document_out`
+is promoted to `codec.document_out(document)` and the consumer sends
+`DocumentOut.model_validate(codec.document_out(doc)).model_dump(mode="json")`,
+wrapped as `{"type": "document.update", "document": {…}}`. `codec` is the
+natural home because the function is `_encode_model` + `_encode_layout`
+composed, and it removes `api.py`'s reach into two underscore-private codec
+functions; importing `api` into `services` would invert the layering.
+`model_dump(mode="json")` is load-bearing — the raw dict holds `UUID`/
+`datetime` objects `json.dumps` rejects, and routing it through the same
+Pydantic schema is what guarantees byte-identity with the GET response, so the
+client merge needs zero new decoding.
+
+**DD8 — `CHANNEL_LAYERS` → `RedisChannelLayer` from discrete
+`REDIS_HOST`/`REDIS_PORT` env vars defaulting to `("redis", 6379)`, plus a
+`redis:7-alpine` Compose service with a `redis-cli ping` healthcheck.**
+Discrete host/port defaulting to the Compose service name is exactly the
+`DATABASES` pattern and `settings.py`'s stated "never a `localhost` fallback"
+rule; a single `REDIS_URL` would introduce a second connection-string
+convention. In-memory was rejected in exploration because prod runs `daphne`,
+which scales to multiple processes, where an in-memory layer fails silently.
+
+**DD9 — `OriginValidator(AuthMiddlewareStack(URLRouter(...)),
+settings.CORS_ALLOWED_ORIGINS)`, `OriginValidator` outermost, no new env
+var.** `CORS_ALLOWED_ORIGINS` already holds exactly the `scheme://host[:port]`
+strings `OriginValidator` expects, so reusing it makes HTTP and WS origin
+policy structurally incapable of drifting. CSRF genuinely does not apply: a
+browser `new WebSocket()` cannot set the `X-CSRFToken` header `lib/api.ts`
+echoes, and it need not, because the socket performs no writes. A
+query-string token was rejected for putting a credential in server logs.
+
+**DD10 — RESOLVED, not deferred: `manage.py runserver` already serves
+WebSocket in dev; `backend/Dockerfile` and `entrypoint.sh` get a zero diff.**
+Django's `get_commands()` iterates `reversed(apps.get_app_configs())` and
+`update`s, so an earlier `INSTALLED_APPS` entry overrides a later app's
+same-named command. `daphne` sits at index 5 and `django.contrib.staticfiles`
+at index 6 (`settings.py:41-42`), so Daphne's ASGI `runserver` wins — which is
+precisely what the pre-existing `# daphne must be listed before
+django.contrib.staticfiles` comment at `settings.py:40` was protecting.
+`ASGI_APPLICATION` is already set. Acceptance readback is the startup banner
+reading `Starting ASGI/Daphne version … development server`. This unblocks
+task sequencing: Redis + `CHANNEL_LAYERS` + routing land before the consumer,
+and no Dockerfile task is scheduled.
+
+**DD11/DD13 — The WS client lives inside `useDocument`, not in a separate
+hook, and merges monotonically by revision.** `useDocument` already owns
+`document`, already resets on its `${orgSlug}:${docId}` tracked key, and is
+the sole producer of the `revision` prop `DiagramCanvas` is keyed on. The
+guard `incoming.revision <= prev.revision ? prev : incoming` matters because
+the submitter receives both its own refetch and the broadcast; returning
+`prev` by identity also makes React bail out of the re-render, so a duplicate
+costs zero `cy.json()` calls. On reconnect (capped 1s→10s backoff), every
+successful `open` calls `getDocument()` once — proposal §Out of Scope's
+"reconnect-and-refetch", nothing more. Close codes `4401`/`4403`/`4404` are
+terminal, so a revoked client never hammers the handshake.
+
+**DD12 — No guard is added for `pendingSourceId`/`pendingTargetId`, because a
+remote update structurally cannot touch them; a drag guard IS added.**
+Verified at `page.tsx:35-36`: both ids are `useState` local to `DocumentPage`
+and `useDocument` never receives a setter for them, so `setDocument` cannot
+write them and the click-click gesture survives by construction. The one
+intended interaction — `effectiveSourceId` collapsing to `null` when the
+remote update removed the pinned class — is already declared correct by the
+comment at `page.tsx:67-73` for the local-refetch case. The drag is a real
+risk: a remote class addition makes `newClassIds.length > 0` and fires
+`cy.layout(...).run()` mid-grab, so `DiagramCanvas` gains
+`draggingRef`/`pendingUpdateRef` with `grab`/`free` handlers that defer the
+sync until the drag ends.
+
 ## 2026-09-13 — Cycle 11 apply: implementation complete (uml-relationship-kinds)
 
 `sdd-apply` implemented all tasks (Phases 1–3; Phase 4 is this entry, Phase 5
