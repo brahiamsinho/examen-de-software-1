@@ -101,7 +101,7 @@ function classBoxSvgDataUri(name: string, attributeLines: string[]): { uri: stri
   return { uri: `data:image/svg+xml,${encodeURIComponent(svg)}`, width, height };
 }
 
-const STYLE: cytoscape.StylesheetStyle[] = [
+export const STYLE: cytoscape.StylesheetStyle[] = [
   {
     selector: "node",
     style: {
@@ -124,9 +124,13 @@ const STYLE: cytoscape.StylesheetStyle[] = [
     style: {
       label: "data(label)",
       "curve-style": "bezier",
-      "target-arrow-shape": "triangle",
       "line-color": EDGE_LINE,
       "target-arrow-color": EDGE_LINE,
+      // A hollow arrow/diamond is stroked with this color (verified in
+      // `cytoscape.cjs.js:30083-30086`); its default `#999` is not
+      // `EDGE_LINE`, so it must be set explicitly even though nothing on
+      // this generic selector uses `source-arrow-shape` (DD2).
+      "source-arrow-color": EDGE_LINE,
       width: 1.5,
       "arrow-scale": 1,
       "font-family": MONO_FONT_STACK,
@@ -137,6 +141,10 @@ const STYLE: cytoscape.StylesheetStyle[] = [
       "text-background-padding": "3px",
       "text-background-shape": "roundrectangle",
     },
+    // No `target-arrow-shape`/`source-arrow-shape` here (DD2): both
+    // prefixes default to `'none'`, so a plain `association` edge needs no
+    // selector of its own — "no terminator" is the floor, and each kind
+    // rule below can only *add* one for its own edges.
   },
   {
     // A recursive/reflexive relationship (source === target, tagged in
@@ -157,6 +165,39 @@ const STYLE: cytoscape.StylesheetStyle[] = [
       "loop-sweep": "-90deg",
       "control-point-step-size": 100,
       "text-margin-y": -28,
+    },
+  },
+  // Per-kind UML 2.5 terminators (DD1/DD3), keyed off `edge.data.kind`
+  // (set in `toElements`). Appended after `edge.self-loop`: per Cytoscape's
+  // `styfn.getContextStyle` merge order, later entries win per-property
+  // over earlier matches, and these rules declare only arrow properties —
+  // disjoint from `edge.self-loop`'s loop-geometry properties — so a
+  // self-referencing generalization gets both the loop shape and its
+  // hollow triangle regardless of relative order.
+  {
+    selector: 'edge[kind = "generalization"]',
+    style: {
+      "target-arrow-shape": "triangle",
+      "target-arrow-fill": "hollow",
+      "arrow-scale": 1.6,
+    },
+  },
+  {
+    // Diamonds sit at `source` = first click = the "whole" (confirmed
+    // scope decision).
+    selector: 'edge[kind = "aggregation"]',
+    style: {
+      "source-arrow-shape": "diamond",
+      "source-arrow-fill": "hollow",
+      "arrow-scale": 1.6,
+    },
+  },
+  {
+    selector: 'edge[kind = "composition"]',
+    style: {
+      "source-arrow-shape": "diamond",
+      "source-arrow-fill": "filled",
+      "arrow-scale": 1.6,
     },
   },
 ];
@@ -189,7 +230,15 @@ export function toElements(model: UmlModel): ElementDefinition[] {
         id: r.id,
         source: r.source.class_id,
         target: r.target.class_id,
-        label: `${formatMultiplicity(r.source.multiplicity)} → ${formatMultiplicity(r.target.multiplicity)}`,
+        kind: r.kind,
+        // UML 2.5 defines no multiplicity on generalization; the submit
+        // side already forces "1"/"1" as a required-field placeholder
+        // (AddRelationshipControl's DD5), but that placeholder must not
+        // leak onto the canvas as a rendered label.
+        label:
+          r.kind === "generalization"
+            ? ""
+            : `${formatMultiplicity(r.source.multiplicity)} → ${formatMultiplicity(r.target.multiplicity)}`,
       },
       // Recursive/reflexive relationship (a class related to itself):
       // needs explicit loop geometry, see the `edge.self-loop` selector.

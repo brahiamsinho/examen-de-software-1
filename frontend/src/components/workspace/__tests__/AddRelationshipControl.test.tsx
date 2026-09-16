@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
@@ -107,7 +107,7 @@ describe("AddRelationshipControl", () => {
     );
   });
 
-  it("onSubmit builds an association AddRelationship command with a generated id and clears both ids on success", async () => {
+  it("onSubmit builds an AddRelationship command for the default kind (association) with a generated id and clears both ids on success", async () => {
     const onSubmit = vi.fn().mockResolvedValue({ revision: 2, validation: { is_valid: true, violations: [] } });
     const onCancel = vi.fn();
     render(
@@ -140,5 +140,118 @@ describe("AddRelationshipControl", () => {
     await vi.waitFor(() => {
       expect(onCancel).toHaveBeenCalledOnce();
     });
+  });
+
+  it("renders a kind select with all four RelationshipKind options, defaulting to association", () => {
+    render(
+      <AddRelationshipControl
+        pendingSourceId="c1"
+        pendingTargetId="c2"
+        classes={classes}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
+      />,
+    );
+
+    const select = screen.getByLabelText("Tipo de relación") as HTMLSelectElement;
+    expect(select.value).toBe("association");
+    const optionValues = within(select)
+      .getAllByRole("option")
+      .map((option) => (option as HTMLOptionElement).value);
+    expect(optionValues).toEqual(["association", "aggregation", "composition", "generalization"]);
+  });
+
+  it.each(["association", "aggregation", "composition", "generalization"] as const)(
+    "submits kind %s when selected and confirmed",
+    async (kind) => {
+      const onSubmit = vi.fn().mockResolvedValue({ revision: 2, validation: { is_valid: true, violations: [] } });
+      render(
+        <AddRelationshipControl
+          pendingSourceId="c1"
+          pendingTargetId="c2"
+          classes={classes}
+          onSubmit={onSubmit}
+          onCancel={vi.fn()}
+          onSelectSelf={vi.fn()}
+        />,
+      );
+
+      fireEvent.change(screen.getByLabelText("Tipo de relación"), { target: { value: kind } });
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar relación" }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "AddRelationship",
+          relationship: expect.objectContaining({ kind }),
+        }),
+      );
+    },
+  );
+
+  it("hides both multiplicity selects when kind is generalization", () => {
+    render(
+      <AddRelationshipControl
+        pendingSourceId="c1"
+        pendingTargetId="c2"
+        classes={classes}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Tipo de relación"), { target: { value: "generalization" } });
+
+    expect(screen.queryByLabelText("Multiplicidad origen")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Multiplicidad destino")).not.toBeInTheDocument();
+  });
+
+  it("submits literal 1/1 multiplicities for generalization even after picking other values first (DD5)", async () => {
+    const onSubmit = vi.fn().mockResolvedValue({ revision: 2, validation: { is_valid: true, violations: [] } });
+    render(
+      <AddRelationshipControl
+        pendingSourceId="c1"
+        pendingTargetId="c2"
+        classes={classes}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Multiplicidad origen"), { target: { value: "0..*" } });
+    fireEvent.change(screen.getByLabelText("Multiplicidad destino"), { target: { value: "1..*" } });
+    fireEvent.change(screen.getByLabelText("Tipo de relación"), { target: { value: "generalization" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar relación" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relationship: expect.objectContaining({
+          kind: "generalization",
+          source: expect.objectContaining({ multiplicity: "1" }),
+          target: expect.objectContaining({ multiplicity: "1" }),
+        }),
+      }),
+    );
+  });
+
+  it("restores the earlier multiplicity selection after switching generalization back to association (no reset, DD5)", () => {
+    render(
+      <AddRelationshipControl
+        pendingSourceId="c1"
+        pendingTargetId="c2"
+        classes={classes}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        onSelectSelf={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Multiplicidad origen"), { target: { value: "0..*" } });
+    fireEvent.change(screen.getByLabelText("Tipo de relación"), { target: { value: "generalization" } });
+    fireEvent.change(screen.getByLabelText("Tipo de relación"), { target: { value: "association" } });
+
+    expect((screen.getByLabelText("Multiplicidad origen") as HTMLSelectElement).value).toBe("0..*");
   });
 });

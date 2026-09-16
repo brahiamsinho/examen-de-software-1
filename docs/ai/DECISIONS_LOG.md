@@ -1,5 +1,77 @@
 # Decisions Log
 
+## 2026-09-13 — Cycle 11 apply: implementation complete (uml-relationship-kinds)
+
+`sdd-apply` implemented all tasks (Phases 1–3; Phase 4 is this entry, Phase 5
+is verification) from
+`openspec/changes/2026-09-13-uml-relationship-kinds/tasks.md`, following
+design.md's DD1–DD6 with strict TDD, single PR, `backend/` diff empty (all
+four UML 2.5 kinds were already wired end-to-end; only the frontend
+hardcoded `association`). The canvas could previously only draw
+associations even though aggregation, composition, and generalization were
+already valid on the wire — this cycle closes that gap.
+
+**DD1 — Style per kind with data-attribute selectors (`edge[kind = "..."]`),
+not a `classes` string.** `toElements` copies `r.kind` into edge `data`; the
+`classes` expression (`"self-loop"` or `undefined`) stays byte-identical.
+`kind` is a real domain field the proposal already required in `data`, so a
+parallel class-string encoding would duplicate the same fact and leave the
+prior cycle's exact-equality self-loop assertion
+(`DiagramCanvas.test.tsx:108`, `expect(edge.classes).toBe("self-loop")`)
+untouched.
+
+**DD2 — Deleted the blanket `"target-arrow-shape": "triangle"` from the
+generic `edge` selector; added `"source-arrow-color": EDGE_LINE` beside the
+existing `target-arrow-color`.** Verified in Cytoscape source
+(`cytoscape.cjs.js:18669-18688`): all four `*-arrow-shape` prefixes default
+to `'none'`, so a plain `association` edge now needs no selector of its own
+— "no terminator" is the floor, and each kind rule can only *add* one for
+its own edges. `source-arrow-color` had to be set explicitly because a
+hollow arrow/diamond is stroked with that color
+(`cytoscape.cjs.js:30083-30086`) and its default `#999` is not `EDGE_LINE`.
+
+**DD3 — The three kind rules (`generalization`/`aggregation`/`composition`)
+are appended at the end of `STYLE`, after `edge.self-loop`, each declaring
+only arrow properties.** Per `styfn.getContextStyle`'s verified merge order
+(`cytoscape.cjs.js:16090-16117`, later entry wins per-property, no CSS-style
+specificity), the kind rules and `edge.self-loop` declare disjoint property
+sets (arrows vs. `loop-*`/`control-point-step-size`/`text-margin-y`), so a
+self-referencing generalization gets loop geometry *and* a hollow triangle
+regardless of relative order — no conflict with the prior cycle's self-loop
+fix exists.
+
+**DD4 — The kind `<Select>` (`Tipo de relación`) renders only in the
+both-ids-set confirm branch of `AddRelationshipControl`, above the
+multiplicity grid; local `useState<RelationshipKind>("association")`, no
+prop change.** The pending-source branch is a transient "pick a target"
+prompt where kind has no effect until submit, and the kind↔multiplicity
+visibility coupling (DD5) only exists in the confirm branch.
+
+**DD5 — `generalization` hides both multiplicity `<Select>`s and
+`handleSubmit` sends the literal `"1"` for both ends when kind is
+`generalization`, ignoring the hidden state; switching kind resets
+nothing.** The payload must be a function of what is visible — sending the
+hidden state would let a user pick `0..*`, switch to generalization, and
+silently post `0..*`. Deriving at submit instead of resetting on kind change
+also means switching generalization→association restores the earlier
+choice, matching the prior cycle's "derive, don't effect" shape.
+
+**DD6 — `STYLE` is now exported from `DiagramCanvas.tsx`.** Same reasoning
+as `toElements` (prior cycle's DD6): the stylesheet is a plain data
+structure carrying the UML notation contract, assertable with zero DOM and
+zero canvas — jsdom has no canvas, so rendered arrowheads are untestable any
+other way.
+
+Both scope forks were confirmed by the user before proposal: the
+first-clicked class (`source`) is the "whole" end for aggregation/
+composition, and generalization's multiplicity selects are hidden entirely
+rather than rendered disabled. `backend/apps/uml_documents/schemas.py`'s
+`RelationshipIn.kind` was already the full 4-kind `Literal`, confirming zero
+backend diff. 278/278 frontend tests pass (18 new — 8 in
+`AddRelationshipControl.test.tsx`, 10 in `DiagramCanvas.test.tsx`), `npm run
+lint` clean, `npm run build` succeeds, `git diff --stat -- backend` is
+empty. `sdd-verify`/`sdd-archive` are the remaining steps.
+
 ## 2026-09-13 — Cycle 10 apply: implementation complete (uml-document-list)
 
 `sdd-apply` implemented all 20 tasks (Phases 1–9) from

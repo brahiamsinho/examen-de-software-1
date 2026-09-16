@@ -196,6 +196,24 @@ initialized but not yet used for a real cycle.
   (8 new), 251/251 frontend tests pass (23 new), zero regressions.
   `sdd-verify`/`sdd-archive` remain.
 
+- **SDD Cycle 11** (`uml-relationship-kinds`) is **fully implemented**,
+  single PR, `backend/` diff empty (`RelationshipIn.kind` was already the
+  full 4-kind `Literal`; only the frontend had hardcoded `association`). The
+  canvas now supports all 4 UML 2.5 relationship kinds with per-kind
+  notation, not just association: `AddRelationshipControl` gained a `Tipo de
+  relación` select (defaulting to `association`) that drives the submitted
+  `AddRelationship.relationship.kind`; selecting `generalization` hides both
+  multiplicity selects and always submits `"1"`/`"1"` (UML 2.5 has no
+  multiplicity there), with the earlier multiplicity choice preserved (not
+  reset) if the user switches back. `DiagramCanvas`'s `toElements` now
+  copies `relationship.kind` into edge `data`, and the exported `STYLE`
+  renders each kind's UML 2.5 terminator — hollow triangle
+  (generalization), hollow diamond (aggregation, at the first-clicked/
+  "whole" `source` end), filled diamond (composition, same end), plain line
+  (association, no terminator) — while leaving the pinned `edge.self-loop`
+  geometry untouched. 278/278 frontend tests pass (18 new). `sdd-verify`/
+  `sdd-archive` remain.
+
 ### Mobile
 
 - `mobile/` is a bare Flutter scaffold (default counter-app template plus

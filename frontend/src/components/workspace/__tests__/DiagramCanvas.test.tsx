@@ -62,7 +62,7 @@ describe("DiagramCanvas — toElements (pure)", () => {
 
     const edges = elements.filter((el) => "source" in el.data);
     expect(edges).toHaveLength(1);
-    expect(edges[0]!.data).toMatchObject({ id: "r1", source: "c1", target: "c2" });
+    expect(edges[0]!.data).toMatchObject({ id: "r1", source: "c1", target: "c2", kind: "association" });
     expect(edges[0]!.data.label).toBe("1 → 0..*");
   });
 
@@ -108,6 +108,85 @@ describe("DiagramCanvas — toElements (pure)", () => {
     expect(edge.classes).toBe("self-loop");
   });
 
+  it.each(["association", "aggregation", "composition", "generalization"] as const)(
+    "propagates relationship kind %s into edge.data.kind",
+    async (kind) => {
+      const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+      const model: UmlModel = {
+        classes: [
+          { id: "c1", name: "A", visibility: "public", attributes: [], operations: [] },
+          { id: "c2", name: "B", visibility: "public", attributes: [], operations: [] },
+        ],
+        enumerations: [],
+        relationships: [
+          {
+            id: "r1",
+            kind,
+            source: { class_id: "c1", multiplicity: { lower: 1, upper: 1 }, role: null },
+            target: { class_id: "c2", multiplicity: { lower: 0, upper: null }, role: null },
+            name: null,
+          },
+        ],
+        generation_metadata: {},
+      };
+
+      const elements = toElements(model);
+      const edge = elements.find((el) => "source" in el.data)!;
+      expect(edge.data.kind).toBe(kind);
+    },
+  );
+
+  it("omits the multiplicity label for a generalization edge (UML 2.5 defines none)", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [
+        { id: "c1", name: "Perro", visibility: "public", attributes: [], operations: [] },
+        { id: "c2", name: "Animal", visibility: "public", attributes: [], operations: [] },
+      ],
+      enumerations: [],
+      relationships: [
+        {
+          id: "r1",
+          kind: "generalization",
+          source: { class_id: "c1", multiplicity: { lower: 1, upper: 1 }, role: null },
+          target: { class_id: "c2", multiplicity: { lower: 1, upper: 1 }, role: null },
+          name: null,
+        },
+      ],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+    const edge = elements.find((el) => "source" in el.data)!;
+    expect(edge.data.label).toBe("");
+  });
+
+  it("tags a self-referencing generalization with both self-loop classes and kind data (DD3)", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [{ id: "c1", name: "Nodo", visibility: "public", attributes: [], operations: [] }],
+      enumerations: [],
+      relationships: [
+        {
+          id: "r1",
+          kind: "generalization",
+          source: { class_id: "c1", multiplicity: { lower: 0, upper: 1 }, role: null },
+          target: { class_id: "c1", multiplicity: { lower: 0, upper: 1 }, role: null },
+          name: null,
+        },
+      ],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+    const edge = elements.find((el) => "source" in el.data)!;
+    expect(edge.classes).toBe("self-loop");
+    expect(edge.data.kind).toBe("generalization");
+  });
+
   it("drops an edge whose endpoint class is missing from model.classes", async () => {
     const { toElements } = await import("@/components/workspace/DiagramCanvas");
 
@@ -129,6 +208,48 @@ describe("DiagramCanvas — toElements (pure)", () => {
     const elements = toElements(model);
     const edges = elements.filter((el) => "source" in el.data);
     expect(edges).toHaveLength(0);
+  });
+});
+
+/**
+ * `STYLE` is exported (design.md DD6) as a plain data structure carrying the
+ * UML notation contract — assertable with zero DOM and zero canvas, since
+ * jsdom has no canvas and rendered arrowheads are otherwise untestable.
+ */
+describe("DiagramCanvas — STYLE (per-kind edge notation, DD1-DD3)", () => {
+  it("the generic edge selector declares no target-arrow-shape key (association stays a plain line, DD2)", async () => {
+    const { STYLE } = await import("@/components/workspace/DiagramCanvas");
+    const genericEdge = STYLE.find((rule) => rule.selector === "edge")!;
+    expect(genericEdge.style).not.toHaveProperty("target-arrow-shape");
+  });
+
+  it.each([
+    ["generalization", { "target-arrow-shape": "triangle", "target-arrow-fill": "hollow" }],
+    ["aggregation", { "source-arrow-shape": "diamond", "source-arrow-fill": "hollow" }],
+    ["composition", { "source-arrow-shape": "diamond", "source-arrow-fill": "filled" }],
+  ] as const)(
+    "the %s selector declares exactly its terminator shape + fill, and no loop-* property (DD3)",
+    async (kind, expectedTerminator) => {
+      const { STYLE } = await import("@/components/workspace/DiagramCanvas");
+      const rule = STYLE.find((r) => r.selector === `edge[kind = "${kind}"]`)!;
+      expect(rule).toBeDefined();
+      expect(rule.style).toMatchObject(expectedTerminator);
+      expect(rule.style).not.toHaveProperty("loop-direction");
+      expect(rule.style).not.toHaveProperty("loop-sweep");
+      expect(rule.style).not.toHaveProperty("control-point-step-size");
+      expect(rule.style).not.toHaveProperty("text-margin-y");
+    },
+  );
+
+  it("edge.self-loop still carries its four prior-cycle properties, unchanged (regression guard)", async () => {
+    const { STYLE } = await import("@/components/workspace/DiagramCanvas");
+    const selfLoop = STYLE.find((r) => r.selector === "edge.self-loop")!;
+    expect(selfLoop.style).toEqual({
+      "loop-direction": "0deg",
+      "loop-sweep": "-90deg",
+      "control-point-step-size": 100,
+      "text-margin-y": -28,
+    });
   });
 });
 

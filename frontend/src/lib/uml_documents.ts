@@ -123,7 +123,7 @@ export type UmlCommandIn =
       type: "AddRelationship";
       relationship: {
         id: string;
-        kind: "association";
+        kind: RelationshipKind;
         name?: string | null;
         // DD12: multiplicity goes OUT as a UML string, comes BACK as {lower, upper}.
         source: { class_id: string; multiplicity: string; role?: string | null };

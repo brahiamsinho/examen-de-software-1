@@ -8,10 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { ApiError } from "@/lib/api";
-import type { CommandResult, UmlClass, UmlCommandIn } from "@/lib/uml_documents";
+import type { CommandResult, RelationshipKind, UmlClass, UmlCommandIn } from "@/lib/uml_documents";
 
 const MULTIPLICITY_OPTIONS = ["1", "0..1", "0..*", "1..*"] as const;
 type MultiplicityString = (typeof MULTIPLICITY_OPTIONS)[number];
+
+const RELATIONSHIP_KIND_OPTIONS: readonly { value: RelationshipKind; label: string }[] = [
+  { value: "association", label: "Asociación" },
+  { value: "aggregation", label: "Agregación" },
+  { value: "composition", label: "Composición" },
+  { value: "generalization", label: "Generalización" },
+];
 
 type AddRelationshipControlProps = {
   pendingSourceId: string | null;
@@ -26,10 +33,14 @@ type AddRelationshipControlProps = {
 /**
  * Presentational: the click-click state (`pendingSourceId`/`pendingTargetId`)
  * lives in the container (DD8); this control only renders the affordance
- * for whatever state it is given and builds the `association`
- * `AddRelationship` command with `crypto.randomUUID()` (DD10) on submit. A
- * successful submission calls `onCancel` to clear both pending ids — the
- * same reset the container's "tap again = cancel" path performs.
+ * for whatever state it is given and builds an `AddRelationship` command
+ * for the locally-selected `RelationshipKind` (default `association`) with
+ * `crypto.randomUUID()` (DD10) on submit. Generalization hides both
+ * multiplicity selects and always submits `"1"`/`"1"` regardless of any
+ * prior selection (DD5); switching away from generalization restores it,
+ * since kind is never reset. A successful submission calls `onCancel` to
+ * clear both pending ids — the same reset the container's "tap again =
+ * cancel" path performs.
  *
  * `onSelectSelf` covers recursive/reflexive relationships (a class related
  * to itself — e.g. a tree node's `parent`): tapping the same class twice on
@@ -45,6 +56,7 @@ export function AddRelationshipControl({
   onSelectSelf,
   disabled = false,
 }: AddRelationshipControlProps) {
+  const [kind, setKind] = useState<RelationshipKind>("association");
   const [sourceMultiplicity, setSourceMultiplicity] = useState<MultiplicityString>("1");
   const [targetMultiplicity, setTargetMultiplicity] = useState<MultiplicityString>("1");
   const [error, setError] = useState<string | null>(null);
@@ -86,13 +98,19 @@ export function AddRelationshipControl({
     setError(null);
     setSubmitting(true);
     try {
+      // DD5: the payload is derived from what is visible, not the hidden
+      // multiplicity state — generalization has no multiplicity in UML 2.5,
+      // so it always sends the literal "1"/"1" regardless of any prior
+      // selection. Kind is never reset on switch, so switching back to a
+      // multiplicity-bearing kind restores the earlier choice.
+      const isGeneralization = kind === "generalization";
       await onSubmit({
         type: "AddRelationship",
         relationship: {
           id: crypto.randomUUID(),
-          kind: "association",
-          source: { class_id: sourceId, multiplicity: sourceMultiplicity },
-          target: { class_id: targetId, multiplicity: targetMultiplicity },
+          kind,
+          source: { class_id: sourceId, multiplicity: isGeneralization ? "1" : sourceMultiplicity },
+          target: { class_id: targetId, multiplicity: isGeneralization ? "1" : targetMultiplicity },
         },
       });
       onCancel();
@@ -111,39 +129,56 @@ export function AddRelationshipControl({
         {sourceClass?.name ?? pendingSourceId} → {targetClass?.name ?? pendingTargetId}
       </p>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="relationship-source-multiplicity">Multiplicidad origen</Label>
-          <Select
-            id="relationship-source-multiplicity"
-            value={sourceMultiplicity}
-            onChange={(event) => setSourceMultiplicity(event.target.value as MultiplicityString)}
-            className="font-mono"
-          >
-            {MULTIPLICITY_OPTIONS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="relationship-target-multiplicity">Multiplicidad destino</Label>
-          <Select
-            id="relationship-target-multiplicity"
-            value={targetMultiplicity}
-            onChange={(event) => setTargetMultiplicity(event.target.value as MultiplicityString)}
-            className="font-mono"
-          >
-            {MULTIPLICITY_OPTIONS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </Select>
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="relationship-kind">Tipo de relación</Label>
+        <Select
+          id="relationship-kind"
+          value={kind}
+          onChange={(event) => setKind(event.target.value as RelationshipKind)}
+        >
+          {RELATIONSHIP_KIND_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
       </div>
+
+      {kind === "generalization" ? null : (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="relationship-source-multiplicity">Multiplicidad origen</Label>
+            <Select
+              id="relationship-source-multiplicity"
+              value={sourceMultiplicity}
+              onChange={(event) => setSourceMultiplicity(event.target.value as MultiplicityString)}
+              className="font-mono"
+            >
+              {MULTIPLICITY_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="relationship-target-multiplicity">Multiplicidad destino</Label>
+            <Select
+              id="relationship-target-multiplicity"
+              value={targetMultiplicity}
+              onChange={(event) => setTargetMultiplicity(event.target.value as MultiplicityString)}
+              className="font-mono"
+            >
+              {MULTIPLICITY_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <Alert variant="destructive">
