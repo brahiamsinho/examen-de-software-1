@@ -8,10 +8,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
 import { AddClassForm } from "@/components/workspace/AddClassForm";
+import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
 import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeControl";
 import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
+import { RemoveOperationControl } from "@/components/workspace/RemoveOperationControl";
 import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelationshipControl";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { useDocument } from "@/state/document";
@@ -199,6 +201,19 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               </CardContent>
             </Card>
 
+            <Card>
+              <CardHeader>
+                <CardTitle>Operación</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AddOperationForm
+                  classes={document.model.classes}
+                  onSubmit={submitCommand}
+                  disabled={isSubmitting}
+                />
+              </CardContent>
+            </Card>
+
             <AddRelationshipControl
               pendingSourceId={effectiveSourceId}
               pendingTargetId={effectiveTargetId}
@@ -233,6 +248,19 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               </CardHeader>
               <CardContent>
                 <RemoveAttributeControl
+                  classes={document.model.classes}
+                  onSubmit={submitCommand}
+                  disabled={isSubmitting}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Operación</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RemoveOperationControl
                   classes={document.model.classes}
                   onSubmit={submitCommand}
                   disabled={isSubmitting}

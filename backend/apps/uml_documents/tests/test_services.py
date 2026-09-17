@@ -15,11 +15,13 @@ from django.http import Http404
 from apps.organizations.tests.factories import make_org_with_roles
 from apps.uml_commands import commands
 from apps.uml_documents import schemas, services
+from apps.uml_documents.errors import InvalidCommandPayloadError
 from apps.uml_modeling.domain.elements import (
     Relationship,
     RelationshipEnd,
     RelationshipKind,
     UmlAttribute,
+    UmlOperation,
     Visibility,
 )
 from apps.uml_modeling.documents import Position
@@ -145,6 +147,62 @@ def test_command_from_payload():
         )
     )
     assert remove_attribute == commands.RemoveAttribute(class_id=class_id, attribute_id=attribute_id)
+
+    operation_id = new_id()
+    add_operation = services.command_from_payload(
+        schemas.AddOperationIn(
+            type="AddOperation",
+            class_id=class_id,
+            operation=schemas.UmlOperationIn(
+                id=operation_id, name="crearUsuario", return_type="String", visibility="public"
+            ),
+        )
+    )
+    assert add_operation == commands.AddOperation(
+        class_id=class_id,
+        operation=UmlOperation(
+            id=operation_id,
+            name="crearUsuario",
+            return_type=PrimitiveType.STRING,
+            parameters=(),
+            visibility=Visibility.PUBLIC,
+        ),
+    )
+
+    add_operation_no_return_type_omitted = services.command_from_payload(
+        schemas.AddOperationIn(
+            type="AddOperation",
+            class_id=class_id,
+            operation=schemas.UmlOperationIn(id=operation_id, name="guardar"),
+        )
+    )
+    assert add_operation_no_return_type_omitted.operation.return_type is None
+    assert add_operation_no_return_type_omitted.operation.parameters == ()
+
+    add_operation_no_return_type_null = services.command_from_payload(
+        schemas.AddOperationIn(
+            type="AddOperation",
+            class_id=class_id,
+            operation=schemas.UmlOperationIn(id=operation_id, name="guardar", return_type=None),
+        )
+    )
+    assert add_operation_no_return_type_null.operation.return_type is None
+
+    with pytest.raises(InvalidCommandPayloadError):
+        services.command_from_payload(
+            schemas.AddOperationIn(
+                type="AddOperation",
+                class_id=class_id,
+                operation=schemas.UmlOperationIn(id=operation_id, name="guardar", return_type=""),
+            )
+        )
+
+    remove_operation = services.command_from_payload(
+        schemas.RemoveOperationIn(
+            type="RemoveOperation", class_id=class_id, operation_id=operation_id
+        )
+    )
+    assert remove_operation == commands.RemoveOperation(class_id=class_id, operation_id=operation_id)
 
     add_relationship = services.command_from_payload(
         schemas.AddRelationshipIn(

@@ -28,6 +28,7 @@ from apps.uml_modeling.domain.elements import (
     RelationshipEnd,
     RelationshipKind,
     UmlAttribute,
+    UmlOperation,
     Visibility,
 )
 from apps.uml_modeling.domain.ids import ElementId
@@ -206,6 +207,15 @@ def _command_from_payload(payload: "schemas.CommandIn") -> UmlCommand:
         return commands.RemoveAttribute(
             class_id=ElementId(payload.class_id), attribute_id=ElementId(payload.attribute_id)
         )
+    if isinstance(payload, schemas.AddOperationIn):
+        return commands.AddOperation(
+            class_id=ElementId(payload.class_id),
+            operation=_operation_from_schema(payload.operation),
+        )
+    if isinstance(payload, schemas.RemoveOperationIn):
+        return commands.RemoveOperation(
+            class_id=ElementId(payload.class_id), operation_id=ElementId(payload.operation_id)
+        )
     if isinstance(payload, schemas.AddRelationshipIn):
         return commands.AddRelationship(relationship=_relationship_from_schema(payload.relationship))
     if isinstance(payload, schemas.RemoveRelationshipIn):
@@ -219,6 +229,18 @@ def _attribute_from_schema(attribute_in: "schemas.UmlAttributeIn") -> UmlAttribu
         name=attribute_in.name,
         type=codec._decode_attribute_type(attribute_in.type),
         visibility=Visibility(attribute_in.visibility),
+    )
+
+
+def _operation_from_schema(operation_in: "schemas.UmlOperationIn") -> UmlOperation:
+    return UmlOperation(
+        id=ElementId(operation_in.id),
+        name=operation_in.name,
+        return_type=codec._decode_attribute_type(operation_in.return_type)
+        if operation_in.return_type is not None
+        else None,
+        parameters=(),
+        visibility=Visibility(operation_in.visibility),
     )
 
 

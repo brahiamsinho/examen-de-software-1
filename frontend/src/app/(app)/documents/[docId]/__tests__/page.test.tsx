@@ -239,6 +239,34 @@ describe("DocumentPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders an 'Operación' card after the 'Atributo' card under both 'Agregar' and 'Eliminar', wired to submitCommand/isSubmitting", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    const { container } = renderPage();
+
+    await screen.findByText("Tap Cliente");
+
+    expect(screen.getByRole("button", { name: "Agregar operación" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eliminar operación" })).toBeInTheDocument();
+
+    const html = container.innerHTML;
+    const addAttributeIndex = html.indexOf("Agregar atributo");
+    const addOperationIndex = html.indexOf("Agregar operación");
+    const eliminarHeadingIndex = html.indexOf(">Eliminar<");
+    const removeAttributeIndex = html.indexOf('id="remove-attribute-class"');
+    const removeOperationIndex = html.indexOf('id="remove-operation-class"');
+
+    expect(addOperationIndex).toBeGreaterThan(addAttributeIndex);
+    expect(removeOperationIndex).toBeGreaterThan(eliminarHeadingIndex);
+    expect(removeOperationIndex).toBeGreaterThan(removeAttributeIndex);
+  });
+
   it("renders the 3 remove controls under an 'Eliminar' heading, in class/attribute/relationship order, after the Add* block (DD7)", async () => {
     useDocumentMock.mockReturnValue({
       document,

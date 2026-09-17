@@ -326,6 +326,26 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   project's docker-lifecycle convention. Full regression:
   339/339 backend (`pytest`) and 293/293 frontend (`vitest run`) pass, plus
   clean `eslint`/`tsc --noEmit`/`next build`.
+- **SDD Cycle 14** (`2026-09-16-uml-class-operations`) is **implemented**
+  (Phases 1–14 of `tasks.md`). **Operations are now reachable end to end** —
+  the domain (`UmlOperation`/`UmlClass.operations`), codec round-trip, and
+  `empty_element_name` validation all existed with zero production callers
+  before this cycle; `AddOperation`/`RemoveOperation` (mirroring
+  `AddAttribute`/`RemoveAttribute` verbatim) open the write path: closed
+  command union 7→9, `_HANDLERS` 7→9, `CommandIn`/`UmlCommandIn` discriminated
+  unions both grow by 2, `AddOperationForm`/`RemoveOperationControl` mount
+  under the existing "Agregar"/"Eliminar" panels, and `DiagramCanvas` renders
+  a second UML-notation compartment below attributes (`+ crearUsuario():
+  Usuario`), separated by its own divider — additive-only layout math keeps
+  a zero-operations class byte-identical to before this cycle. A new
+  `duplicate_operation_name` rule (name-only, scoped per class) brings the
+  fixed validation registry from **10 rules to 11**. **v1 scope**:
+  `parameters` stays UI-unreachable — the domain/codec/persistence already
+  carry a non-empty tuple losslessly, but no form collects one; the wire
+  schema (`UmlOperationIn`) has no `parameters` field at all, and the mapper
+  always constructs `parameters=()`. 384/384 backend tests pass (25 new),
+  335/335 frontend tests pass (17 new), clean `eslint`/`next build`.
+  `sdd-verify`/`sdd-archive` are the remaining steps.
 - **SDD Cycle 13** (`2026-09-15-uml-node-position-sync`) is **implemented**
   (Phases 1–7 of `tasks.md`). **The document socket is now bidirectional** —
   Cycle 12 gave `DocumentConsumer` only `document_update`; this cycle adds

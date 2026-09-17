@@ -7,7 +7,7 @@ closed-union convention (`domain/types.py::AttributeType`).
 """
 from dataclasses import dataclass
 
-from apps.uml_modeling.domain.elements import Relationship, UmlAttribute
+from apps.uml_modeling.domain.elements import Relationship, UmlAttribute, UmlOperation
 from apps.uml_modeling.domain.ids import ElementId
 
 
@@ -41,6 +41,18 @@ class RemoveAttribute:
 
 
 @dataclass(frozen=True)
+class AddOperation:
+    class_id: ElementId
+    operation: UmlOperation
+
+
+@dataclass(frozen=True)
+class RemoveOperation:
+    class_id: ElementId
+    operation_id: ElementId
+
+
+@dataclass(frozen=True)
 class AddRelationship:
     relationship: Relationship
 
@@ -56,6 +68,8 @@ UmlCommand = (
     | RenameClass
     | AddAttribute
     | RemoveAttribute
+    | AddOperation
+    | RemoveOperation
     | AddRelationship
     | RemoveRelationship
 )

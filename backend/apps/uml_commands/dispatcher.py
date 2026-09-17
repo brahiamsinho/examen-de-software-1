@@ -16,15 +16,18 @@ from apps.uml_modeling.validation.engine import RULES, validate
 from apps.uml_commands.commands import (
     AddAttribute,
     AddClass,
+    AddOperation,
     AddRelationship,
     RemoveAttribute,
     RemoveClass,
+    RemoveOperation,
     RemoveRelationship,
     RenameClass,
     UmlCommand,
 )
 from apps.uml_commands.handlers.attributes import add_attribute, remove_attribute
 from apps.uml_commands.handlers.classes import add_class, remove_class, rename_class
+from apps.uml_commands.handlers.operations import add_operation, remove_operation
 from apps.uml_commands.handlers.relationships import add_relationship, remove_relationship
 
 Handler = Callable[[CanonicalUmlModel, UmlCommand], CanonicalUmlModel]
@@ -35,6 +38,8 @@ _HANDLERS: dict[type, Handler] = {
     RenameClass: rename_class,
     AddAttribute: add_attribute,
     RemoveAttribute: remove_attribute,
+    AddOperation: add_operation,
+    RemoveOperation: remove_operation,
     AddRelationship: add_relationship,
     RemoveRelationship: remove_relationship,
 }

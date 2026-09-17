@@ -46,5 +46,5 @@ def test_validate_never_short_circuits_and_aggregates_every_rule():
     assert result.diagnostics == (first_diagnostic, second_diagnostic)
 
 
-def test_registry_has_exactly_ten_rules():
-    assert len(RULES) == 10
+def test_registry_has_exactly_eleven_rules():
+    assert len(RULES) == 11

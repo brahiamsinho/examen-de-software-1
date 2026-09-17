@@ -4,7 +4,7 @@
 The registry is an explicit static tuple (DD4) rather than a decorator
 auto-registry: deterministic order, no import-time side effects, no
 hidden global mutable state, and the registry itself is assertable in
-a test ("exactly 10 rules", Phase 7.6).
+a test ("exactly 11 rules", Phase 7).
 """
 from collections.abc import Callable, Iterable
 
@@ -15,6 +15,7 @@ from apps.uml_modeling.validation.rules.naming import (
     duplicate_attribute_name,
     duplicate_class_name,
     duplicate_enumeration_literal,
+    duplicate_operation_name,
     empty_element_name,
 )
 from apps.uml_modeling.validation.rules.relationships import (
@@ -27,13 +28,14 @@ from apps.uml_modeling.validation.rules.types import unknown_attribute_type
 
 Rule = Callable[[CanonicalUmlModel], Iterable[Diagnostic]]
 
-# The complete Cycle-1 registry: exactly the 10 fixed rules (uml-validation
-# spec), in declared order (DD4). `test_registry_has_exactly_ten_rules`
-# (Phase 7.6) asserts this count.
+# The complete Cycle-1 registry: exactly the 11 fixed rules (uml-validation
+# spec), in declared order (DD4). `test_registry_has_exactly_eleven_rules`
+# (Phase 7) asserts this count.
 RULES: tuple[Rule, ...] = (
     empty_element_name,
     duplicate_class_name,
     duplicate_attribute_name,
+    duplicate_operation_name,
     duplicate_enumeration_literal,
     unknown_attribute_type,
     invalid_relationship_endpoint,

@@ -32,6 +32,18 @@ _command_in_adapter = TypeAdapter(schemas.CommandIn)
         ),
         (
             {
+                "type": "AddOperation",
+                "class_id": "c1",
+                "operation": {"id": "o1", "name": "crearUsuario", "return_type": "String"},
+            },
+            schemas.AddOperationIn,
+        ),
+        (
+            {"type": "RemoveOperation", "class_id": "c1", "operation_id": "o1"},
+            schemas.RemoveOperationIn,
+        ),
+        (
+            {
                 "type": "AddRelationship",
                 "relationship": {
                     "id": "r1",
@@ -48,11 +60,35 @@ _command_in_adapter = TypeAdapter(schemas.CommandIn)
         ),
     ],
 )
-def test_command_in_discriminates_each_of_the_seven_shapes(payload, expected_type):
+def test_command_in_discriminates_each_of_the_nine_shapes(payload, expected_type):
     parsed = _command_in_adapter.validate_python(payload)
 
     assert isinstance(parsed, expected_type)
     assert parsed.type == payload["type"]
+
+
+def test_uml_operation_in_return_type_accepts_null():
+    parsed = schemas.UmlOperationIn(id="o1", name="crearUsuario", return_type=None)
+
+    assert parsed.return_type is None
+
+
+def test_uml_operation_in_return_type_defaults_to_none_when_omitted():
+    parsed = schemas.UmlOperationIn(id="o1", name="crearUsuario")
+
+    assert parsed.return_type is None
+
+
+def test_uml_operation_in_return_type_accepts_a_primitive_string():
+    parsed = schemas.UmlOperationIn(id="o1", name="crearUsuario", return_type="String")
+
+    assert parsed.return_type == "String"
+
+
+def test_uml_operation_in_visibility_defaults_to_public():
+    parsed = schemas.UmlOperationIn(id="o1", name="crearUsuario")
+
+    assert parsed.visibility == "public"
 
 
 def test_document_create_in_requires_name():

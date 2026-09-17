@@ -1,6 +1,6 @@
-"""Unit tests for the 7 `UmlCommand` dataclasses: each constructs with its
+"""Unit tests for the 9 `UmlCommand` dataclasses: each constructs with its
 documented fields, each is frozen, and the `UmlCommand` union covers
-exactly the 7 types.
+exactly the 9 types.
 """
 import dataclasses
 import typing
@@ -12,6 +12,7 @@ from apps.uml_modeling.domain.elements import (
     RelationshipEnd,
     RelationshipKind,
     UmlAttribute,
+    UmlOperation,
     Visibility,
 )
 from apps.uml_modeling.domain.ids import new_id
@@ -19,9 +20,11 @@ from apps.uml_modeling.domain.types import Multiplicity, PrimitiveType
 from apps.uml_commands.commands import (
     AddAttribute,
     AddClass,
+    AddOperation,
     AddRelationship,
     RemoveAttribute,
     RemoveClass,
+    RemoveOperation,
     RemoveRelationship,
     RenameClass,
     UmlCommand,
@@ -30,6 +33,10 @@ from apps.uml_commands.commands import (
 
 def _an_attribute() -> UmlAttribute:
     return UmlAttribute(id=new_id(), name="field", type=PrimitiveType.STRING, visibility=Visibility.PRIVATE)
+
+
+def _an_operation() -> UmlOperation:
+    return UmlOperation(id=new_id(), name="crearUsuario", return_type=PrimitiveType.STRING, visibility=Visibility.PUBLIC)
 
 
 def _a_relationship() -> Relationship:
@@ -122,6 +129,40 @@ def test_remove_attribute_is_frozen():
         command.attribute_id = new_id()
 
 
+def test_add_operation_constructs_with_documented_fields():
+    class_id = new_id()
+    operation = _an_operation()
+
+    command = AddOperation(class_id=class_id, operation=operation)
+
+    assert command.class_id == class_id
+    assert command.operation is operation
+
+
+def test_add_operation_is_frozen():
+    command = AddOperation(class_id=new_id(), operation=_an_operation())
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        command.operation = _an_operation()
+
+
+def test_remove_operation_constructs_with_documented_fields():
+    class_id = new_id()
+    operation_id = new_id()
+
+    command = RemoveOperation(class_id=class_id, operation_id=operation_id)
+
+    assert command.class_id == class_id
+    assert command.operation_id == operation_id
+
+
+def test_remove_operation_is_frozen():
+    command = RemoveOperation(class_id=new_id(), operation_id=new_id())
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        command.operation_id = new_id()
+
+
 def test_add_relationship_constructs_with_documented_fields():
     relationship = _a_relationship()
 
@@ -152,7 +193,7 @@ def test_remove_relationship_is_frozen():
         command.relationship_id = new_id()
 
 
-def test_uml_command_union_covers_exactly_the_seven_types():
+def test_uml_command_union_covers_exactly_the_nine_types():
     members = set(typing.get_args(UmlCommand))
 
     assert members == {
@@ -161,6 +202,8 @@ def test_uml_command_union_covers_exactly_the_seven_types():
         RenameClass,
         AddAttribute,
         RemoveAttribute,
+        AddOperation,
+        RemoveOperation,
         AddRelationship,
         RemoveRelationship,
     }

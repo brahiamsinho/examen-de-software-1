@@ -13,8 +13,17 @@ from apps.uml_modeling.domain.types import PrimitiveType
 from apps.uml_modeling.validation.diagnostics import DiagnosticCode
 from apps.uml_modeling.validation.engine import RULES, validate
 from apps.uml_commands import dispatcher
-from apps.uml_commands.commands import AddAttribute, AddRelationship, RemoveAttribute, RemoveClass, RemoveRelationship
+from apps.uml_commands.commands import (
+    AddAttribute,
+    AddOperation,
+    AddRelationship,
+    RemoveAttribute,
+    RemoveClass,
+    RemoveOperation,
+    RemoveRelationship,
+)
 from apps.uml_commands.dispatcher import CommandResult, apply
+from apps.uml_modeling.domain.elements import UmlOperation
 
 from .factories import a_class, a_document, a_relationship, a_relationship_end
 
@@ -88,8 +97,8 @@ def test_apply_always_populates_validation_result(monkeypatch):
     assert result.validation_result == validate(result.document.model, rules=RULES)
 
 
-def test_handlers_registry_has_exactly_seven_entries():
-    assert len(dispatcher._HANDLERS) == 7
+def test_handlers_registry_has_exactly_nine_entries():
+    assert len(dispatcher._HANDLERS) == 9
 
 
 def test_apply_never_raises_and_surfaces_invalid_endpoint_diagnostics():
@@ -154,6 +163,44 @@ def test_apply_add_attribute_unknown_class_id_is_a_no_op_through_the_real_dispat
     attribute = UmlAttribute(id=new_id(), name="field", type=PrimitiveType.STRING)
 
     result = apply(document, AddAttribute(class_id=new_id(), attribute=attribute), now=_NOW)
+
+    assert result.document.model.classes == original_model.classes
+    assert result.document.revision == original_revision + 1
+
+
+def test_apply_add_operation_appends_through_the_real_dispatcher():
+    original_class = a_class(name="Existing")
+    document = a_document(model=CanonicalUmlModel(classes=(original_class,)))
+    original_revision = document.revision
+    operation = UmlOperation(id=new_id(), name="crearUsuario", return_type=PrimitiveType.STRING)
+
+    result = apply(document, AddOperation(class_id=original_class.id, operation=operation), now=_NOW)
+
+    updated_class = result.document.model.class_by_id(original_class.id)
+    assert updated_class.operations == (operation,)
+    assert result.document.revision == original_revision + 1
+
+
+def test_apply_add_operation_unknown_class_id_is_a_no_op_through_the_real_dispatcher():
+    original_model = CanonicalUmlModel(classes=(a_class(),))
+    document = a_document(model=original_model)
+    original_revision = document.revision
+    operation = UmlOperation(id=new_id(), name="crearUsuario")
+
+    result = apply(document, AddOperation(class_id=new_id(), operation=operation), now=_NOW)
+
+    assert result.document.model.classes == original_model.classes
+    assert result.document.revision == original_revision + 1
+
+
+def test_apply_remove_operation_unknown_ids_is_a_no_op_through_the_real_dispatcher():
+    original_model = CanonicalUmlModel(classes=(a_class(),))
+    document = a_document(model=original_model)
+    original_revision = document.revision
+
+    result = apply(
+        document, RemoveOperation(class_id=new_id(), operation_id=new_id()), now=_NOW
+    )
 
     assert result.document.model.classes == original_model.classes
     assert result.document.revision == original_revision + 1

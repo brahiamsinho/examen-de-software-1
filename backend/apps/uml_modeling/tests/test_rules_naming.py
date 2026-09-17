@@ -4,14 +4,21 @@ Each rule is invoked directly (never through `validate`), asserting the
 diagnostic's code, severity, path, and element_ref — per DD6, each rule
 is callable and testable in isolation.
 """
+from apps.uml_modeling.domain.elements import UmlOperation
+from apps.uml_modeling.domain.ids import new_id
 from apps.uml_modeling.tests.factories import a_class, an_attribute, an_enumeration, an_enumeration_literal, a_model
 from apps.uml_modeling.validation.diagnostics import DiagnosticCode, ElementKind, Severity
 from apps.uml_modeling.validation.rules.naming import (
     duplicate_attribute_name,
     duplicate_class_name,
     duplicate_enumeration_literal,
+    duplicate_operation_name,
     empty_element_name,
 )
+
+
+def _an_operation(name: str) -> UmlOperation:
+    return UmlOperation(id=new_id(), name=name)
 
 
 def test_empty_element_name_flags_a_blank_class_name():
@@ -51,6 +58,20 @@ def test_empty_element_name_flags_a_blank_attribute_name_with_class_scoped_path(
     assert diagnostic.code is DiagnosticCode.EMPTY_ELEMENT_NAME
     assert diagnostic.path == f"/classes/{owner.id}/attributes/{blank_attribute.id}"
     assert diagnostic.element_ref.kind is ElementKind.ATTRIBUTE
+
+
+def test_empty_element_name_flags_a_blank_operation_name_with_class_scoped_path():
+    blank_operation = _an_operation("")
+    owner = a_class(name="Order", operations=(blank_operation,))
+    model = a_model(classes=(owner,))
+
+    diagnostics = empty_element_name(model)
+
+    assert len(diagnostics) == 1
+    diagnostic = diagnostics[0]
+    assert diagnostic.code is DiagnosticCode.EMPTY_ELEMENT_NAME
+    assert diagnostic.path == f"/classes/{owner.id}/operations/{blank_operation.id}"
+    assert diagnostic.element_ref.kind is ElementKind.OPERATION
 
 
 def test_empty_element_name_produces_nothing_for_a_valid_model():
@@ -100,6 +121,48 @@ def test_duplicate_attribute_name_produces_nothing_for_unique_names():
     model = a_model(classes=(owner,))
 
     assert duplicate_attribute_name(model) == ()
+
+
+def test_duplicate_operation_name_flags_the_second_operation_named_the_same():
+    first = _an_operation("crearUsuario")
+    second = _an_operation("crearUsuario")
+    owner = a_class(name="Order", operations=(first, second))
+    model = a_model(classes=(owner,))
+
+    diagnostics = duplicate_operation_name(model)
+
+    assert len(diagnostics) == 1
+    diagnostic = diagnostics[0]
+    assert diagnostic.code is DiagnosticCode.DUPLICATE_OPERATION_NAME
+    assert diagnostic.severity is Severity.ERROR
+    assert diagnostic.path == f"/classes/{owner.id}/operations/{second.id}"
+    assert diagnostic.element_ref.kind is ElementKind.OPERATION
+
+
+def test_duplicate_operation_name_ignores_return_type_differences():
+    first = UmlOperation(id=new_id(), name="crearUsuario", return_type=None)
+    second = UmlOperation(id=new_id(), name="crearUsuario", return_type=None)
+    owner = a_class(name="Order", operations=(first, second))
+    model = a_model(classes=(owner,))
+
+    diagnostics = duplicate_operation_name(model)
+
+    assert len(diagnostics) == 1
+
+
+def test_duplicate_operation_name_produces_nothing_for_the_same_name_in_different_classes():
+    class_a = a_class(name="A", operations=(_an_operation("crearUsuario"),))
+    class_b = a_class(name="B", operations=(_an_operation("crearUsuario"),))
+    model = a_model(classes=(class_a, class_b))
+
+    assert duplicate_operation_name(model) == ()
+
+
+def test_duplicate_operation_name_produces_nothing_for_unique_names():
+    owner = a_class(name="Order", operations=(_an_operation("crear"), _an_operation("guardar")))
+    model = a_model(classes=(owner,))
+
+    assert duplicate_operation_name(model) == ()
 
 
 def test_duplicate_enumeration_literal_flags_the_second_literal_named_the_same():

@@ -48,6 +48,25 @@ class RemoveAttributeIn(Schema):
     attribute_id: str
 
 
+class UmlOperationIn(Schema):
+    id: str
+    name: str
+    return_type: str | dict | None = None  # decoded via codec._decode_attribute_type
+    visibility: Literal["public", "private", "protected", "package"] = "public"
+
+
+class AddOperationIn(Schema):
+    type: Literal["AddOperation"]
+    class_id: str
+    operation: UmlOperationIn
+
+
+class RemoveOperationIn(Schema):
+    type: Literal["RemoveOperation"]
+    class_id: str
+    operation_id: str
+
+
 class RelationshipEndIn(Schema):
     class_id: str
     multiplicity: str  # e.g. "0..1", "1..*" — parsed via domain.types.parse_multiplicity
@@ -79,6 +98,8 @@ CommandIn = Annotated[
         RenameClassIn,
         AddAttributeIn,
         RemoveAttributeIn,
+        AddOperationIn,
+        RemoveOperationIn,
         AddRelationshipIn,
         RemoveRelationshipIn,
     ],

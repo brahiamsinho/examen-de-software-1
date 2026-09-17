@@ -1,9 +1,9 @@
 """Integration test (uml-validation REQ4): every diagnostic's path and
 element_ref MUST resolve to an element actually present in the
-validated model, across the full 10-rule registry, exercised together
+validated model, across the full 11-rule registry, exercised together
 via `validate()` (not each rule in isolation).
 """
-from apps.uml_modeling.domain.elements import RelationshipKind
+from apps.uml_modeling.domain.elements import RelationshipKind, UmlOperation
 from apps.uml_modeling.domain.ids import new_id
 from apps.uml_modeling.domain.types import EnumerationRef, Multiplicity
 from apps.uml_modeling.tests.factories import (
@@ -21,7 +21,14 @@ from apps.uml_modeling.validation.engine import validate
 
 def test_every_diagnostic_from_the_full_registry_resolves_to_a_real_element():
     empty_class = a_class(name="")
-    order = a_class(name="Order", attributes=(an_attribute(name="id"),))
+    order = a_class(
+        name="Order",
+        attributes=(an_attribute(name="id"),),
+        operations=(
+            UmlOperation(id=new_id(), name="crearUsuario"),
+            UmlOperation(id=new_id(), name="crearUsuario"),
+        ),
+    )
     duplicate_order = a_class(name="Order", attributes=(an_attribute(name="id"),))
     item = a_class(name="Item", attributes=(an_attribute(name="qty"), an_attribute(name="qty")))
     widget = a_class(
@@ -64,7 +71,7 @@ def test_every_diagnostic_from_the_full_registry_resolves_to_a_real_element():
 
     produced_codes = {diagnostic.code for diagnostic in result.diagnostics}
     assert produced_codes == set(DiagnosticCode)
-    assert len(result.diagnostics) == 10
+    assert len(result.diagnostics) == 11
 
     for diagnostic in result.diagnostics:
         assert diagnostic_resolves_to_a_real_element(model, diagnostic), (

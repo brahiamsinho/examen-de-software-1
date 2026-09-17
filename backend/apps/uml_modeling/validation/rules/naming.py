@@ -115,6 +115,30 @@ def duplicate_attribute_name(model: CanonicalUmlModel) -> tuple[Diagnostic, ...]
     return tuple(diagnostics)
 
 
+def duplicate_operation_name(model: CanonicalUmlModel) -> tuple[Diagnostic, ...]:
+    """Flag every operation after the first one sharing its name, scoped
+    to its owning class. Name-only comparison — no signature/overload
+    logic.
+    """
+    diagnostics: list[Diagnostic] = []
+    for uml_class in model.classes:
+        seen: set[str] = set()
+        for operation in uml_class.operations:
+            if operation.name in seen:
+                diagnostics.append(
+                    Diagnostic(
+                        severity=Severity.ERROR,
+                        code=DiagnosticCode.DUPLICATE_OPERATION_NAME,
+                        message=f"Duplicate operation name: {operation.name!r}",
+                        path=operation_path(uml_class.id, operation.id),
+                        element_ref=ElementRef(kind=ElementKind.OPERATION, id=operation.id),
+                    )
+                )
+            else:
+                seen.add(operation.name)
+    return tuple(diagnostics)
+
+
 def duplicate_enumeration_literal(model: CanonicalUmlModel) -> tuple[Diagnostic, ...]:
     """Flag every literal after the first one sharing its name, scoped
     to its owning enumeration.

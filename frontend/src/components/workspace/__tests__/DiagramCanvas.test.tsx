@@ -249,6 +249,120 @@ describe("DiagramCanvas — toElements (pure)", () => {
 });
 
 /**
+ * Operations compartment (design.md DD9/DD10, spec "Diagram Rendering"):
+ * a second compartment below attributes, separated by a divider, in UML
+ * notation `{visibility symbol} {name}({parameters}): {returnType}`. A
+ * class with zero operations MUST render byte-identically to the
+ * attribute-only case — additive-only layout math.
+ */
+describe("DiagramCanvas — operations compartment (DD9/DD10)", () => {
+  it("renders an operations compartment below attributes, separated by a divider, in UML notation", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [
+        {
+          id: "c1",
+          name: "Cliente",
+          visibility: "public",
+          attributes: [{ id: "a1", name: "nombre", type: "String", visibility: "private" }],
+          operations: [
+            {
+              id: "o1",
+              name: "crearUsuario",
+              return_type: "String",
+              parameters: [],
+              visibility: "public",
+            },
+          ],
+        },
+      ],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+    const node = elements[0]!;
+    const svg = decodeURIComponent((node.data.bgImage as string).replace("data:image/svg+xml,", ""));
+
+    expect(svg).toContain("+ crearUsuario(): String");
+    // Two dividers: one under the name compartment, one under attributes.
+    expect((svg.match(/<line/g) ?? []).length).toBe(2);
+  });
+
+  it("renders an operation with no return type without a ': {returnType}' suffix, distinct from one with a return type", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [
+        {
+          id: "c1",
+          name: "Cliente",
+          visibility: "public",
+          attributes: [],
+          operations: [
+            { id: "o1", name: "eliminar", return_type: null, parameters: [], visibility: "public" },
+            {
+              id: "o2",
+              name: "crearUsuario",
+              return_type: "String",
+              parameters: [],
+              visibility: "public",
+            },
+          ],
+        },
+      ],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(model);
+    const svg = decodeURIComponent(
+      (elements[0]!.data.bgImage as string).replace("data:image/svg+xml,", ""),
+    );
+
+    expect(svg).toContain("+ eliminar()");
+    expect(svg).not.toContain("eliminar(): ");
+    expect(svg).toContain("+ crearUsuario(): String");
+  });
+
+  it("a class with zero operations renders byte-identically to the attribute-only case (SVG, width, height)", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const withoutOperationsField: UmlModel = {
+      classes: [
+        {
+          id: "c1",
+          name: "Cliente",
+          visibility: "public",
+          attributes: [{ id: "a1", name: "nombre", type: "String", visibility: "private" }],
+          operations: [],
+        },
+      ],
+      enumerations: [],
+      relationships: [],
+      generation_metadata: {},
+    };
+
+    const elements = toElements(withoutOperationsField);
+    const node = elements[0]!;
+
+    // Pinned against the pre-operations-cycle shape: one divider (name only)
+    // and no operations compartment markup at all.
+    const svg = decodeURIComponent((node.data.bgImage as string).replace("data:image/svg+xml,", ""));
+    expect((svg.match(/<line/g) ?? []).length).toBe(1);
+    expect(svg).toContain("nombre: String");
+
+    const expectedWidth = 150; // MIN_BOX_WIDTH floor for this short content
+    expect(node.data.width).toBeGreaterThanOrEqual(expectedWidth);
+    // height: PADDING_Y*2 + NAME_LINE_HEIGHT + DIVIDER_MARGIN*2 + 1 attr line
+    expect(node.data.height).toBe(10 * 2 + 24 + 8 * 2 + 1 * 18);
+  });
+});
+
+/**
  * `STYLE` is exported (design.md DD6) as a plain data structure carrying the
  * UML notation contract — assertable with zero DOM and zero canvas, since
  * jsdom has no canvas and rendered arrowheads are otherwise untestable.

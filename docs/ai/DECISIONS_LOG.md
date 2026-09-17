@@ -1,5 +1,59 @@
 # Decisions Log
 
+## 2026-09-16 — Cycle 14 apply: UML class operations (`2026-09-16-uml-class-operations`)
+
+`sdd-apply` implemented all 27 tasks (Phases 1–14) from
+`openspec/changes/2026-09-16-uml-class-operations/tasks.md` with strict TDD,
+single PR (`size:exception`, ~950-1150 estimated lines, accepted by the user
+over the 800-line budget). This cycle opens the operation write path end to
+end: `AddOperation`/`RemoveOperation` clone the attribute vertical slice
+(command → handler → dispatcher → schema → form → canvas compartment) at
+every layer, so `+ crearUsuario(): Usuario` is now declarable and renders
+live.
+
+**DD4 — nullable `return_type`, wire form.** `UmlOperationIn.return_type:
+str | dict | None = None` accepts JSON `null` and omission identically
+(both map to `None`); the empty-string sentinel `""` was rejected as a wire
+option (`AttributeType` has no empty member, so `codec._decode_attribute_type("")`
+raises) and instead stays a genuine 422 error via the existing
+`InvalidCommandPayloadError` path — `""` is never a synonym for "no return
+type". `services.py` also needed two `isinstance` branches in
+`_command_from_payload` plus a new `_operation_from_schema` helper, which
+`proposal.md`'s Affected Areas table omitted entirely; `design.md` flagged
+this explicitly and it landed as designed.
+
+**DD9 — zero-operations parity math.** `classBoxSvgDataUri`'s new
+`operationLines` parameter is additive-only: `opAreaHeight` is exactly `0`
+when `operationLines` is empty, the second divider and operation `<text>`
+lines are emitted only when `operationLines.length > 0`, and `width`'s
+`Math.max(...)` spread contributes nothing from an empty array. A dedicated
+test pins the zero-ops SVG string/width/height against the pre-cycle
+attribute-only shape — the spec's explicit backward-compatibility guarantee
+holds by construction, not by accident.
+
+**DD10 — visibility symbol, deliberate asymmetry.** `toElements` had no
+existing symbol convention (the attribute line hardcodes `- ${a.name}: ...`
+and ignores `a.visibility` entirely). A new `VISIBILITY_SYMBOL` map
+(`public → +`, `private → -`, `protected → #`, `package → ~`) is used for
+operation lines only; retrofitting it onto the attribute line was
+deliberately left untouched (would change `DiagramCanvas.test.tsx`'s
+existing pinned expectations, out of scope) and is flagged as a follow-up
+in `design.md`'s Open Questions.
+
+**Deviation (not in the original task list)**: growing `RULES` 10→11 and
+`DiagnosticCode` by one member broke two pre-existing regression tests
+`design.md`/`tasks.md` didn't call out the way they called out
+`services.py` — `test_diagnostics.py::test_diagnostic_code_has_exactly_the_ten_cycle_one_codes`
+and `test_validation_integration.py`'s full-registry fixture (which asserted
+`produced_codes == set(DiagnosticCode)` and an exact diagnostic count).
+Both were updated in the same change (renamed to "eleven", fixture gained a
+duplicate-operation-name case) rather than left red — recorded here as a
+DD6-adjacent addendum.
+
+Full regression: 384/384 backend (`pytest`) and 335/335 frontend
+(`vitest run`) pass, plus clean `eslint`/`next build` (TypeScript checked
+inline by Turbopack's build step). `sdd-verify`/`sdd-archive` remain.
+
 ## 2026-09-16 — Post-cycle-13 fix: client-side lock self-expiry (silent TTL-expiry gap)
 
 Real usage surfaced a gap Cycle 13's tests never exercised end-to-end: a

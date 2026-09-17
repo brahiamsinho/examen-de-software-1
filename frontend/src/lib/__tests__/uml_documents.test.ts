@@ -127,6 +127,38 @@ describe("lib/uml_documents", () => {
     expect(result).toEqual(commandResult);
   });
 
+  it("submitCommand forwards AddOperation verbatim as the JSON body, including return_type: null", async () => {
+    const commandResult = { revision: 9, validation: { is_valid: true, violations: [] } };
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);
+
+    const command = {
+      type: "AddOperation" as const,
+      class_id: "c1",
+      operation: { id: "o1", name: "guardar", return_type: null, visibility: "public" as const },
+    };
+    const result = await submitCommand("acme", documentFixture.id, command);
+
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      `/api/orgs/acme/documents/${documentFixture.id}/commands`,
+      expect.objectContaining({ method: "POST", json: command }),
+    );
+    expect(result).toEqual(commandResult);
+  });
+
+  it("submitCommand forwards RemoveOperation verbatim as the JSON body", async () => {
+    const commandResult = { revision: 10, validation: { is_valid: true, violations: [] } };
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);
+
+    const command = { type: "RemoveOperation" as const, class_id: "c1", operation_id: "o1" };
+    const result = await submitCommand("acme", documentFixture.id, command);
+
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      `/api/orgs/acme/documents/${documentFixture.id}/commands`,
+      expect.objectContaining({ method: "POST", json: command }),
+    );
+    expect(result).toEqual(commandResult);
+  });
+
   it("submitCommand forwards RemoveRelationship verbatim as the JSON body", async () => {
     const commandResult = { revision: 8, validation: { is_valid: true, violations: [] } };
     vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);

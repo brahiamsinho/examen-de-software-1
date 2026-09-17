@@ -9,6 +9,7 @@ import {
   formatMultiplicity,
   type DiagramLayout,
   type UmlModel,
+  type Visibility,
 } from "@/lib/uml_documents";
 
 // Module scope, guarded by nothing (design.md DD5): `cytoscape.use` on an
@@ -44,6 +45,17 @@ const PADDING_X = 14;
 const PADDING_Y = 10;
 const MIN_BOX_WIDTH = 150;
 
+// No existing symbol convention: `toElements`'s attribute line below still
+// hardcodes `- ${a.name}: ...` and ignores `a.visibility` entirely
+// (deliberately left untouched — see DD10 in design.md). Operations DO
+// collect visibility, so this map is used for operation lines only.
+const VISIBILITY_SYMBOL: Record<Visibility, string> = {
+  public: "+",
+  private: "-",
+  protected: "#",
+  package: "~",
+};
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -76,23 +88,49 @@ function estimateTextWidth(text: string, fontSize: number, emWidth: number): num
  * (fcose) don't guarantee unconnected siblings stack vertically, which this
  * approach sidesteps entirely.
  */
-function classBoxSvgDataUri(name: string, attributeLines: string[]): { uri: string; width: number; height: number } {
+function classBoxSvgDataUri(
+  name: string,
+  attributeLines: string[],
+  operationLines: string[] = [],
+): { uri: string; width: number; height: number } {
   const nameWidth = estimateTextWidth(name, NAME_FONT_SIZE, 0.58);
   const attrWidths = attributeLines.map((line) => estimateTextWidth(line, ATTR_FONT_SIZE, 0.62));
-  const width = Math.max(MIN_BOX_WIDTH, PADDING_X * 2 + Math.max(nameWidth, ...attrWidths, 0));
+  const opWidths = operationLines.map((line) => estimateTextWidth(line, ATTR_FONT_SIZE, 0.62));
+  const width = Math.max(MIN_BOX_WIDTH, PADDING_X * 2 + Math.max(nameWidth, ...attrWidths, ...opWidths, 0));
 
   const attrAreaHeight =
     attributeLines.length > 0 ? attributeLines.length * ATTR_LINE_HEIGHT : ATTR_LINE_HEIGHT * 0.6;
-  const height = PADDING_Y * 2 + NAME_LINE_HEIGHT + DIVIDER_MARGIN * 2 + attrAreaHeight;
+  // Additive-only (DD9): zero operations contributes exactly 0, so `height`
+  // is untouched from the pre-operations-cycle expression below.
+  const opAreaHeight =
+    operationLines.length > 0 ? DIVIDER_MARGIN * 2 + operationLines.length * ATTR_LINE_HEIGHT : 0;
+  const height = PADDING_Y * 2 + NAME_LINE_HEIGHT + DIVIDER_MARGIN * 2 + attrAreaHeight + opAreaHeight;
 
   const dividerY = PADDING_Y + NAME_LINE_HEIGHT + DIVIDER_MARGIN;
   const nameBaselineY = PADDING_Y + NAME_LINE_HEIGHT * 0.68;
   const attrStartY = dividerY + DIVIDER_MARGIN;
+  // Symmetric with the name divider's own margin above/below it.
+  const opDividerY = attrStartY + attrAreaHeight + DIVIDER_MARGIN;
+  const opStartY = opDividerY + DIVIDER_MARGIN;
 
   const attrText = attributeLines
     .map(
       (line, i) =>
         `<text x="${PADDING_X}" y="${attrStartY + i * ATTR_LINE_HEIGHT + ATTR_LINE_HEIGHT * 0.72}" font-family="${MONO_FONT_STACK}" font-size="${ATTR_FONT_SIZE}" fill="${ATTR_TEXT}">${escapeXml(line)}</text>`,
+    )
+    .join("");
+
+  // Emitted only when there is at least one operation (DD9): an empty
+  // `operationLines` contributes an empty string, so the SVG for a
+  // zero-operations class is byte-identical to before this cycle.
+  const opDivider =
+    operationLines.length > 0
+      ? `<line x1="0" y1="${opDividerY}" x2="${width}" y2="${opDividerY}" stroke="${STRUCTURE_BORDER}" stroke-width="1.5"/>`
+      : "";
+  const opText = operationLines
+    .map(
+      (line, i) =>
+        `<text x="${PADDING_X}" y="${opStartY + i * ATTR_LINE_HEIGHT + ATTR_LINE_HEIGHT * 0.72}" font-family="${MONO_FONT_STACK}" font-size="${ATTR_FONT_SIZE}" fill="${ATTR_TEXT}">${escapeXml(line)}</text>`,
     )
     .join("");
 
@@ -102,6 +140,8 @@ function classBoxSvgDataUri(name: string, attributeLines: string[]): { uri: stri
     `<text x="${width / 2}" y="${nameBaselineY}" font-family="${SANS_FONT_STACK}" font-size="${NAME_FONT_SIZE}" font-weight="700" fill="${INK}" text-anchor="middle">${escapeXml(name)}</text>` +
     `<line x1="0" y1="${dividerY}" x2="${width}" y2="${dividerY}" stroke="${STRUCTURE_BORDER}" stroke-width="1.5"/>` +
     attrText +
+    opDivider +
+    opText +
     `</svg>`;
 
   return { uri: `data:image/svg+xml,${encodeURIComponent(svg)}`, width, height };
@@ -234,7 +274,14 @@ export function toElements(
 ): ElementDefinition[] {
   const nodes: ElementDefinition[] = model.classes.map((c) => {
     const attributeLines = c.attributes.map((a) => `- ${a.name}: ${attributeTypeLabel(a.type)}`);
-    const box = classBoxSvgDataUri(c.name, attributeLines);
+    const operationLines = c.operations.map((o) => {
+      const params = o.parameters
+        .map((p) => `${p.name}: ${attributeTypeLabel(p.type)}`)
+        .join(", ");
+      const returnSuffix = o.return_type === null ? "" : `: ${attributeTypeLabel(o.return_type)}`;
+      return `${VISIBILITY_SYMBOL[o.visibility]} ${o.name}(${params})${returnSuffix}`;
+    });
+    const box = classBoxSvgDataUri(c.name, attributeLines, operationLines);
     const position = layout.positions[c.id];
     return {
       data: { id: c.id, label: "", bgImage: box.uri, width: box.width, height: box.height },
