@@ -18,6 +18,20 @@ export type LockState = { ownerLabel: string; mine: boolean };
  * 60 Hz `mousemove` stream. */
 const _POSITION_THROTTLE_MS = 50;
 
+/**
+ * A passive Redis TTL expiry (`backend/apps/uml_documents/locks.py`,
+ * `LOCK_TTL_MS = 10_000`) never broadcasts `node.unlocked` — only an
+ * explicit release or `disconnect()` does. If that message is ever lost
+ * (a dropped frame, a backgrounded tab, a `free` that never fires), every
+ * already-connected client's `locks` entry for that node would otherwise
+ * stay "locked by X" forever even though the server has already let it go.
+ * Each held-lock entry here gets its own client-side deadline, refreshed
+ * by any `node.position` frame for that class (the same signal that
+ * refreshes the *server's* TTL) — 2s past the server's own TTL as a
+ * latency margin, so an actively-refreshed lock never flickers.
+ */
+const _LOCK_STALE_MS = 12_000;
+
 /** Close codes DD13 treats as terminal — a revoked or unauthenticated
  * client must never hammer the handshake in a reconnect loop. */
 const _TERMINAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
@@ -78,6 +92,10 @@ export function useDocument(orgSlug: string | null, docId: string) {
   const claimRejectedListenerRef = useRef<((classId: string) => void) | null>(null);
   const positionThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPositionRef = useRef<{ classId: string; x: number; y: number } | null>(null);
+  // One self-expiry timer per currently-locked class id (see
+  // `_LOCK_STALE_MS`) — the client-side backstop for a lock whose real
+  // `node.unlocked` broadcast never arrives.
+  const lockExpiryTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const key = `${orgSlug}:${docId}`;
   if (key !== trackedKey) {
@@ -136,6 +154,31 @@ export function useDocument(orgSlug: string | null, docId: string) {
       setDocument((prev) => (prev !== null && incoming.revision <= prev.revision ? prev : incoming));
     };
 
+    const clearLockExpiry = (classId: string) => {
+      const timer = lockExpiryTimersRef.current[classId];
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        delete lockExpiryTimersRef.current[classId];
+      }
+    };
+
+    // Restarts this class's deadline on every signal that proves the lock
+    // is still alive: the initial claim, a join-time snapshot entry, or any
+    // live drag frame (the same events that refresh the server's own TTL).
+    const scheduleLockExpiry = (classId: string) => {
+      clearLockExpiry(classId);
+      lockExpiryTimersRef.current[classId] = setTimeout(() => {
+        delete lockExpiryTimersRef.current[classId];
+        if (cancelled) return;
+        setLocks((prev) => {
+          if (!(classId in prev)) return prev;
+          const next = { ...prev };
+          delete next[classId];
+          return next;
+        });
+      }, _LOCK_STALE_MS);
+    };
+
     const connect = () => {
       socket = openDocumentSocket(orgSlug, docId, {
         onOpen: () => {
@@ -167,8 +210,10 @@ export function useDocument(orgSlug: string | null, docId: string) {
             ...prev,
             [payload.class_id]: { ownerLabel: payload.owner_label, mine: payload.mine },
           }));
+          scheduleLockExpiry(payload.class_id);
         },
         onNodeUnlocked: (payload) => {
+          clearLockExpiry(payload.class_id);
           if (cancelled) return;
           setLocks((prev) => {
             if (!(payload.class_id in prev)) return prev;
@@ -178,14 +223,21 @@ export function useDocument(orgSlug: string | null, docId: string) {
           });
         },
         onNodeLocks: (payload) => {
+          for (const classId of Object.keys(lockExpiryTimersRef.current)) clearLockExpiry(classId);
           if (cancelled) return;
           const next: Record<string, LockState> = {};
           for (const entry of payload.locks) {
             next[entry.class_id] = { ownerLabel: entry.owner_label, mine: entry.mine };
+            scheduleLockExpiry(entry.class_id);
           }
           setLocks(next);
         },
         onNodePosition: (payload) => {
+          // A live drag frame is the same "still alive" signal that
+          // refreshes the server's own lock TTL — reset the client-side
+          // deadline for both a foreign class AND the local user's own, so
+          // `locks` never drifts from what the server actually holds.
+          scheduleLockExpiry(payload.class_id);
           // The owner's own drag already renders locally in real time
           // (DD9) — only a foreign frame needs to move anything here.
           if (cancelled || payload.mine) return;
@@ -206,6 +258,8 @@ export function useDocument(orgSlug: string | null, docId: string) {
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
       socket?.close();
       connectionRef.current = null;
+      for (const timer of Object.values(lockExpiryTimersRef.current)) clearTimeout(timer);
+      lockExpiryTimersRef.current = {};
     };
   }, [orgSlug, docId]);
 

@@ -1,5 +1,38 @@
 # Decisions Log
 
+## 2026-09-16 — Post-cycle-13 fix: client-side lock self-expiry (silent TTL-expiry gap)
+
+Real usage surfaced a gap Cycle 13's tests never exercised end-to-end: a
+node lock's Redis key correctly self-expires via TTL (`locks.py`,
+`LOCK_TTL_MS = 10_000`) whenever an explicit `node.release`/disconnect
+never happens — a dropped WS frame, a backgrounded tab, a `free` that
+never fires for any reason — but **nothing broadcasts `node.unlocked` for
+a passive TTL expiry**, only `_handle_release` and `disconnect()` do. Every
+already-connected client's `locks` entry for that node stayed
+"locked by X" forever, even though the server would already let a fresh
+claim through. Confirmed with a throwaway diagnostic test before touching
+any code (systematic-debugging discipline): claimed a node, let it sit
+past a monkeypatched short TTL with no release/disconnect, and observed a
+fresh `locks.claim()` succeed server-side while both the holder's and an
+observer's sockets received nothing at all.
+
+**Fix, deliberately client-side, no new backend infra**: `state/document.ts`
+now gives every `locks` entry its own `setTimeout` deadline
+(`_LOCK_STALE_MS = 12_000`, the server's 10s TTL plus a 2s latency margin),
+armed on `node.locked` and on each `node.locks` join-snapshot entry, and
+**refreshed by every `node.position` frame for that class** — the same
+signal that refreshes the server's own TTL, so an actively-dragged node
+never flickers. An explicit `node.unlocked` cancels the pending timer
+outright. Rejected alternatives: Redis keyspace-notification-driven active
+broadcast (needs `notify-keyspace-events` config plus a new subscriber
+process — real new infra for a purely cosmetic staleness signal) and a
+periodic per-consumer sweep (fragile inside a sync Channels consumer with
+no existing polling primitive). The client-side timer is a pure rendering
+decision: the server's Redis TTL remains the sole source of truth for who
+may actually claim a node, so a client that gets this wrong by a few
+seconds self-corrects on the next `node.locked`/`node.locks` signal either
+way.
+
 ## 2026-09-15 — Cycle 13 apply: implementation complete (uml-node-position-sync)
 
 `sdd-apply` implemented all 21 tasks (Phases 1–7) from

@@ -496,6 +496,113 @@ describe("state/document useDocument() — locks and live position (DD4/DD9/DD11
     expect(connection.sendRelease).toHaveBeenCalledWith("c1", 9, 9);
   });
 
+  it("a foreign lock with no further signal for 12s self-clears (server-side TTL has no expiry broadcast)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onNodeLocked?.({ type: "node.locked", class_id: "c1", owner_label: "Ana", mine: false });
+    });
+    expect(result.current.locks).toEqual({ c1: { ownerLabel: "Ana", mine: false } });
+
+    act(() => {
+      vi.advanceTimersByTime(11_999);
+    });
+    expect(result.current.locks).toEqual({ c1: { ownerLabel: "Ana", mine: false } });
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(result.current.locks).toEqual({});
+  });
+
+  it("a live node.position frame for a held class resets its staleness timer instead of letting it expire", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onNodeLocked?.({ type: "node.locked", class_id: "c1", owner_label: "Ana", mine: false });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(11_000);
+      handlers.onNodePosition?.({ type: "node.position", class_id: "c1", x: 1, y: 1, mine: false });
+    });
+    // A drag frame arrived just before the original deadline — still locked
+    // past when the ORIGINAL (un-refreshed) timer would have fired.
+    act(() => {
+      vi.advanceTimersByTime(1_500);
+    });
+    expect(result.current.locks).toEqual({ c1: { ownerLabel: "Ana", mine: false } });
+
+    act(() => {
+      vi.advanceTimersByTime(10_500);
+    });
+    expect(result.current.locks).toEqual({});
+  });
+
+  it("a node.locks join snapshot entry is also subject to staleness self-clearing", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onNodeLocks?.({
+        type: "node.locks",
+        locks: [{ class_id: "c1", owner_label: "Ana", mine: false }],
+      });
+    });
+    expect(result.current.locks).toEqual({ c1: { ownerLabel: "Ana", mine: false } });
+
+    act(() => {
+      vi.advanceTimersByTime(12_000);
+    });
+    expect(result.current.locks).toEqual({});
+  });
+
+  it("an explicit node.unlocked cancels the pending staleness timer (no later no-op state churn)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const connection = mockConnection();
+    vi.mocked(docsLib.openDocumentSocket).mockImplementation(() => connection as never);
+    vi.mocked(docsLib.getDocument).mockResolvedValueOnce(documentA);
+
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await vi.waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+    const handlers = lastSocketHandlers();
+
+    act(() => {
+      handlers.onNodeLocked?.({ type: "node.locked", class_id: "c1", owner_label: "Ana", mine: false });
+    });
+    act(() => {
+      handlers.onNodeUnlocked?.({ type: "node.unlocked", class_id: "c1" });
+    });
+    expect(result.current.locks).toEqual({});
+
+    const locksBeforeTimeout = result.current.locks;
+    act(() => {
+      vi.advanceTimersByTime(12_000);
+    });
+    // Same empty object identity — the stale timer never fired a redundant update.
+    expect(result.current.locks).toBe(locksBeforeTimeout);
+  });
+
   it("sendPosition emits at most one frame per 50ms window and always flushes the final coalesced position", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const connection = mockConnection();

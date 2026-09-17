@@ -46,6 +46,26 @@ within its TTL window MUST expire automatically and become claimable again.
 - WHEN the claim's TTL elapses without a refresh or release
 - THEN the lock expires and the node becomes claimable by any client
 
+### Requirement: Connected Clients Converge on a Silently Expired Lock
+
+The server broadcasts `node.unlocked` only on an explicit release or on
+`disconnect()` — a passive TTL expiry emits no server-side broadcast at
+all. Every already-connected client MUST therefore treat a foreign lock as
+stale and clear it locally if no signal proving the lock is still held
+(the initial `node.locked`, a join-time `node.locks` snapshot entry, or any
+`node.position` frame for that class) arrives within a bound no shorter
+than the server's own TTL. This is a client-rendering guarantee only — the
+server's Redis TTL remains the sole authority over who may actually claim
+a node next.
+
+#### Scenario: A lock's owner stops sending any signal without releasing
+
+- GIVEN a client sees a class locked by another user
+- WHEN no further `node.locked`, `node.locks`, or `node.position` signal
+  for that class arrives within the client's staleness bound
+- THEN the client clears the lock from its own local state without
+  waiting for a `node.unlocked` broadcast that will never come
+
 ### Requirement: Release on Completion or Disconnect
 
 A claim MUST be releasable only by its owning token, either via an explicit
