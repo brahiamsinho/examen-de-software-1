@@ -81,11 +81,21 @@ def broadcast_document(*, document: ProjectDocument) -> None:
     this document's group (design.md DD2/DD3/DD6/DD7). Always called via
     `transaction.on_commit`, never inline, so a reader can always `SELECT`
     the revision being broadcast.
+
+    `channel_layer.group_send` crosses channels_redis' msgpack transport in
+    production — a boundary distinct from (and earlier than) the
+    `json.dumps` the consumer's `send_json` sees. `codec.document_out`
+    returns raw `UUID`/`datetime` values, so the payload is pre-serialized
+    through `schemas.DocumentOut` here, before it ever reaches `group_send`,
+    not just on the consumer's receiving side.
     """
     channel_layer = get_channel_layer()
+    payload = schemas.DocumentOut.model_validate(codec.document_out(document)).model_dump(
+        mode="json"
+    )
     async_to_sync(channel_layer.group_send)(
         f"uml-doc-{document.id}",
-        {"type": "document.update", "document": codec.document_out(document)},
+        {"type": "document.update", "document": payload},
     )
 
 

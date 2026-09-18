@@ -380,6 +380,41 @@ def test_submit_command_broadcasts_exactly_once_after_commit(django_capture_on_c
 
 
 @pytest.mark.django_db
+def test_broadcast_document_sends_a_json_safe_payload_to_the_channel_layer():
+    """`channel_layer.group_send` crosses channels_redis' msgpack transport
+    in production — a boundary `json.dumps`/`DocumentConsumer.document_update`
+    never sees, since that re-serialization only runs after the message has
+    already reached the consumer. A raw `uuid.UUID`/`datetime` in the
+    message breaks `group_send` itself before any consumer code runs.
+    Regression for `id`/`created_at`/`updated_at` silently carrying
+    non-JSON-safe Python objects straight from `codec.document_out`.
+    """
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Broadcast", now=_NOW
+    )
+
+    sent: dict = {}
+
+    async def _fake_group_send(group, message):
+        sent["group"] = group
+        sent["message"] = message
+
+    fake_channel_layer = mock.Mock()
+    fake_channel_layer.group_send = _fake_group_send
+
+    with mock.patch(
+        "apps.uml_documents.services.get_channel_layer", return_value=fake_channel_layer
+    ):
+        services.broadcast_document(document=document)
+
+    payload = sent["message"]["document"]
+    assert isinstance(payload["id"], str)
+    assert isinstance(payload["created_at"], str)
+    assert isinstance(payload["updated_at"], str)
+
+
+@pytest.mark.django_db
 def test_submit_command_does_not_broadcast_when_apply_raises(django_capture_on_commit_callbacks):
     organization, owner, *_rest = make_org_with_roles()
     document = services.create_document(

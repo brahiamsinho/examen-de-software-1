@@ -223,10 +223,12 @@ class DocumentConsumer(JsonWebsocketConsumer):
         membership before every relay (DD5): a revoked member must stop
         receiving data at the exact moment data would leak.
 
-        `event["document"]` is `codec.document_out(...)`'s raw dict — it
-        still holds `UUID`/`datetime` values `json.dumps` rejects (DD6).
-        Routing it through `DocumentOut` here is what makes the outgoing
-        payload byte-identical to the `GET` response.
+        `event["document"]` is already JSON-safe — `services.broadcast_document`
+        serializes it through `DocumentOut` before `group_send`, since that
+        call crosses channels_redis' msgpack transport and would break on a
+        raw `UUID`/`datetime` before this handler ever runs. Re-validating
+        through `DocumentOut` here is idempotent and keeps this payload
+        byte-identical to the `GET` response by construction (DD6).
         """
         try:
             resolve_membership_for_user(self.scope["user"], self.org_slug)
