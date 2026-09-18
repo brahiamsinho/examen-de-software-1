@@ -42,6 +42,31 @@ AI/vision/generation work ahead of a stable canonical model, validation,
 and single mutation path — the spec is explicit about this ordering
 constraint.
 
+## Spring Boot generator — relationships (FK) + enum types — status: implemented, pending verify/archive
+
+`2026-09-18-spring-boot-generator-relationships-enums` (extends
+`2026-09-18-spring-boot-generator-core`) lifts the FK and enum-column
+rejections `generate_table_sources` had before: FK columns now render as
+`@ManyToOne`/`@OneToOne` + `@JoinColumn` relationship fields (including the
+self-referencing case), enum-typed columns render as
+`@Enumerated(EnumType.STRING)` fields, and a new `generate_enum_source`
+turns an `EnumType` into a standalone Java enum.
+
+- explore → propose → spec → design → tasks → **apply**: done. 40 new
+  backend tests, 576/576 backend tests pass, single PR
+  (`size:exception`, confirmed by the user).
+- Remaining for this cycle: **`sdd-verify`** (confirm the implementation
+  against `openspec/changes/2026-09-18-spring-boot-generator-relationships-enums/specs/**`
+  and `design.md`), then **`sdd-archive`**.
+- Explicit follow-ups, deliberately out of scope this cycle (proposal Out
+  of Scope): **Single Table inheritance generation** (structurally blocked
+  — `Column` has no owning-UML-class attribution), bidirectional
+  `@OneToMany` inverse collections, `@ManyToMany`/`@JoinTable` join-table
+  detection or suppression, cross-artifact Java class-name collision
+  detection (e.g. a table `order` vs an enum `order`), and any
+  orchestrating caller that walks a whole `RelationalModel` and combines
+  per-table/per-enum output.
+
 ## Also outstanding (from the original scaffold, still valid)
 
 - Design and build real Flutter screens under `mobile/lib/` for the CASE

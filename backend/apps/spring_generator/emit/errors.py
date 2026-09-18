@@ -1,5 +1,6 @@
 """Typed rejection hierarchy for `Table` shapes this slice cannot emit
-(design.md DD15), plus the fixed-order eager check that raises them.
+(design.md DD33-DD35), plus the fixed-order eager check that raises
+them.
 
 Mirrors `apps.relational_mapping.mapping.errors` (base + attribute-
 carrying subclasses, defense-in-depth): a caller handing in a table
@@ -7,11 +8,15 @@ this slice cannot represent gets a named, catchable failure instead of
 an entity that silently lost a relationship, and the check order is
 deterministic for a table that violates several rules at once.
 """
-from apps.relational_mapping.domain.schema import Table
+from apps.relational_mapping.domain.schema import EnumType, Table
 from apps.relational_mapping.domain.types import ColumnType
 
 
-class UngeneratableTableError(Exception):
+class UngeneratableSourceError(Exception):
+    """Root for every error this app's `reject_*` functions raise (DD33)."""
+
+
+class UngeneratableTableError(UngeneratableSourceError):
     """Base for every error `reject_out_of_scope` raises."""
 
 
@@ -27,12 +32,15 @@ class UnsupportedPrimaryKeyError(UngeneratableTableError):
         )
 
 
-class ForeignKeysUnsupportedError(UngeneratableTableError):
-    def __init__(self, table_name: str, foreign_key_names: tuple[str, ...]):
+class CompositeForeignKeyUnsupportedError(UngeneratableTableError):
+    def __init__(self, table_name: str, foreign_key_name: str, column_names: tuple[str, ...]):
         self.table_name = table_name
-        self.foreign_key_names = tuple(foreign_key_names)
+        self.foreign_key_name = foreign_key_name
+        self.column_names = tuple(column_names)
         super().__init__(
-            "Table {!r} has unsupported foreign keys: {!r}".format(table_name, self.foreign_key_names)
+            "Table {!r} has an unsupported composite foreign key {!r}: {!r}".format(
+                table_name, foreign_key_name, self.column_names
+            )
         )
 
 
@@ -59,7 +67,7 @@ class UnsupportedColumnTypeError(UngeneratableTableError):
         )
 
 
-class InvalidJavaIdentifierError(UngeneratableTableError):
+class InvalidJavaIdentifierError(UngeneratableSourceError):
     def __init__(self, source_name: str, converted: str):
         self.source_name = source_name
         self.converted = converted
@@ -68,9 +76,32 @@ class InvalidJavaIdentifierError(UngeneratableTableError):
         )
 
 
+class UngeneratableEnumError(UngeneratableSourceError):
+    """Base for every error `reject_ungeneratable_enum` raises (DD33)."""
+
+
+class EmptyEnumTypeError(UngeneratableEnumError):
+    def __init__(self, enum_type_name: str):
+        self.enum_type_name = enum_type_name
+        super().__init__("EnumType {!r} has no labels".format(enum_type_name))
+
+
+class DuplicateEnumConstantError(UngeneratableEnumError):
+    def __init__(self, enum_type_name: str, constant: str, labels: tuple[str, ...]):
+        self.enum_type_name = enum_type_name
+        self.constant = constant
+        self.labels = tuple(labels)
+        super().__init__(
+            "EnumType {!r} labels {!r} collide on constant {!r}".format(
+                enum_type_name, self.labels, constant
+            )
+        )
+
+
 def reject_out_of_scope(table: Table) -> None:
-    """DD15's fixed check order: PK shape -> FK -> discriminator ->
-    enum column (first offender in `columns` order). Raises the first
+    """DD35's fixed check order: PK shape -> composite FK (first
+    offender in `foreign_keys` order) -> discriminator -> unnamed enum
+    column (first offender in `columns` order). Raises the first
     violated rule; raises nothing for a generatable table.
     """
     primary_key = table.primary_key
@@ -82,11 +113,13 @@ def reject_out_of_scope(table: Table) -> None:
             reason="primary key must be exactly one UUID column",
         )
 
-    if table.foreign_keys:
-        raise ForeignKeysUnsupportedError(
-            table_name=table.name,
-            foreign_key_names=tuple(fk.name for fk in table.foreign_keys),
-        )
+    for foreign_key in table.foreign_keys:
+        if len(foreign_key.column_names) > 1:
+            raise CompositeForeignKeyUnsupportedError(
+                table_name=table.name,
+                foreign_key_name=foreign_key.name,
+                column_names=foreign_key.column_names,
+            )
 
     if table.discriminator_column is not None or table.discriminator_values:
         raise InheritanceUnsupportedError(
@@ -94,7 +127,30 @@ def reject_out_of_scope(table: Table) -> None:
         )
 
     for column in table.columns:
-        if column.type is ColumnType.ENUM:
+        if column.type is ColumnType.ENUM and column.enum_type_name is None:
             raise UnsupportedColumnTypeError(
                 table_name=table.name, column_name=column.name, column_type=column.type
             )
+
+
+def reject_ungeneratable_enum(enum_type: EnumType) -> None:
+    """DD33's fixed check order: empty labels -> duplicate constant
+    (first offender, in `labels` order). Raises the first violated
+    rule; raises nothing for a generatable `EnumType`.
+    """
+    if not enum_type.labels:
+        raise EmptyEnumTypeError(enum_type_name=enum_type.name)
+
+    # Deferred import: naming.py imports this module's
+    # InvalidJavaIdentifierError, so a module-level import here would
+    # create a cycle.
+    from apps.spring_generator.emit.naming import screaming_snake_case
+
+    seen_constants: set[str] = set()
+    for label in enum_type.labels:
+        constant = screaming_snake_case(label)
+        if constant in seen_constants:
+            raise DuplicateEnumConstantError(
+                enum_type_name=enum_type.name, constant=constant, labels=enum_type.labels
+            )
+        seen_constants.add(constant)

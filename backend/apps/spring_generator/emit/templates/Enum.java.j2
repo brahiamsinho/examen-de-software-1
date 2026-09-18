@@ -1,0 +1,17 @@
+package {{ package }};
+
+public enum {{ class_name }} {
+{% for constant in constants %}
+    {{ constant.name }}("{{ constant.label }}"){{ ";" if loop.last else "," }}
+{% endfor %}
+
+    private final String label;
+
+    {{ class_name }}(String label) {
+        this.label = label;
+    }
+
+    public String getLabel() {
+        return this.label;
+    }
+}

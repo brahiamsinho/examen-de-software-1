@@ -455,6 +455,43 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   (structural-only per proposal D2: expected paths, class/field/
   annotation lines, brace balance — no `javac`, no Java parser), full
   suite green. `sdd-verify`/`sdd-archive` are the remaining steps.
+- **SDD Cycle (`2026-09-18-spring-boot-generator-relationships-enums`) is
+  implemented** (`backend/apps/spring_generator/`, spec §22 — second
+  slice, extends the core cycle above): `generate_table_sources(table)`
+  now emits FK-bearing and enum-bearing tables instead of rejecting them.
+  A `Column` that is part of a FK renders as `@ManyToOne`+`@JoinColumn`,
+  or `@OneToOne`+`@JoinColumn(..., unique = true)` when the FK's column
+  set exactly matches one of the table's own `unique_constraints`; a
+  self-referencing FK (`Category.parent -> Category`) generates cleanly
+  with no special-casing and no import, because the referenced
+  entity/enum always lives in the same `{base_package}.domain` package
+  (DD27). A `Column` with `enum_type_name` set renders as
+  `@Enumerated(EnumType.STRING)` typed `pascal_case(enum_type_name)`. New
+  pure `generate_enum_source(enum_type, *, base_package) -> GeneratedFile`
+  (`emit/renderer.py` + new `emit/templates/Enum.java.j2`) turns a
+  `relational_mapping.domain.schema.EnumType` into a standalone
+  annotation-free Java `enum`, with SCREAMING_SNAKE_CASE constants
+  (`in_progress`/`InProgress`/`in-progress`/`IN PROGRESS` all converge on
+  `IN_PROGRESS`) and the verbatim source label preserved via a
+  `getLabel()` accessor — the DD32 recovery hook for a future DDL/DTO
+  slice. `reject_out_of_scope`'s check set narrowed to non-UUID/composite
+  PK, discriminator, and (newly) composite FK, in that fixed order;
+  `ForeignKeysUnsupportedError` was renamed to
+  `CompositeForeignKeyUnsupportedError` (no back-compat alias — its only
+  two consumers were inside this app) and a new
+  `UngeneratableSourceError` root now sits above both
+  `UngeneratableTableError` and the new `UngeneratableEnumError` branch
+  (`EmptyEnumTypeError`, `DuplicateEnumConstantError`). `javatypes.py` is
+  untouched — FK and enum columns bypass its scalar `ColumnType` lookup
+  entirely at both call sites in `context.py` (the field builder and the
+  import-collection loop), which is what makes a bare `ENUM` column
+  without `enum_type_name` the only remaining path to a rejection instead
+  of a `KeyError`. 40 new backend tests (`spring_generator` grows from 93
+  to 133, including `test_rejections.py`'s DD35-order rewrite and
+  `test_determinism.py`'s widened `hypothesis` strategies proving DD36
+  needed no new ordering rule), full 576-test backend suite green,
+  single PR (`size:exception`, confirmed by the user over the session's
+  800-line budget). `sdd-verify`/`sdd-archive` are the remaining steps.
 
 ## Pending (SDD Cycle 1 and beyond)
 
@@ -495,8 +532,14 @@ validation engine. Implementation (`sdd-apply`) is complete; `sdd-verify`
 and `sdd-archive` remain before item 4 (`UmlCommand` + Command Bus)
 starts as its own cycle.
 
-Item 12 (Spring Boot backend generator) now has its first slice
-implemented (`2026-09-18-spring-boot-generator-core`, `domain/`+
-`persistence/` only, one table at a time — see the Domain section
-above); item 13 (generated backend compilable) still has no JVM/Gradle
-host anywhere in repo infra and remains its own future cycle.
+Item 12 (Spring Boot backend generator) now has two slices implemented:
+`2026-09-18-spring-boot-generator-core` (scalar-only tables, `domain/`+
+`persistence/`) and `2026-09-18-spring-boot-generator-relationships-enums`
+(FK relationship fields, enum fields, and standalone enum source — see
+the Domain section above). Still out of scope for a future slice: Single
+Table inheritance generation, bidirectional `@OneToMany`,
+`@ManyToMany`/`@JoinTable`, and an orchestrating caller that walks a
+whole `RelationalModel` and combines per-table/per-enum output (including
+cross-artifact Java class-name collision detection). Item 13 (generated
+backend compilable) still has no JVM/Gradle host anywhere in repo infra
+and remains its own future cycle.

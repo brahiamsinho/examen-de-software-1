@@ -1,10 +1,6 @@
-# Spring Boot Generation Specification
+# Delta for spring-boot-generation
 
-## Purpose
-
-Defines the pure, deterministic `Table -> Java source` emission for one relational table's JPA entity (`domain/`) and Spring Data JPA repository (`persistence/`), per spec §22's mandatory generated-backend stack. No relationships, inheritance, enums, compilation, or layers beyond `domain/`+`persistence/` belong to this slice.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: JPA Entity Generation from a Table
 
@@ -41,15 +37,6 @@ For a `Table`, the system MUST produce Java source text for one `@Entity`-annota
 - GIVEN a `Table` with a `Column` named `status` whose `enum_type_name` is `order_status`
 - WHEN the generator emits the entity
 - THEN the corresponding field is typed `OrderStatus`, annotated `@Enumerated(EnumType.STRING)`
-
-### Requirement: Spring Data JPA Repository Generation from a Table
-
-For the same `Table` input, the system MUST produce Java source text for one Spring Data JPA repository interface in the `persistence/` layer, extending a Spring Data repository parameterized by the entity type and its UUID id type.
-
-#### Scenario: Table yields a matching repository interface
-- GIVEN the `Product` table from above
-- WHEN the generator emits the repository
-- THEN the output is Java source text for `ProductRepository`, an interface extending a Spring Data JPA repository parameterized `<Product, UUID>`
 
 ### Requirement: Deterministic Column-Type-to-Java-Type Mapping
 
@@ -91,15 +78,6 @@ Every mapped field MUST carry `@Column(nullable = false)` (or the Jakarta `@NotN
 - WHEN the Java type for `status` is resolved
 - THEN the resolved type is `OrderStatus`, derived via `pascal_case(enum_type_name)`, with no entry looked up in the scalar `ColumnType` table
 
-### Requirement: Generator Purity
-
-The generator MUST be a pure function of its `Table` input to Java source text. It MUST NOT call `relational_mapping`'s `validate()` or any validation routine, and MUST NOT open, query, or otherwise touch any database connection.
-
-#### Scenario: Generation succeeds with no DB and no validation call
-- GIVEN a valid in-memory `Table` and no database connection available in the test process
-- WHEN the entity and repository are generated
-- THEN generation completes and returns Java source text, with no validation function invoked and no DB access attempted
-
 ### Requirement: Rejection of Unsupported Table Shapes
 
 The system MUST raise a typed error, and MUST NOT emit partial or malformed Java source, when the input `Table` contains a construct out of scope for this slice: a primary key that is not a single UUID column, a non-`None` `discriminator_column`, or a `ForeignKey` whose `column_names` has more than one entry (composite FK). A non-empty `foreign_keys` with only single-column entries, and a `Column` with a non-`None` `enum_type_name`, MUST NOT be rejected — both are supported and MUST be generated per the "JPA Entity Generation from a Table" requirement.
@@ -130,23 +108,8 @@ The system MUST raise a typed error, and MUST NOT emit partial or malformed Java
 - WHEN the generator is invoked on it
 - THEN it does not raise a rejection error and proceeds to emit the entity with the corresponding enum field
 
-### Requirement: Deterministic, Repeatable Output
+## ADDED Requirements
 
-The system MUST produce byte-identical Java source text — same field order, same formatting, same annotations — for the same `Table` input on every invocation.
-
-#### Scenario: Same table produces identical output on repeated calls
-- GIVEN the same `Table` value generated twice, independently
-- WHEN both entity outputs are compared
-- THEN the two Java source texts are byte-identical, including column and field ordering
-
-### Requirement: Package and File Path Layout
-
-Generated files MUST be placed only under the `domain/` and `persistence/` subdirectories of the §22 layout (`domain/persistence/application/api/validation/errors/config`). The `application/`, `api/`, `validation/`, `errors/`, and `config/` subdirectories MUST NOT be produced by this slice.
-
-#### Scenario: Only domain and persistence files are produced
-- GIVEN the `Product` table generated end to end
-- WHEN the set of emitted file paths is inspected
-- THEN exactly one file exists under `domain/` and one under `persistence/`, and no files exist under `application/`, `api/`, `validation/`, `errors/`, or `config/`
 ### Requirement: Enum Type Generation
 
 The system MUST provide a pure function `generate_enum_source(enum_type: relational_mapping.domain.schema.EnumType, *, base_package) -> GeneratedFile` that produces Java source text for one standalone Java `enum` in the `domain/` layer, with one enum constant per entry in `EnumType.labels`, named after the `EnumType`'s `pascal_case(name)`. The function MUST be a pure function of its `EnumType` input, producing byte-identical output on every invocation for the same input, and MUST place the generated file under the `domain/` subdirectory of the §22 layout, following the same package/path convention already used for entity generation.

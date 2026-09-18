@@ -1,6 +1,84 @@
 # Decisions Log
 
-## 2026-09-18 — Cycle apply: Spring Boot generator core, first slice (`2026-09-18-spring-boot-generator-core`)
+## 2026-09-18 — Cycle apply: Spring Boot generator relationships (FK) + enum types (`2026-09-18-spring-boot-generator-relationships-enums`)
+
+`sdd-apply` implemented all 27 tasks (Phases 1–5) from
+`openspec/changes/2026-09-18-spring-boot-generator-relationships-enums/tasks.md`
+with strict TDD, single PR (`size:exception`, confirmed by the user over the
+400-line/session-800-line budget). Extends the archived
+`2026-09-18-spring-boot-generator-core` cycle (DD1–DD22): `generate_table_sources`
+now emits FK-bearing and enum-bearing tables instead of rejecting them, and a
+new sibling `generate_enum_source` renders standalone Java enums.
+
+**Design decisions DD23–DD36** (`design.md`) landed as specified: one field
+per `Column` always, `_field_context` picks the first matching branch
+PK → FK-member → `enum_type_name` → scalar, so a FK column yields the
+relationship field instead of, never in addition to, a scalar field (DD23);
+`@OneToOne` iff `set(fk.column_names)` equals a `unique_constraints` set on
+the same table, `@ManyToOne` otherwise, derivable from one `Table` with zero
+cross-table lookup (DD24); `@JoinColumn(name, nullable[, unique = true])`
+replaces `@Column` on a relationship field, never both, and
+`referencedColumnName` is never emitted since every referenced entity's `@Id`
+is unconditionally named `id` (DD25); relationship field name =
+`camel_case(base)` where `base` strips one trailing `_id` from the FK column
+name (`category_id` → `category`), via new `naming.py::relationship_base_name`
+— the referenced-table name breaks on self-reference and on two FKs to the
+same table, so the column name (which carries the role) is used instead
+(DD26); no import is emitted for the referenced entity or enum type, since
+both are generated into `{base_package}.domain`, the same package as the
+entity being rendered — this is what makes a self-referencing FK need no
+special-casing anywhere (DD27); the enum branch keys on
+`column.enum_type_name is not None` and short-circuits before any
+`java_type_for()` call — `javatypes.py` gains no `ColumnType.ENUM` row, and
+**both** call sites inside `context.py` (the field builder and
+`build_entity_context`'s import-collection loop) must skip FK/enum columns
+identically, since the second call site is an easy miss the design's Risks
+section flagged explicitly (DD28); enum-field annotation order extends DD11
+to `@Id, @GeneratedValue, @ManyToOne|@OneToOne, @JoinColumn, @Enumerated,
+@Column, @NotNull, @Size` — always `EnumType.STRING`, never `ORDINAL` (which
+would silently corrupt stored rows if a UML enumeration's literals are ever
+reordered), never `@Size` (DD29); `generate_enum_source` lives in
+`emit/renderer.py` alongside `generate_table_sources`, reusing the same
+module-level Jinja `_ENVIRONMENT`/`_validate_base_package`/`package_path`;
+its context builder `build_enum_context` lives in `context.py` next to the
+other builders, preserving the invariant that all branching lives there and
+templates stay data-driven (DD30); enum constants are SCREAMING_SNAKE_CASE
+via a fixed 3-step regex (camel/Pascal boundary split → non-alnum run
+collapse to `_` → `.upper()`), validated through the existing
+`naming._validate` so an illegal result still raises
+`InvalidJavaIdentifierError` (DD31); the verbatim source label is preserved
+as a plain `private final String label` + constructor arg + `getLabel()` on
+the generated enum — zero annotations, DD19 (no Jackson) still holds — since
+JPA's `@Enumerated(STRING)` persists `name()` (`IN_PROGRESS`), not the
+original label (`in_progress`); a future DDL/DTO slice must read `getLabel()`
+or reapply DD31 (DD32, **known recorded divergence**); a new
+`UngeneratableSourceError(Exception)` root sits above both the existing
+`UngeneratableTableError` (re-parented, name and every subclass unchanged)
+and a new `UngeneratableEnumError` branch (`EmptyEnumTypeError`,
+`DuplicateEnumConstantError`) (DD33); `ForeignKeysUnsupportedError` is
+**renamed** to `CompositeForeignKeyUnsupportedError` with **no**
+backwards-compatible alias — its blast radius is two files inside this one
+app, and the old name asserted a promise ("this generator does not support
+foreign keys") that is now false (DD34); the new fixed rejection order in
+`reject_out_of_scope` is PK shape → composite FK (any FK with
+`len(column_names) > 1`, first offender in `foreign_keys` order) →
+discriminator → a `ColumnType.ENUM` column with `enum_type_name is None`
+(first offender in `columns` order) — single-column FKs and named enum
+columns now raise nothing (DD35); determinism needed no new rule: field
+order stays `Table.columns` declaration order because DD23 guarantees
+exactly one field per column, and the new `jakarta.persistence.{ManyToOne,
+OneToOne, JoinColumn, Enumerated, EnumType}` imports join the existing
+`jakarta.*` group, added only when actually used, confirmed by widening the
+existing `hypothesis` property-test strategies rather than adding new
+ordering logic (DD36).
+
+**Verification.** 40 new backend tests across `test_relationship_fields.py`
+(15, new), `test_enum_fields.py` (7, new), `test_enum_source.py` (14, new),
+`test_rejections.py` (rewritten to the new DD35 order, net +3), and
+`test_determinism.py` (widened strategies + 1 new enum-determinism property).
+`test_no_concat_guard.py` stayed green unmodified (the two new `naming.py`
+helpers use only `re.sub`/`.upper()`). Full backend suite: 576/576 passed,
+zero regressions. No deviations from `design.md` were required.
 
 `sdd-apply` implemented all 31 tasks (Phases 1–8) from
 `openspec/changes/2026-09-18-spring-boot-generator-core/tasks.md` with strict

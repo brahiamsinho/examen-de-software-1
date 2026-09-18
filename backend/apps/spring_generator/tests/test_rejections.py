@@ -1,17 +1,21 @@
-"""RED: apps.spring_generator.emit.errors does not exist yet.
+"""RED->GREEN: fixed DD35 rejection order (PK shape -> composite FK ->
+discriminator -> unnamed ENUM), each named subclass, and that every
+named table error subclasses both `UngeneratableTableError` and the
+new `UngeneratableSourceError` root (DD33). A single-column FK and a
+named enum column are no longer rejected (DD35) — they are covered as
+generatable shapes here and generated in full by
+`test_relationship_fields.py` / `test_enum_fields.py`.
 
-Covers: the fixed DD15 rejection order (PK shape -> FK ->
-discriminator -> enum), each named subclass, and that every named
-error subclasses `UngeneratableTableError`. Identifier legality is
-covered separately in `test_naming.py` (DD16).
+Identifier legality is covered separately in `test_naming.py` (DD16).
 """
 import pytest
 
 from apps.relational_mapping.domain.schema import Column, ForeignKey, PrimaryKey, Table
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.errors import (
-    ForeignKeysUnsupportedError,
+    CompositeForeignKeyUnsupportedError,
     InheritanceUnsupportedError,
+    UngeneratableSourceError,
     UngeneratableTableError,
     UnsupportedColumnTypeError,
     UnsupportedPrimaryKeyError,
@@ -31,6 +35,7 @@ def test_composite_primary_key_is_rejected():
 
     assert excinfo.value.table_name == table.name
     assert isinstance(excinfo.value, UngeneratableTableError)
+    assert isinstance(excinfo.value, UngeneratableSourceError)
 
 
 def test_non_uuid_primary_key_is_rejected():
@@ -43,7 +48,44 @@ def test_non_uuid_primary_key_is_rejected():
         reject_out_of_scope(table)
 
 
-def test_table_with_foreign_key_is_rejected():
+def test_table_with_composite_foreign_key_is_rejected():
+    fk = ForeignKey(
+        name="fk_product__category",
+        column_names=("category_id", "category_region"),
+        referenced_table="category",
+        referenced_column_names=("id", "region"),
+    )
+    table = a_table(foreign_keys=(fk,))
+
+    with pytest.raises(CompositeForeignKeyUnsupportedError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.table_name == table.name
+    assert excinfo.value.foreign_key_name == "fk_product__category"
+    assert excinfo.value.column_names == ("category_id", "category_region")
+    assert isinstance(excinfo.value, UngeneratableTableError)
+    assert isinstance(excinfo.value, UngeneratableSourceError)
+
+
+def test_composite_foreign_key_rejection_reports_first_offender():
+    single_fk = ForeignKey(
+        name="fk_single", column_names=("owner_id",), referenced_table="owner", referenced_column_names=("id",)
+    )
+    composite_fk = ForeignKey(
+        name="fk_composite",
+        column_names=("category_id", "category_region"),
+        referenced_table="category",
+        referenced_column_names=("id", "region"),
+    )
+    table = a_table(foreign_keys=(single_fk, composite_fk))
+
+    with pytest.raises(CompositeForeignKeyUnsupportedError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.foreign_key_name == "fk_composite"
+
+
+def test_table_with_single_column_foreign_key_raises_nothing():
     fk = ForeignKey(
         name="fk_product__category_id",
         column_names=("category_id",),
@@ -52,12 +94,7 @@ def test_table_with_foreign_key_is_rejected():
     )
     table = a_table(foreign_keys=(fk,))
 
-    with pytest.raises(ForeignKeysUnsupportedError) as excinfo:
-        reject_out_of_scope(table)
-
-    assert excinfo.value.table_name == table.name
-    assert excinfo.value.foreign_key_names == ("fk_product__category_id",)
-    assert isinstance(excinfo.value, UngeneratableTableError)
+    assert reject_out_of_scope(table) is None
 
 
 def test_table_with_discriminator_column_is_rejected():
@@ -69,10 +106,11 @@ def test_table_with_discriminator_column_is_rejected():
     assert excinfo.value.table_name == table.name
     assert excinfo.value.discriminator_column == "class_type"
     assert isinstance(excinfo.value, UngeneratableTableError)
+    assert isinstance(excinfo.value, UngeneratableSourceError)
 
 
-def test_table_with_enum_column_is_rejected():
-    table = a_table(columns=(a_column(name="status", type=ColumnType.ENUM, enum_type_name="order_status"),))
+def test_table_with_unnamed_enum_column_is_rejected():
+    table = a_table(columns=(a_column(name="status", type=ColumnType.ENUM, enum_type_name=None),))
 
     with pytest.raises(UnsupportedColumnTypeError) as excinfo:
         reject_out_of_scope(table)
@@ -81,11 +119,21 @@ def test_table_with_enum_column_is_rejected():
     assert excinfo.value.column_name == "status"
     assert excinfo.value.column_type == ColumnType.ENUM
     assert isinstance(excinfo.value, UngeneratableTableError)
+    assert isinstance(excinfo.value, UngeneratableSourceError)
 
 
-def test_check_order_pk_before_foreign_key():
+def test_table_with_named_enum_column_raises_nothing():
+    table = a_table(columns=(a_column(name="status", type=ColumnType.ENUM, enum_type_name="order_status"),))
+
+    assert reject_out_of_scope(table) is None
+
+
+def test_check_order_pk_before_composite_foreign_key():
     fk = ForeignKey(
-        name="fk_x", column_names=("category_id",), referenced_table="category", referenced_column_names=("id",)
+        name="fk_x",
+        column_names=("category_id", "category_region"),
+        referenced_table="category",
+        referenced_column_names=("id", "region"),
     )
     table = a_table(
         columns=(Column(name="id", type=ColumnType.BIGINT),),
@@ -97,19 +145,22 @@ def test_check_order_pk_before_foreign_key():
         reject_out_of_scope(table)
 
 
-def test_check_order_foreign_key_before_discriminator():
+def test_check_order_composite_foreign_key_before_discriminator():
     fk = ForeignKey(
-        name="fk_x", column_names=("category_id",), referenced_table="category", referenced_column_names=("id",)
+        name="fk_x",
+        column_names=("category_id", "category_region"),
+        referenced_table="category",
+        referenced_column_names=("id", "region"),
     )
     table = a_table(foreign_keys=(fk,), discriminator_column="class_type")
 
-    with pytest.raises(ForeignKeysUnsupportedError):
+    with pytest.raises(CompositeForeignKeyUnsupportedError):
         reject_out_of_scope(table)
 
 
-def test_check_order_discriminator_before_enum():
+def test_check_order_discriminator_before_unnamed_enum():
     table = a_table(
-        columns=(a_column(name="status", type=ColumnType.ENUM, enum_type_name="order_status"),),
+        columns=(a_column(name="status", type=ColumnType.ENUM, enum_type_name=None),),
         discriminator_column="class_type",
     )
 

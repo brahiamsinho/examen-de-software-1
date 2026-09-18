@@ -18,6 +18,9 @@ from apps.spring_generator.emit.errors import InvalidJavaIdentifierError
 _LEGAL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _UNDERSCORE_BOUNDARY = re.compile(r"_([A-Za-z0-9])")
 _LEADING_CHAR = re.compile(r"^[A-Za-z]")
+_TRAILING_ID_SUFFIX = re.compile(r"_id$")
+_CAMEL_PASCAL_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
+_NON_ALNUM_RUN = re.compile(r"[^A-Za-z0-9]+")
 
 # Java 21 reserved words, contextual keywords, and literals that would
 # otherwise collide with a generated field/method name.
@@ -66,6 +69,31 @@ def camel_case(snake: str) -> str:
     with_boundaries_upper = _UNDERSCORE_BOUNDARY.sub(_uppercase_match, snake)
     converted = _LEADING_CHAR.sub(_lowercase_match, with_boundaries_upper)
     return _validate(snake, converted)
+
+
+def relationship_base_name(column_name: str) -> str:
+    """`"category_id"` -> `"category"` (DD26): strips one trailing
+    `_id` suffix. Falls back to the unchanged column name when
+    stripping yields an empty string or there is no `_id` suffix to
+    strip (e.g. a bare `"id"` column).
+    """
+    stripped = _TRAILING_ID_SUFFIX.sub("", column_name)
+    if not stripped or stripped == column_name:
+        return column_name
+    return stripped
+
+
+def screaming_snake_case(label: str) -> str:
+    """`"In Progress"` -> `"IN_PROGRESS"` (DD31): a fixed 3-step regex
+    normalization — (1) split camel/Pascal boundaries, (2) collapse
+    every non-alphanumeric run to one `_`, (3) uppercase — validated
+    through the same `naming._validate` used by `pascal_case`/
+    `camel_case` (DD16).
+    """
+    split_boundaries = _CAMEL_PASCAL_BOUNDARY.sub(r"\1_\2", label)
+    collapsed = _NON_ALNUM_RUN.sub("_", split_boundaries)
+    converted = collapsed.upper()
+    return _validate(label, converted)
 
 
 def package_path(base_package: str) -> str:

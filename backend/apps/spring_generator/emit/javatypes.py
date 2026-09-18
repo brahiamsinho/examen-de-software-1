@@ -33,7 +33,10 @@ _JAVA_TYPE_BY_COLUMN_TYPE: dict[ColumnType, JavaType] = {
 
 def java_type_for(column_type: ColumnType) -> JavaType:
     """Every non-`ENUM` `ColumnType` maps to exactly one `JavaType`.
-    `ENUM` is out of scope for this slice and is always rejected by
-    `emit.errors.reject_out_of_scope` before this function is reached.
+    A `Column` with `enum_type_name` set never reaches this function —
+    `emit.context` resolves its Java type via `pascal_case(enum_type_name)`
+    instead. `ColumnType.ENUM` with no `enum_type_name` still reaches
+    `emit.errors.reject_out_of_scope` and is rejected before this function
+    is called.
     """
     return _JAVA_TYPE_BY_COLUMN_TYPE[column_type]

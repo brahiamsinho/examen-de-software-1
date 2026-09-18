@@ -12,10 +12,10 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from apps.relational_mapping.domain.schema import Table
+from apps.relational_mapping.domain.schema import EnumType, Table
 from apps.spring_generator.domain.sources import GeneratedFile, GeneratedSources
-from apps.spring_generator.emit.context import build_entity_context, build_repository_context
-from apps.spring_generator.emit.errors import reject_out_of_scope
+from apps.spring_generator.emit.context import build_entity_context, build_enum_context, build_repository_context
+from apps.spring_generator.emit.errors import reject_out_of_scope, reject_ungeneratable_enum
 from apps.spring_generator.emit.naming import package_path
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -73,3 +73,27 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
             GeneratedFile(path=repository_path, contents=repository_source),
         )
     )
+
+
+def generate_enum_source(
+    enum_type: EnumType, *, base_package: str = "com.modelia.generated"
+) -> GeneratedFile:
+    """DD30: sibling entry point to `generate_table_sources`, reusing
+    the same Jinja `_ENVIRONMENT`, `_validate_base_package`, and
+    `package_path`. Pure function of its `EnumType` input (DD3).
+    """
+    _validate_base_package(base_package)
+    reject_ungeneratable_enum(enum_type)
+
+    enum_context = build_enum_context(enum_type, base_package=base_package)
+
+    enum_source = _ENVIRONMENT.get_template("Enum.java.j2").render(
+        package=enum_context.package,
+        class_name=enum_context.class_name,
+        constants=enum_context.constants,
+    )
+
+    pkg_path = package_path(base_package)
+    enum_path = "src/main/java/{}/domain/{}.java".format(pkg_path, enum_context.class_name)
+
+    return GeneratedFile(path=enum_path, contents=enum_source)
