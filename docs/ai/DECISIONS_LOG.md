@@ -1,5 +1,38 @@
 # Decisions Log
 
+## 2026-09-18 — Bug fix: `document.update` broadcast crashed any command while a WebSocket client was connected
+
+Real-browser testing (adding an operation to a class) surfaced a 500 on
+`POST .../commands` whenever at least one client held a live WebSocket
+connection to the document. Root cause (confirmed via `docker compose logs
+backend` and a direct call to `broadcast_document` against the real
+Redis-backed channel layer): `services.broadcast_document` passed
+`codec.document_out(document)` — which returns raw `uuid.UUID`/`datetime`
+values — straight into `channel_layer.group_send`. That call crosses
+channels_redis' msgpack transport, a serialization boundary the Cycle-13
+design (DD6) never accounted for; msgpack raises `TypeError: can not
+serialize 'UUID' object` immediately, before the consumer's own
+`DocumentOut`-based re-serialization (`consumers.py::document_update`) ever
+runs. The DB write had already committed (the crash happens inside
+`transaction.on_commit`), so the command silently succeeded while the HTTP
+response came back as a non-JSON 500 — which the frontend's `ApiError`
+parser then rendered as the literal string `"null"` (its fallback for a
+response body with no `detail` field).
+
+Test coverage never caught this because `test_consumers.py`/`test_services.py`
+exercise Django Channels' in-memory test channel layer, which never invokes
+channels_redis' msgpack serializer — the crash is invisible without a real
+Redis-backed channel layer in the loop.
+
+**Fix**: `broadcast_document` now serializes the payload through
+`schemas.DocumentOut.model_validate(...).model_dump(mode="json")` itself,
+before calling `group_send` — not only on the consumer's receiving side.
+Added `test_broadcast_document_sends_a_json_safe_payload_to_the_channel_layer`
+in `test_services.py`, asserting `id`/`created_at`/`updated_at` are plain
+`str` in the message handed to `group_send`. Verified against the real
+Redis channel layer via a direct `broadcast_document` call in
+`manage.py shell` (no msgpack error), plus the full suite (443/443 green).
+
 ## 2026-09-18 — Cycle apply: UML → RelationalModel deterministic mapping (`2026-09-17-uml-relational-mapping`)
 
 `sdd-apply` implemented all 33 tasks (Phases 1–7) from
