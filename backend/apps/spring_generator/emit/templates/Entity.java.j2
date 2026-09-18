@@ -1,0 +1,22 @@
+package {{ package }};
+
+{% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
+{% endfor %}
+{% endfor %}@Entity
+@Table(name = "{{ table_name }}")
+public class {{ class_name }} {
+{% for field in fields %}
+{% for annotation in field.annotations %}    {{ annotation }}
+{% endfor %}    private {{ field.java_type }} {{ field.name }};
+{% endfor %}
+    protected {{ class_name }}() {
+    }
+{% for field in fields %}
+    public {{ field.java_type }} {{ field.getter }}() {
+        return this.{{ field.name }};
+    }
+
+    public void {{ field.setter }}({{ field.java_type }} {{ field.name }}) {
+        this.{{ field.name }} = {{ field.name }};
+    }
+{% endfor %}}

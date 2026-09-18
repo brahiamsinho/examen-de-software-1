@@ -15,3 +15,5 @@ PyJWT>=2.9,<3.0
 # Required for pydantic's EmailStr, used by apps/users/schemas.py and
 # apps/organizations/schemas.py request schemas.
 email-validator>=2.1,<3.0
+# Renders emitted Java source text; imported by apps/spring_generator/emit/renderer.py.
+jinja2>=3.1,<4.0

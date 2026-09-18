@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     # Local (future feature apps live under backend/apps/)
     "apps.uml_modeling",
     "apps.relational_mapping",
+    "apps.spring_generator",
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.users",

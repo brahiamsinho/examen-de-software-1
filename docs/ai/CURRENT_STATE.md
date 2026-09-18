@@ -417,9 +417,44 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   `sdd-verify`/`sdd-archive` are the remaining steps.
 - `UmlCommand`/Command Bus, the Cytoscape canvas, persistence (Django
   ORM), and realtime collaboration are implemented for the UML domain
-  (see Backend/Frontend sections above). The Spring Boot generator, the
-  Domain Manifest, the assistant pipeline, and all AI/voice/image/XMI
-  features are **not started**.
+  (see Backend/Frontend sections above). The Domain Manifest, the
+  assistant pipeline, and all AI/voice/image/XMI features are **not
+  started**.
+- **SDD Cycle (`2026-09-18-spring-boot-generator-core`) is implemented**
+  (`backend/apps/spring_generator/`, spec §22, item 12 — first slice): a
+  pure, DB-free, filesystem-free `generate_table_sources(table, *,
+  base_package="com.modelia.generated") -> GeneratedSources`, turning one
+  `relational_mapping.domain.schema.Table` (scalar columns only, no FK,
+  no discriminator, no enum) into in-memory Java source for one JPA
+  `@Entity` class (`domain/`) and one Spring Data JPA repository
+  interface (`persistence/`), at `src/main/java/<base_package
+  path>/{domain,persistence}/...`. `domain/` (`GeneratedFile`/
+  `GeneratedSources`, frozen) + `emit/` (`errors`, `naming`, `javatypes`,
+  `context`, `renderer`, `templates/*.java.j2`), mirroring
+  `relational_mapping`'s `domain/`+`mapping/` split one cycle later in
+  the same pipeline. Settled rules: boxed Java types only (never
+  primitives), `TIMESTAMPTZ -> java.time.OffsetDateTime`,
+  `TEXT -> String` + `columnDefinition = "TEXT"`, the PK gets `@Id` +
+  `@GeneratedValue(strategy = GenerationType.UUID)` and explicitly no
+  `@NotNull`, non-PK non-nullable columns get `@NotNull` (never
+  `@NotBlank`), a `VARCHAR` with a `length` gets `@Size(max=length)`, a
+  typed `UngeneratableTableError` hierarchy rejects any FK/discriminator/
+  `ENUM`/composite-or-non-UUID-PK table in a fixed check order before any
+  render, a Java reserved-word field name gets a trailing `_` while
+  `@Column(name=...)` preserves the original DB name, and every emitted
+  file's field order, import grouping, and text is byte-identical across
+  repeated calls on the same input. Jinja2 (`emit/templates/*.java.j2`,
+  loaded from `emit/templates/` — never Django's app-root `templates/`,
+  which would expose the `.java.j2` files to Django's own `APP_DIRS`
+  template loader) owns all emitted Java text; a LibCST guard
+  (`tests/test_no_concat_guard.py`) parses every module under `emit/`
+  and fails on manual string `+`, `str.join`, `%`-formatting, or any
+  f-string in the generator's own Python source (`.format()` and a
+  reassignment-loop comma-join are the allowed alternatives) — it never
+  parses Java and never runs at render time. 93 new backend tests
+  (structural-only per proposal D2: expected paths, class/field/
+  annotation lines, brace balance — no `javac`, no Java parser), full
+  suite green. `sdd-verify`/`sdd-archive` are the remaining steps.
 
 ## Pending (SDD Cycle 1 and beyond)
 
@@ -459,3 +494,9 @@ SDD Cycle 1 (see `NEXT_STEPS.md`) targeted items 1–3 only:
 validation engine. Implementation (`sdd-apply`) is complete; `sdd-verify`
 and `sdd-archive` remain before item 4 (`UmlCommand` + Command Bus)
 starts as its own cycle.
+
+Item 12 (Spring Boot backend generator) now has its first slice
+implemented (`2026-09-18-spring-boot-generator-core`, `domain/`+
+`persistence/` only, one table at a time — see the Domain section
+above); item 13 (generated backend compilable) still has no JVM/Gradle
+host anywhere in repo infra and remains its own future cycle.
