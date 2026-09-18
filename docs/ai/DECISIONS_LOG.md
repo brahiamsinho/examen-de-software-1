@@ -1,5 +1,65 @@
 # Decisions Log
 
+## 2026-09-18 — Cycle apply: UML → RelationalModel deterministic mapping (`2026-09-17-uml-relational-mapping`)
+
+`sdd-apply` implemented all 33 tasks (Phases 1–7) from
+`openspec/changes/2026-09-17-uml-relational-mapping/tasks.md` with strict TDD,
+single PR (`size:exception`, confirmed by the user over the 400-line budget).
+New Django app `backend/apps/relational_mapping/` (`domain/` + `mapping/`
+split, no `models.py`) adds a pure, DB-free `map_to_relational(model) ->
+RelationalModel` — the first stage of spec §21's Spring Boot pipeline — plus
+one new `uml_modeling` validation rule.
+
+**Design decisions DD1–DD20** (`design.md`) landed as specified: app-per-domain
+shell (DD1); every output dataclass frozen (DD2); mutable `_TableDraft`
+builders frozen at the end (DD3); `snake_case` singular table names, no
+pluralization (DD4); unconditional synthetic `id UUID` PK, `pk_<table>` (DD5);
+Single Table inheritance with a verbatim-class-name `class_type` discriminator,
+emitted only for a >=2-class tree (DD6); root attribute columns `NOT NULL`,
+descendant-contributed columns `nullable=True` (DD7); one `unique_name` helper
+absorbing every column-name collision (attribute named `id`, sibling-subclass
+clash, `class_type` clash) via plain name -> owner-class-prefixed -> `_2`/`_3`
+suffix (DD8); deterministic construction order throughout, driven by
+`model.classes`/`model.relationships` declaration order (DD9); all
+enumerations emitted as native-`ENUM`-flavored `EnumType`s regardless of
+reference (DD10); "many" = `upper is None or upper > 1`, "optional" =
+`lower <= 0` (DD11); FK placement keyed off which end is "many", falling back
+to "FK on target + `UniqueConstraint`" for 1:1 (DD12); composition FKs are
+always `NOT NULL` + `CASCADE` except the DD14 self-composition exception
+(DD13); self-referencing relationships use the generic rule unchanged (DD14);
+role-based FK column naming, `naming.unique_name` as the DD8 fallback (DD15);
+join tables get their own synthetic PK, both FKs `CASCADE` (DD16); every FK
+gets a non-unique index unless it already carries a `UniqueConstraint` (DD17);
+the mapper never calls `validate()` — `UnmappableModelError` subclasses
+(`MultipleGeneralizationParentsError`, `GeneralizationCycleError`,
+`UnknownEnumerationError`, `DanglingRelationshipEndpointError`) are
+defense-in-depth only (DD18); `GENERALIZATION` relationships contribute no
+column/FK/table, fully consumed by the Stage-3 collapse (DD19); a dedicated
+`tests/factories.py` imports only `apps.uml_modeling.domain`, never the
+`uml_modeling` test factories (DD20).
+
+**New `uml-validation` rule — `MULTI_PARENT_GENERALIZATION`.** Lives beside
+`generalization_cycle` in `validation/rules/relationships.py`: ERROR when a
+class is the source (child) of more than one *distinct* `GENERALIZATION`
+target; a duplicate edge to the same parent is silent. Grows the fixed
+registry from **11 rules to 12**.
+
+**Deviation (not itemized in the original task list, same shape as Cycle 14's
+DD6-adjacent addendum)**: growing `RULES` 11→12 and `DiagnosticCode` by one
+member broke two pre-existing closed-set regression tests `design.md`/
+`tasks.md` didn't call out — `test_diagnostics.py`'s
+`test_diagnostic_code_has_exactly_the_eleven_cycle_one_codes` (renamed to
+"twelve", set literal grown) and `test_validation_integration.py`'s
+full-registry fixture (`produced_codes == set(DiagnosticCode)` plus an exact
+`len(result.diagnostics)` count) — both updated in the same change (a `Child`
+class with two distinct `GENERALIZATION` parents added to the fixture, given
+one attribute so it does not also trip a second, unwanted
+`CLASS_WITHOUT_ATTRIBUTES` diagnostic) rather than left red.
+
+Full regression: 442/442 backend (`pytest`) pass (54 new for
+`relational_mapping`, 4 new for the validation rule; baseline was 384), zero
+regressions. `sdd-verify`/`sdd-archive` are the remaining steps.
+
 ## 2026-09-16 — Cycle 14 apply: UML class operations (`2026-09-16-uml-class-operations`)
 
 `sdd-apply` implemented all 27 tasks (Phases 1–14) from

@@ -1,6 +1,6 @@
 """Integration test (uml-validation REQ4): every diagnostic's path and
 element_ref MUST resolve to an element actually present in the
-validated model, across the full 11-rule registry, exercised together
+validated model, across the full 12-rule registry, exercised together
 via `validate()` (not each rule in isolation).
 """
 from apps.uml_modeling.domain.elements import RelationshipKind, UmlOperation
@@ -55,15 +55,32 @@ def test_every_diagnostic_from_the_full_registry_resolves_to_a_real_element():
         target_id=duplicate_order.id,
         source_multiplicity=Multiplicity(-1, None),
     )
+    child = a_class(name="Child", attributes=(an_attribute(name="label"),))
+    child_generalizes_order = a_relationship(
+        kind=RelationshipKind.GENERALIZATION,
+        source_id=child.id,
+        target_id=order.id,
+        source_multiplicity=Multiplicity(1, 1),
+        target_multiplicity=Multiplicity(1, 1),
+    )
+    child_generalizes_duplicate_order = a_relationship(
+        kind=RelationshipKind.GENERALIZATION,
+        source_id=child.id,
+        target_id=duplicate_order.id,
+        source_multiplicity=Multiplicity(1, 1),
+        target_multiplicity=Multiplicity(1, 1),
+    )
 
     model = a_model(
-        classes=(empty_class, order, duplicate_order, item, widget),
+        classes=(empty_class, order, duplicate_order, item, widget, child),
         enumerations=(status_enum,),
         relationships=(
             self_association,
             self_generalization,
             dangling_relationship,
             invalid_multiplicity_relationship,
+            child_generalizes_order,
+            child_generalizes_duplicate_order,
         ),
     )
 
@@ -71,7 +88,7 @@ def test_every_diagnostic_from_the_full_registry_resolves_to_a_real_element():
 
     produced_codes = {diagnostic.code for diagnostic in result.diagnostics}
     assert produced_codes == set(DiagnosticCode)
-    assert len(result.diagnostics) == 11
+    assert len(result.diagnostics) == 12
 
     for diagnostic in result.diagnostics:
         assert diagnostic_resolves_to_a_real_element(model, diagnostic), (

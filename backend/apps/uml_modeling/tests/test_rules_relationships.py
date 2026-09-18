@@ -7,6 +7,7 @@ from apps.uml_modeling.validation.diagnostics import DiagnosticCode, ElementKind
 from apps.uml_modeling.validation.rules.relationships import (
     generalization_cycle,
     invalid_relationship_endpoint,
+    multi_parent_generalization,
     self_association,
 )
 
@@ -136,3 +137,59 @@ def test_self_association_does_not_flag_a_regular_association():
     model = a_model(classes=(order_class, customer_class), relationships=(relationship,))
 
     assert self_association(model) == ()
+
+
+def test_multi_parent_generalization_fires_on_two_distinct_parents():
+    child = a_class(name="Car")
+    parent_a = a_class(name="Vehicle")
+    parent_b = a_class(name="Machine")
+    to_a = _a_generalization(source_id=child.id, target_id=parent_a.id)
+    to_b = _a_generalization(source_id=child.id, target_id=parent_b.id)
+    model = a_model(classes=(child, parent_a, parent_b), relationships=(to_a, to_b))
+
+    diagnostics = multi_parent_generalization(model)
+
+    assert len(diagnostics) == 1
+    diagnostic = diagnostics[0]
+    assert diagnostic.code is DiagnosticCode.MULTI_PARENT_GENERALIZATION
+    assert diagnostic.severity is Severity.ERROR
+    assert diagnostic.path == f"/classes/{child.id}"
+    assert diagnostic.element_ref.kind is ElementKind.CLASS
+    assert diagnostic.element_ref.id == child.id
+
+
+def test_multi_parent_generalization_is_silent_on_a_single_parent():
+    child = a_class(name="Car")
+    parent = a_class(name="Vehicle")
+    to_parent = _a_generalization(source_id=child.id, target_id=parent.id)
+    model = a_model(classes=(child, parent), relationships=(to_parent,))
+
+    assert multi_parent_generalization(model) == ()
+
+
+def test_multi_parent_generalization_is_silent_on_a_duplicate_edge_to_the_same_parent():
+    child = a_class(name="Car")
+    parent = a_class(name="Vehicle")
+    first_edge = _a_generalization(source_id=child.id, target_id=parent.id)
+    duplicate_edge = _a_generalization(source_id=child.id, target_id=parent.id)
+    model = a_model(classes=(child, parent), relationships=(first_edge, duplicate_edge))
+
+    assert multi_parent_generalization(model) == ()
+
+
+def test_multi_parent_generalization_order_is_deterministic_by_model_classes_order():
+    child_one = a_class(name="Car")
+    child_two = a_class(name="Boat")
+    parent_a = a_class(name="Vehicle")
+    parent_b = a_class(name="Machine")
+    relationships = (
+        _a_generalization(source_id=child_one.id, target_id=parent_a.id),
+        _a_generalization(source_id=child_one.id, target_id=parent_b.id),
+        _a_generalization(source_id=child_two.id, target_id=parent_a.id),
+        _a_generalization(source_id=child_two.id, target_id=parent_b.id),
+    )
+    model = a_model(classes=(child_one, child_two, parent_a, parent_b), relationships=relationships)
+
+    diagnostics = multi_parent_generalization(model)
+
+    assert [d.element_ref.id for d in diagnostics] == [child_one.id, child_two.id]

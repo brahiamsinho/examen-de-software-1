@@ -21,6 +21,7 @@ from apps.uml_modeling.validation.rules.naming import (
 from apps.uml_modeling.validation.rules.relationships import (
     generalization_cycle,
     invalid_relationship_endpoint,
+    multi_parent_generalization,
     self_association,
 )
 from apps.uml_modeling.validation.rules.structure import class_without_attributes
@@ -28,9 +29,9 @@ from apps.uml_modeling.validation.rules.types import unknown_attribute_type
 
 Rule = Callable[[CanonicalUmlModel], Iterable[Diagnostic]]
 
-# The complete Cycle-1 registry: exactly the 11 fixed rules (uml-validation
-# spec), in declared order (DD4). `test_registry_has_exactly_eleven_rules`
-# (Phase 7) asserts this count.
+# The complete registry: exactly the 12 fixed rules (uml-validation
+# spec), in declared order (DD4). `test_registry_has_exactly_twelve_rules`
+# asserts this count.
 RULES: tuple[Rule, ...] = (
     empty_element_name,
     duplicate_class_name,
@@ -41,6 +42,7 @@ RULES: tuple[Rule, ...] = (
     invalid_relationship_endpoint,
     invalid_multiplicity,
     generalization_cycle,
+    multi_parent_generalization,
     self_association,
     class_without_attributes,
 )

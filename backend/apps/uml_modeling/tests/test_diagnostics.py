@@ -15,7 +15,7 @@ from apps.uml_modeling.validation.diagnostics import (
     relationship_path,
 )
 
-ELEVEN_CODES = {
+TWELVE_CODES = {
     "EMPTY_ELEMENT_NAME",
     "DUPLICATE_CLASS_NAME",
     "DUPLICATE_ATTRIBUTE_NAME",
@@ -25,13 +25,14 @@ ELEVEN_CODES = {
     "INVALID_RELATIONSHIP_ENDPOINT",
     "INVALID_MULTIPLICITY",
     "GENERALIZATION_CYCLE",
+    "MULTI_PARENT_GENERALIZATION",
     "SELF_ASSOCIATION",
     "CLASS_WITHOUT_ATTRIBUTES",
 }
 
 
-def test_diagnostic_code_has_exactly_the_eleven_cycle_one_codes():
-    assert {member.name for member in DiagnosticCode} == ELEVEN_CODES
+def test_diagnostic_code_has_exactly_the_twelve_fixed_codes():
+    assert {member.name for member in DiagnosticCode} == TWELVE_CODES
 
 
 def test_severity_has_error_and_warning():

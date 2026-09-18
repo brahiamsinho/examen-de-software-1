@@ -104,6 +104,45 @@ def generalization_cycle(model: CanonicalUmlModel) -> tuple[Diagnostic, ...]:
     return tuple(diagnostics)
 
 
+def multi_parent_generalization(model: CanonicalUmlModel) -> tuple[Diagnostic, ...]:
+    """ERROR when a class is the source (child) of `GENERALIZATION`
+    relationships pointing at more than one *distinct* parent.
+
+    Single Table inheritance (relational-mapping spec) requires a
+    single-parent tree; this is the primary line of defense, the
+    mapper's `MultipleGeneralizationParentsError` is defense-in-depth.
+    Two edges to the *same* parent are a duplicate edge, not multiple
+    inheritance, and are ignored. Iterates in `model.classes` order (not
+    dict order) so the diagnostic order is deterministic; a dangling
+    child id produces no diagnostic here (`INVALID_RELATIONSHIP_ENDPOINT`
+    owns that case).
+    """
+    parents_of: dict[ElementId, list[ElementId]] = defaultdict(list)
+    for relationship in model.relationships:
+        if relationship.kind is not RelationshipKind.GENERALIZATION:
+            continue
+        child_id = relationship.source.class_id
+        parent_id = relationship.target.class_id
+        if parent_id not in parents_of[child_id]:
+            parents_of[child_id].append(parent_id)
+
+    diagnostics: list[Diagnostic] = []
+    for uml_class in model.classes:
+        parents = parents_of.get(uml_class.id, [])
+        if len(parents) <= 1:
+            continue
+        diagnostics.append(
+            Diagnostic(
+                severity=Severity.ERROR,
+                code=DiagnosticCode.MULTI_PARENT_GENERALIZATION,
+                message=f"Class {uml_class.id!r} has more than one generalization parent",
+                path=class_path(uml_class.id),
+                element_ref=ElementRef(kind=ElementKind.CLASS, id=uml_class.id),
+            )
+        )
+    return tuple(diagnostics)
+
+
 def self_association(model: CanonicalUmlModel) -> tuple[Diagnostic, ...]:
     """Flag an `ASSOCIATION` relationship whose source and target are
     the same class. Scoped to `ASSOCIATION` only: a self-generalization

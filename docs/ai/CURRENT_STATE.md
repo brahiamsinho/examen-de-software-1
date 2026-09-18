@@ -395,10 +395,31 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   persistence, and no auth wiring yet — `owner_id` is a validated-opaque
   string only. 80 backend tests cover it (TDD, `pytest` + `hypothesis`),
   with zero regression to the pre-existing health-check smoke test.
+- **SDD Cycle (`2026-09-17-uml-relational-mapping`) is implemented**
+  (`backend/apps/relational_mapping/`, spec §21): a pure, DB-free
+  `map_to_relational(CanonicalUmlModel) -> RelationalModel` — the first stage
+  of the future Spring Boot generator pipeline. `domain/` (`Table`, `Column`,
+  `PrimaryKey`, `ForeignKey`, `UniqueConstraint`, `Index`, `EnumType`,
+  `RelationalModel`, all frozen) + `mapping/` (`errors`, `naming`, `mapper`,
+  a 5-stage pipeline: hierarchy -> enumerations -> tables -> relationships ->
+  freeze). Settled rules: synthetic UUID PK on every table unconditionally,
+  Single Table inheritance with a verbatim-class-name `class_type`
+  discriminator, native-`ENUM`-flavored enumerations, composition FKs always
+  `NOT NULL CASCADE` (nullable only for the documented self-composition tree
+  exception), association/aggregation FK nullability from the referenced
+  end's `Multiplicity.lower`, and join tables for many-to-many. A new
+  `MULTI_PARENT_GENERALIZATION` `ERROR` rule (`apps.uml_modeling`) is the
+  primary defense against a multi-parent tree; the mapper's own
+  `MultipleGeneralizationParentsError`/`GeneralizationCycleError`/
+  `UnknownEnumerationError`/`DanglingRelationshipEndpointError` are
+  defense-in-depth only — the mapper never calls `validate()`. Zero Django/DB/
+  Java imports in the new module. 442/442 backend tests pass (58 new).
+  `sdd-verify`/`sdd-archive` are the remaining steps.
 - `UmlCommand`/Command Bus, the Cytoscape canvas, persistence (Django
-  ORM), realtime collaboration, the relational mapper, the Spring Boot
-  generator, the Domain Manifest, the assistant pipeline, and all
-  AI/voice/image/XMI features are **not started**.
+  ORM), and realtime collaboration are implemented for the UML domain
+  (see Backend/Frontend sections above). The Spring Boot generator, the
+  Domain Manifest, the assistant pipeline, and all AI/voice/image/XMI
+  features are **not started**.
 
 ## Pending (SDD Cycle 1 and beyond)
 
