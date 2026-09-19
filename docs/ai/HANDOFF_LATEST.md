@@ -8,11 +8,11 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 
 ## Snapshot
 
-- Code state: branch `main` == `origin/main` at `0aa211a`. The only changes
-  possibly not yet committed are this handoff refresh (`docs/ai/*` and the
-  new note under `docs/ai/sessions/`); run `git status` to check.
-- No active OpenSpec change. 20 archived cycles.
-- Tests: backend 631 (`docker compose exec -T backend pytest -q`), frontend
+- Code state: branch `main` == `origin/main` at `743a572`. Current working
+  tree contains the completed but not-yet-committed `relational-column-ownership`
+  SDD cycle plus this handoff refresh; run `git status` to check.
+- No active OpenSpec change. 21 archived cycles.
+- Tests: backend 636 (`docker compose exec -T backend pytest -q`), frontend
   335 (vitest, last run during the `spring-boot-generator-core` verify; the
   frontend has not changed since).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
@@ -50,7 +50,7 @@ uml-document-list · 09-14 realtime-uml-collaboration,
 uml-relationship-kinds · 09-15 uml-node-position-sync · 09-16
 uml-class-operations · 09-18 uml-relational-mapping,
 spring-boot-generator-core, spring-boot-generator-relationships-enums,
-spring-boot-generator-application-api-layer.
+spring-boot-generator-application-api-layer, relational-column-ownership.
 
 Fixes done outside an SDD cycle (each logged in `DECISIONS_LOG.md`):
 - `f605592` client-side lock self-expiry (a lock whose release message was
@@ -74,8 +74,12 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 - `backend/apps/relational_mapping/`: pure, DB-free mapper. Single Table
   inheritance with a `class_type` discriminator, synthetic UUID PK on every
   table, native PG ENUM, composition = `NOT NULL` + `ON DELETE CASCADE`,
-  N:M = join table. Validation rule `MULTI_PARENT_GENERALIZATION` rejects
-  multi-parent generalization (Single Table needs a tree).
+  N:M = join table. Attribute-derived `Column` values now carry both
+  `source_element_id` (the UML attribute) and `owning_class_id` (the UML class
+  that owns that attribute); synthetic id, discriminator, FK and join-table
+  columns keep `owning_class_id = None`. Validation rule
+  `MULTI_PARENT_GENERALIZATION` rejects multi-parent generalization (Single
+  Table needs a tree).
 - `backend/apps/spring_generator/` (pure, filesystem-free, deterministic):
   - `generate_table_sources(table, *, base_package)` → 6 files under
     `src/main/java/<pkg>/`: `domain/<E>.java` (JPA entity),
@@ -134,11 +138,10 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 
 ## Blocked / open
 
-1. **Inheritance generation (needs a user decision).** `Column` in
-   `relational_mapping/domain/schema.py` has no owning-UML-class field, so
-   which fields belong to which subclass cannot be rebuilt for 2+ sibling
-   subclasses. Options: (a) add `owning_class_id` to `Column` (reopens an
-   archived cycle), (b) limit to single-subclass trees, (c) defer.
+1. **Spring inheritance generation.** The ownership metadata prerequisite is
+   now done, but `spring_generator` still intentionally rejects discriminator
+   tables. A new SDD cycle must design how one Single Table maps to root and
+   subclass Java entities/DTO/service behavior before enabling generation.
 2. Filtering/search: waits for §33 generation metadata (`searchable`,
    `sortable`, …), which the schema does not have.
 3. Relation-navigation sub-endpoints (`GET /parent/{id}/children`) and
@@ -153,7 +156,7 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 ## How to resume
 
 1. `docker compose up -d`, then `docker compose exec -T backend pytest -q`
-   must report 631 passed before you change anything.
+   must report 636 passed before you change anything.
 2. Work through SDD (hybrid store: `openspec/` + Engram, Strict TDD):
    explore → propose → spec/design → tasks → apply → verify → archive →
    commit. Ask the user the open questions before `sdd-propose`, one

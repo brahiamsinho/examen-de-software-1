@@ -24,6 +24,7 @@ class Column:
     scale: int | None = None
     enum_type_name: str | None = None
     source_element_id: ElementId | None = None
+    owning_class_id: ElementId | None = None
 
 
 @dataclass(frozen=True)

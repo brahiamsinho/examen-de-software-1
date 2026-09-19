@@ -1,5 +1,26 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle apply: Relational column ownership metadata (`relational-column-ownership`)
+
+`sdd-apply` implemented the archived `relational-column-ownership` cycle with
+Strict TDD. `Column` in `backend/apps/relational_mapping/domain/schema.py` now
+has `owning_class_id: ElementId | None = None`, distinct from
+`source_element_id`: `source_element_id` identifies the UML attribute, while
+`owning_class_id` identifies the UML class that owns that attribute. The mapper
+threads ownership only through `_map_attribute_column(...)`; root and subclass
+attributes flattened into a Single Table preserve their original UML class id.
+Synthetic `id`, `class_type` discriminator, relationship FK columns, and
+many-to-many join-table columns deliberately keep `owning_class_id is None`.
+
+The Spring generator boundary remains unchanged: discriminator-backed tables
+still raise the existing inheritance unsupported error, even when owned
+attribute metadata is present. This cycle is a prerequisite for future Spring
+inheritance generation, not the inheritance generator itself. Verification found
+one weak assertion (`all(...)` over join-table columns); it was fixed by
+asserting the exact join-table column names before checking each column. Final
+evidence: focused suite 44 passed, full backend suite 636 passed, and
+`python manage.py check` reported no issues. No commit has been created yet.
+
 ## 2026-09-18 — Cycle apply: Spring Boot generator `application/`+`api/` layers (`2026-09-18-spring-boot-generator-application-api-layer`)
 
 `sdd-apply` implemented all 23 tasks (Phases 1–8) from

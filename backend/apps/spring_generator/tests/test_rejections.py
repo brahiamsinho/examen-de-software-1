@@ -21,6 +21,7 @@ from apps.spring_generator.emit.errors import (
     UnsupportedPrimaryKeyError,
 )
 from apps.spring_generator.emit.errors import reject_out_of_scope
+from apps.spring_generator.emit.renderer import generate_table_sources
 from apps.spring_generator.tests.factories import a_column, a_table
 
 
@@ -107,6 +108,27 @@ def test_table_with_discriminator_column_is_rejected():
     assert excinfo.value.discriminator_column == "class_type"
     assert isinstance(excinfo.value, UngeneratableTableError)
     assert isinstance(excinfo.value, UngeneratableSourceError)
+
+
+def test_discriminator_table_with_owned_attribute_column_is_still_rejected_before_rendering():
+    table = a_table(
+        columns=(
+            Column(name="id", type=ColumnType.UUID),
+            Column(
+                name="vin",
+                type=ColumnType.VARCHAR,
+                source_element_id="attr-vin",
+                owning_class_id="class-vehicle",
+            ),
+        ),
+        discriminator_column="class_type",
+    )
+
+    with pytest.raises(InheritanceUnsupportedError) as excinfo:
+        generate_table_sources(table)
+
+    assert excinfo.value.table_name == table.name
+    assert excinfo.value.discriminator_column == "class_type"
 
 
 def test_table_with_unnamed_enum_column_is_rejected():

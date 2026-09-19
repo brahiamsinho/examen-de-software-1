@@ -47,6 +47,38 @@ def test_descendant_columns_are_nullable_root_columns_are_not():
     assert table.column_by_name("doors").nullable is True
 
 
+def test_single_table_columns_preserve_original_owning_class_ids():
+    brand = an_attribute(name="brand", type=PrimitiveType.STRING)
+    doors = an_attribute(name="doors", type=PrimitiveType.INTEGER)
+    vehicle = a_class(name="Vehicle", attributes=(brand,))
+    car = a_class(name="Car", attributes=(doors,))
+    generalization = a_generalization(source_id=car.id, target_id=vehicle.id)
+    model = a_model(classes=(vehicle, car), relationships=(generalization,))
+
+    result = map_to_relational(model)
+
+    table = result.tables[0]
+    brand_column = table.column_by_name("brand")
+    doors_column = table.column_by_name("doors")
+    assert brand_column.source_element_id == brand.id
+    assert brand_column.owning_class_id == vehicle.id
+    assert doors_column.source_element_id == doors.id
+    assert doors_column.owning_class_id == car.id
+
+
+def test_single_table_synthetic_id_and_discriminator_have_no_owning_class_id():
+    vehicle = a_class(name="Vehicle")
+    car = a_class(name="Car")
+    generalization = a_generalization(source_id=car.id, target_id=vehicle.id)
+    model = a_model(classes=(vehicle, car), relationships=(generalization,))
+
+    result = map_to_relational(model)
+
+    table = result.tables[0]
+    assert table.column_by_name("id").owning_class_id is None
+    assert table.column_by_name("class_type").owning_class_id is None
+
+
 def test_single_class_has_no_discriminator():
     order = a_class(name="Order")
     model = a_model(classes=(order,))

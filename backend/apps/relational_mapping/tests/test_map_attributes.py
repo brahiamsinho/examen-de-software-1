@@ -1,8 +1,15 @@
 """RED: mapper does not implement attribute->column mapping yet (Stage 3)."""
 from apps.relational_mapping.domain.types import ColumnType
 from apps.relational_mapping.mapping.mapper import map_to_relational
-from apps.relational_mapping.tests.factories import a_class, a_generalization, a_model, an_attribute
-from apps.uml_modeling.domain.types import PrimitiveType
+from apps.relational_mapping.tests.factories import (
+    a_class,
+    a_generalization,
+    a_model,
+    an_attribute,
+    an_enumeration,
+    an_enumeration_literal,
+)
+from apps.uml_modeling.domain.types import EnumerationRef, PrimitiveType
 
 _PRIMITIVE_EXPECTATIONS = {
     PrimitiveType.STRING: {"type": ColumnType.VARCHAR, "length": 255},
@@ -40,6 +47,32 @@ def test_root_attribute_column_is_not_null():
 
     column = result.table_by_name("order").column_by_name("total")
     assert column.nullable is False
+
+
+def test_root_attribute_column_preserves_source_attribute_and_owning_class_ids():
+    attribute = an_attribute(name="total", type=PrimitiveType.DECIMAL)
+    order_class = a_class(name="Order", attributes=(attribute,))
+    model = a_model(classes=(order_class,))
+
+    result = map_to_relational(model)
+
+    column = result.table_by_name("order").column_by_name("total")
+    assert column.source_element_id == attribute.id
+    assert column.owning_class_id == order_class.id
+
+
+def test_enum_attribute_column_preserves_source_attribute_and_owning_class_ids():
+    status = an_enumeration(name="OrderStatus", literals=(an_enumeration_literal(name="PAID"),))
+    attribute = an_attribute(name="status", type=EnumerationRef(enumeration_id=status.id))
+    order_class = a_class(name="Order", attributes=(attribute,))
+    model = a_model(classes=(order_class,), enumerations=(status,))
+
+    result = map_to_relational(model)
+
+    column = result.table_by_name("order").column_by_name("status")
+    assert column.type is ColumnType.ENUM
+    assert column.source_element_id == attribute.id
+    assert column.owning_class_id == order_class.id
 
 
 def test_attribute_named_id_collides_with_synthetic_pk_and_gets_prefixed():

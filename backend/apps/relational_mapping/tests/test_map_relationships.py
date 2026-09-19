@@ -50,6 +50,8 @@ def test_one_to_many_association_puts_fk_on_the_many_side():
     order_table = result.table_by_name("order")
     fk_column = order_table.column_by_name("customer_id")
     assert fk_column is not None
+    assert fk_column.source_element_id is None
+    assert fk_column.owning_class_id is None
     assert order_table.foreign_keys[0].referenced_table == "customer"
     assert result.table_by_name("customer").column_by_name("order_id") is None
     assert order_table.indexes[0].column_names == ("customer_id",)
@@ -73,6 +75,14 @@ def test_many_to_many_association_produces_a_join_table():
     assert join_table is not None
     assert join_table.primary_key.column_names == ("id",)
     assert join_table.primary_key.name == "pk_student_course"
+    assert tuple(column.name for column in join_table.columns) == (
+        "id",
+        "student_id",
+        "course_id",
+    )
+    for column in join_table.columns:
+        assert column.source_element_id is None
+        assert column.owning_class_id is None
     referenced_tables = {fk.referenced_table for fk in join_table.foreign_keys}
     assert referenced_tables == {"student", "course"}
     assert len(join_table.unique_constraints) == 1

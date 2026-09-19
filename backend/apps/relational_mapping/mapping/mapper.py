@@ -207,6 +207,7 @@ def _map_attribute_column(
     *,
     nullable: bool,
     owner_class_name: str,
+    owning_class_id: ElementId,
     enum_type_name_by_id: dict[ElementId, str],
     taken_names: set[str],
 ) -> Column:
@@ -223,10 +224,18 @@ def _map_attribute_column(
             nullable=nullable,
             enum_type_name=enum_type_name,
             source_element_id=attribute.id,
+            owning_class_id=owning_class_id,
         )
 
     column_type, extra = _PRIMITIVE_TYPE_MAP[attribute.type]
-    return Column(name=name, type=column_type, nullable=nullable, source_element_id=attribute.id, **extra)
+    return Column(
+        name=name,
+        type=column_type,
+        nullable=nullable,
+        source_element_id=attribute.id,
+        owning_class_id=owning_class_id,
+        **extra,
+    )
 
 
 def _map_table_for_root(
@@ -273,6 +282,7 @@ def _map_table_for_root(
                 attribute,
                 nullable=nullable,
                 owner_class_name=uml_class.name,
+                owning_class_id=class_id,
                 enum_type_name_by_id=enum_type_name_by_id,
                 taken_names=draft.column_names,
             )

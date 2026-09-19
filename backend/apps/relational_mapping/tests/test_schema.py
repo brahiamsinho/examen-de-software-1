@@ -55,6 +55,7 @@ def test_column_defaults():
     assert column.scale is None
     assert column.enum_type_name is None
     assert column.source_element_id is None
+    assert column.owning_class_id is None
 
 
 def test_column_is_frozen():

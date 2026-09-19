@@ -7,16 +7,21 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
-**As of 2026-09-19** (`main` at `0aa211a`, 20 archived SDD cycles, backend
-631 tests, no open change): the UML modeling core (canonical model,
-validation engine, command bus, persistence, canvas with locking), multi-
-tenant identity/auth, realtime collaboration, the UML → RelationalModel
-mapper, and three slices of the Spring Boot generator all exist and are
-archived. The generator emits Java **source text only** for one table at a
-time (`domain/`, `persistence/`, `application/`, `api/`, `errors/`).
+**As of 2026-09-19** (`main` at `743a572`, 21 archived SDD cycles, backend
+636 tests, no open change after archiving `relational-column-ownership`): the
+UML modeling core (canonical model, validation engine, command bus,
+persistence, canvas with locking), multi-tenant identity/auth, realtime
+collaboration, the UML → RelationalModel mapper, and three slices of the
+Spring Boot generator all exist and are archived. The mapper now preserves UML
+class ownership for attribute-derived relational columns via
+`Column.owning_class_id`, while synthetic/discriminator/FK/join columns keep
+that metadata unset. The generator emits Java **source text only** for one
+table at a time (`domain/`, `persistence/`, `application/`, `api/`,
+`errors/`).
 
 What does **not** exist: compilation of any generated Java (§37 item 13),
-inheritance generation, filtering/search, the generated `config/` layer,
+Spring inheritance generation (the generator still rejects discriminator
+tables intentionally), filtering/search, the generated `config/` layer,
 OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
 the assistant, voice, XMI and image → UML. Undo/Redo and Presence (§37 items
 7 and 10) have no dedicated archived cycle and are not verified as
