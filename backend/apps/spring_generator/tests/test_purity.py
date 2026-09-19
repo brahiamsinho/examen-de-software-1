@@ -4,11 +4,16 @@ Generator Purity requirement). Covers both public entry points:
 `generate_table_sources` (per-`Table`) and `generate_shared_error_sources`
 (per-project, DD42).
 """
+import os
 from unittest.mock import patch
 
 from apps.relational_mapping.domain.schema import Column, PrimaryKey
 from apps.relational_mapping.domain.types import ColumnType
-from apps.spring_generator.emit.renderer import generate_shared_error_sources, generate_table_sources
+from apps.spring_generator.emit.renderer import (
+    generate_project_config_sources,
+    generate_shared_error_sources,
+    generate_table_sources,
+)
 from apps.spring_generator.tests.factories import a_table
 
 
@@ -48,3 +53,36 @@ def test_shared_error_sources_generation_never_calls_the_validation_engine():
         generate_shared_error_sources(base_package="com.modelia.generated")
 
     mock_validate.assert_not_called()
+
+
+def test_project_config_generation_succeeds_with_no_db_access():
+    # Same purity argument as above: no `django_db`/`db` fixture
+    # requested, so a passing test already proves no DB connection.
+    sources = generate_project_config_sources()
+
+    assert [generated_file.path for generated_file in sources.files] == ["src/main/resources/application.yml"]
+
+
+def test_project_config_generation_never_calls_the_validation_engine():
+    with patch("apps.uml_modeling.validation.engine.validate") as mock_validate:
+        generate_project_config_sources()
+
+    mock_validate.assert_not_called()
+
+
+def test_project_config_generation_does_not_inspect_environment_or_run_subprocesses():
+    with patch("os.getenv") as mock_getenv, patch.object(os.environ, "get") as mock_environ_get, patch(
+        "subprocess.run"
+    ) as mock_run, patch("subprocess.Popen") as mock_popen, patch(
+        "subprocess.check_call"
+    ) as mock_check_call, patch(
+        "subprocess.check_output"
+    ) as mock_check_output:
+        generate_project_config_sources()
+
+    mock_getenv.assert_not_called()
+    mock_environ_get.assert_not_called()
+    mock_run.assert_not_called()
+    mock_popen.assert_not_called()
+    mock_check_call.assert_not_called()
+    mock_check_output.assert_not_called()

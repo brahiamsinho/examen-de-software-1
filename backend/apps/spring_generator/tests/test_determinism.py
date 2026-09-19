@@ -18,7 +18,7 @@ from apps.spring_generator.emit.context import (
     build_response_dto_context,
 )
 from apps.spring_generator.emit.naming import camel_case, relationship_base_name
-from apps.spring_generator.emit.renderer import generate_enum_source, generate_table_sources
+from apps.spring_generator.emit.renderer import generate_enum_source, generate_project_config_sources, generate_table_sources
 
 _TABLE_NAMES = ["product", "order_item", "customer", "invoice"]
 _COLUMN_NAMES = ["name", "description", "quantity", "amount", "notes", "active"]
@@ -200,3 +200,13 @@ def test_enum_source_generation_is_byte_identical(enum_type):
 
     assert first == second
     assert first.contents == second.contents
+
+
+def test_project_config_generation_is_byte_identical():
+    first = generate_project_config_sources()
+    second = generate_project_config_sources()
+
+    assert first == second
+    assert [generated_file.path for generated_file in first.files] == ["src/main/resources/application.yml"]
+    assert [generated_file.path for generated_file in second.files] == ["src/main/resources/application.yml"]
+    assert first.files[0].contents == second.files[0].contents

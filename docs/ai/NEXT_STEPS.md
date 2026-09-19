@@ -6,15 +6,19 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
-The Spring Boot generator (§37 item 12) has four archived generator slices, all
-one-`Table`-at-a-time and text-only: `spring-boot-generator-core` (entity +
-repository), `spring-boot-generator-relationships-enums` (FK relationships,
-enum fields, standalone enum source), `spring-boot-generator-application-api-layer`
-(DTOs, service, REST controller, shared error handling), and
+The Spring Boot generator (§37 item 12) has five archived generator slices, all
+text-only: `spring-boot-generator-core` (entity + repository),
+`spring-boot-generator-relationships-enums` (FK relationships, enum fields,
+standalone enum source), `spring-boot-generator-application-api-layer` (DTOs,
+service, REST controller, shared error handling),
 `2026-09-19-spring-boot-generator-inheritance` (discriminator-backed Single
-Table domain classes plus one root repository only). The relational mapper has
-the archived `relational-column-ownership` prerequisite: attribute-derived
-columns carry `owning_class_id`; non-attribute columns keep `None`.
+Table domain classes plus one root repository only), and
+`2026-09-19-spring-boot-generator-config-layer` (pure project-singleton
+`src/main/resources/application.yml` only, six required no-default placeholders
+including `JPA_DDL_AUTO`, no dialect/platform, no Java `config/` classes and no
+whole-model orchestrator). The relational mapper has the archived
+`relational-column-ownership` prerequisite: attribute-derived columns carry
+`owning_class_id`; non-attribute columns keep `None`.
 
 ## Next candidates, in dependency order
 
@@ -22,11 +26,10 @@ columns carry `owning_class_id`; non-attribute columns keep `None`.
    inheritance slice intentionally stops at JPA Single Table domain entities
    plus the root repository. DTOs, services, controllers, subclass repositories,
    Java compilation, OpenAPI, Postman, and Domain Manifest remain future work.
-2. **`config/` layer of the generated backend** — not started. It must keep the
-   "externally configurable, nothing hardcoded" rule (`application.yml` +
-   environment variables, no literal host/port/URL). Probably a
-   project-singleton entry point like `generate_shared_error_sources`, not a
-   per-table one.
+2. **Broader generated backend configuration remains deferred.** The bounded
+   `application.yml` singleton now exists with six required no-default
+   placeholders only; Java `config/` classes, profiles, Docker/runtime
+   scaffolding, and orchestration are still not started.
 3. **Whole-model orchestrator** — a function that walks a `RelationalModel`,
    calls the per-table/per-enum generators, calls the shared-error generator
    exactly once, and detects cross-artifact Java class-name collisions (e.g. a

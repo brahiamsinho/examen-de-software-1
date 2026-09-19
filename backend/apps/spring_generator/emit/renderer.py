@@ -179,6 +179,23 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
     )
 
 
+def generate_project_config_sources() -> GeneratedSources:
+    """Project-singleton Spring Boot configuration source generator.
+
+    Pure, parameter-free sibling to the table, enum, and shared-error
+    generators. It emits exactly one in-memory YAML resource with required
+    environment placeholders and performs no package validation because no
+    Java package participates in this resource file.
+    """
+    source = _ENVIRONMENT.get_template("application.yml.j2").render()
+
+    return GeneratedSources(
+        files=(
+            GeneratedFile(path="src/main/resources/application.yml", contents=source),
+        )
+    )
+
+
 def generate_shared_error_sources(*, base_package: str = "com.modelia.generated") -> GeneratedSources:
     """DD42: sibling entry point to `generate_table_sources`, taking no
     `Table`. Reuses the same Jinja `_ENVIRONMENT`, `_validate_base_package`,

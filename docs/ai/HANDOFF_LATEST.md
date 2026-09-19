@@ -11,12 +11,13 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 - Code state: branch `main` == `origin/main` at `743a572`. Current working
   tree contains the completed but not-yet-committed `relational-column-ownership`
   SDD cycle, the completed and archived but not-yet-committed
-  `2026-09-19-spring-boot-generator-inheritance` cycle, plus this handoff
-  refresh; run `git status` to check.
-- No active OpenSpec change. 22 archived cycles.
-- Tests: backend 655 (`docker compose exec -T backend pytest -q`), frontend
-  335 (vitest, last run during the `spring-boot-generator-core` verify; the
-  frontend has not changed since).
+  `2026-09-19-spring-boot-generator-inheritance` cycle, the completed and
+  archived but not-yet-committed `2026-09-19-spring-boot-generator-config-layer`
+  cycle, plus this handoff refresh; run `git status` to check.
+- No active OpenSpec change. 23 archived cycles.
+- Tests: backend 670 (`docker compose exec -T backend pytest -q`), frontend
+  335 (`cd frontend && npm test`, last run during the config-layer verify; the
+  config slice changed no frontend code).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
   until it answers, then `docker compose up -d`.
 
@@ -53,7 +54,8 @@ uml-relationship-kinds · 09-15 uml-node-position-sync · 09-16
 uml-class-operations · 09-18 uml-relational-mapping,
 spring-boot-generator-core, spring-boot-generator-relationships-enums,
 spring-boot-generator-application-api-layer, relational-column-ownership,
-2026-09-19-spring-boot-generator-inheritance.
+2026-09-19-spring-boot-generator-inheritance,
+2026-09-19-spring-boot-generator-config-layer.
 
 Fixes done outside an SDD cycle (each logged in `DECISIONS_LOG.md`):
 - `f605592` client-side lock self-expiry (a lock whose release message was
@@ -99,6 +101,12 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
   - `generate_shared_error_sources(*, base_package)` → `errors/
     ResourceNotFoundException.java` + `errors/GlobalExceptionHandler.java`
     (one set per generated project, deliberately not per table).
+  - `generate_project_config_sources()` → exactly one in-memory resource at
+    `src/main/resources/application.yml`, with only the six required no-default
+    placeholders (`SPRING_APPLICATION_NAME`, `SPRING_DATASOURCE_URL`,
+    `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JPA_DDL_AUTO`,
+    `SERVER_PORT`). It has no table/model inputs, no filesystem effects, no
+    environment reads, no dialect/platform setting, and no Java `config/` layer.
   - Rejected with typed errors (`UngeneratableSourceError` family): non-UUID
     or composite PK, composite FK, malformed/unsupported discriminator-backed
     inheritance metadata, enum column without a type name, illegal identifiers/
@@ -156,7 +164,7 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 3. Relation-navigation sub-endpoints (`GET /parent/{id}/children`) and
    bidirectional `@OneToMany`: need whole-`RelationalModel` awareness, and a
    caller that walks the whole model does not exist yet.
-4. `config/` layer of the generated backend: not started.
+4. Broader generated backend config remains deferred: the YAML singleton exists, but Java `config/` classes, profiles, runtime scaffolding, and orchestration do not.
 5. Item 13 (compile), 14 (OpenAPI), 15 (Postman), 16 (Domain Manifest).
    Spec contradiction to resolve with the user before item 14: §25 says
    "OpenAPI nativo de Django Ninja" but §22 mandates springdoc-openapi for
@@ -165,7 +173,7 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 ## How to resume
 
 1. `docker compose up -d`, then `docker compose exec -T backend pytest -q`
-   must report 636 passed before you change anything.
+   should report about 670 passed before you change anything.
 2. Work through SDD (hybrid store: `openspec/` + Engram, Strict TDD):
    explore → propose → spec/design → tasks → apply → verify → archive →
    commit. Ask the user the open questions before `sdd-propose`, one

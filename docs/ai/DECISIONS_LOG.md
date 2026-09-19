@@ -1,5 +1,23 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle apply: Spring Boot generator config singleton (`2026-09-19-spring-boot-generator-config-layer`)
+
+`sdd-apply` implemented the approved strict-TDD bounded slice for project
+configuration generation. `generate_project_config_sources()` is a
+parameter-free, project-singleton public entry point in
+`backend/apps/spring_generator/emit/renderer.py`; it returns exactly one
+in-memory `GeneratedFile` at `src/main/resources/application.yml` rendered from
+`emit/templates/application.yml.j2`.
+
+The YAML contains only six required no-default environment placeholders:
+`SPRING_APPLICATION_NAME`, `SPRING_DATASOURCE_URL`,
+`SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JPA_DDL_AUTO`, and
+`SERVER_PORT`. It deliberately emits no Hibernate dialect/platform setting, no
+hardcoded deployable value, no dynamic environment read, no filesystem effect,
+no whole-model orchestrator, and no Java `config/` layer. Existing table, enum,
+inheritance, and shared-error generation boundaries remain unchanged; table
+generators still emit no `src/main/resources/` paths.
+
 ## 2026-09-19 — Cycle apply: Spring Boot generator Single Table inheritance (`2026-09-19-spring-boot-generator-inheritance`)
 
 `sdd-apply` implemented the approved single-PR `size:exception` slice with Strict TDD. A discriminator-backed `Table` now passes typed validation when it has a UUID PK, a discriminator column present in `columns`, non-empty ordered `source_class_ids`, discriminator values for every hierarchy id, and assignable owned fields. Malformed shapes raise `MalformedInheritanceTableError` with stable reasons such as `source_class_ids_required`, `discriminator_value_required`, `unknown_column_owner`, `unowned_column_unsupported`, and `subclass_relationship_unsupported`.

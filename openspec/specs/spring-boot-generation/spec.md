@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the pure, deterministic `Table -> Java source` emission for one relational table's JPA entity (`domain/`) and Spring Data JPA repository (`persistence/`), per spec §22's mandatory generated-backend stack. No relationships, inheritance, enums, compilation, or layers beyond `domain/`+`persistence/` belong to this slice.
+Defines the pure, deterministic Spring Boot source emission already implemented for the generated backend stack: one-table Java generation, enum generation, shared error Java generation, bounded Single Table inheritance Java generation, and one project-singleton `application.yml` resource. Java compilation, whole-model orchestration, OpenAPI, Postman, Domain Manifest, generated frontend/mobile output, and Java `config/` classes remain out of scope.
 
 ## Requirements
 
@@ -99,7 +99,7 @@ Every mapped field MUST carry `@Column(nullable = false)` (or the Jakarta `@NotN
 
 ### Requirement: Generator Purity
 
-The generator MUST be a pure function of its `Table` input to Java source text. It MUST NOT call `relational_mapping`'s `validate()` or any validation routine, and MUST NOT open, query, or otherwise touch any database connection.
+The generator MUST be a pure function of its in-memory inputs to generated source text. It MUST NOT call `relational_mapping`'s `validate()` or any validation routine, and MUST NOT open, query, or otherwise touch any database connection. The project configuration generator MUST also avoid filesystem writes, environment-variable inspection, subprocess execution, Java compilation, Gradle execution, and network access.
 
 #### Scenario: Generation succeeds with no DB and no validation call
 - GIVEN a valid in-memory `Table` and no database connection available in the test process
@@ -170,9 +170,9 @@ The system MUST produce byte-identical Java source text — same field order, sa
 
 ### Requirement: Package and File Path Layout
 
-Generated files MUST be placed only under the `domain/`, `persistence/`, `application/`, `application/dto/`, `api/`, and `errors/` subdirectories of the §22 layout (`domain/persistence/application/api/validation/errors/config`). The `validation/` and `config/` subdirectories MUST NOT be produced by this slice. For non-discriminator tables, `generate_table_sources(table, *, base_package)` MUST emit exactly six files per call, in fixed layer order: `domain/<E>.java`, `persistence/<E>Repository.java`, `application/dto/<E>RequestDto.java`, `application/dto/<E>ResponseDto.java`, `application/<E>Service.java`, `api/<E>Controller.java`. For supported discriminator-backed tables, `generate_table_sources(table, *, base_package)` MUST emit only `domain/` entity classes and the root `persistence/` repository according to the inheritance artifact boundary. A separate `generate_shared_error_sources(*, base_package)` entry point, taking no `Table`, MUST emit exactly two per-project files: `errors/ResourceNotFoundException.java` and `errors/GlobalExceptionHandler.java`. `generate_table_sources` MUST NOT emit any file under `errors/`.
+Generated Java files MUST be placed only under the `domain/`, `persistence/`, `application/`, `application/dto/`, `api/`, and `errors/` subdirectories of the §22 layout (`domain/persistence/application/api/validation/errors/config`). The `validation/` and Java `config/` subdirectories MUST NOT be produced by this slice. For non-discriminator tables, `generate_table_sources(table, *, base_package)` MUST emit exactly six files per call, in fixed layer order: `domain/<E>.java`, `persistence/<E>Repository.java`, `application/dto/<E>RequestDto.java`, `application/dto/<E>ResponseDto.java`, `application/<E>Service.java`, `api/<E>Controller.java`. For supported discriminator-backed tables, `generate_table_sources(table, *, base_package)` MUST emit only `domain/` entity classes and the root `persistence/` repository according to the inheritance artifact boundary. A separate `generate_shared_error_sources(*, base_package)` entry point, taking no `Table`, MUST emit exactly two per-project Java files: `errors/ResourceNotFoundException.java` and `errors/GlobalExceptionHandler.java`. A separate `generate_project_config_sources()` entry point, taking no `Table`, `EnumType`, relational model, base package, or application name, MUST emit exactly one resource file at `src/main/resources/application.yml`. `generate_table_sources` MUST NOT emit any file under `errors/` or `src/main/resources/`.
 
-(Previously: `generate_table_sources` emitted exactly six files for every accepted table and any table with a discriminator column was rejected.)
+(Previously: `generate_table_sources` emitted exactly six files for every accepted table and any table with a discriminator column was rejected; project-level resources were not described.)
 
 #### Scenario: A non-discriminator table yields six layered files under domain, persistence, application, and api
 
@@ -195,9 +195,44 @@ Generated files MUST be placed only under the `domain/`, `persistence/`, `applic
 
 #### Scenario: Validation and config directories remain forbidden
 
-- GIVEN the `Product` table generated end to end and the shared error sources generated once
+- GIVEN the `Product` table generated end to end, the shared error sources generated once, and the project singleton configuration generated once
 - WHEN the combined set of emitted file paths is inspected
 - THEN no file exists under `validation/` or `config/`
+
+#### Scenario: Project application YAML is emitted only by the project singleton configuration generator
+
+- GIVEN table generation, shared error generation, enum generation, and project singleton configuration generation are each invoked through their own entry point
+- WHEN all returned file paths are inspected
+- THEN only the project singleton configuration generator emits `src/main/resources/application.yml`
+- AND no other generator emits a path under `src/main/resources/`
+
+### Requirement: Project Singleton Application YAML Generation
+
+The system MUST provide a pure project-singleton function `generate_project_config_sources() -> GeneratedSources` that is independent of `Table`, `EnumType`, relational model, orchestration, `base_package`, and application name inputs. It MUST return exactly one `GeneratedFile` at `src/main/resources/application.yml`. The content MUST be YAML resource text with no Java package declaration and MUST contain exactly these bounded runtime configuration placeholders with no defaults:
+
+- `spring.application.name: ${SPRING_APPLICATION_NAME}`
+- `spring.datasource.url: ${SPRING_DATASOURCE_URL}`
+- `spring.datasource.username: ${SPRING_DATASOURCE_USERNAME}`
+- `spring.datasource.password: ${SPRING_DATASOURCE_PASSWORD}`
+- `spring.jpa.hibernate.ddl-auto: ${JPA_DDL_AUTO}`
+- `server.port: ${SERVER_PORT}`
+
+The generated YAML MUST NOT emit placeholder defaults such as `${SERVER_PORT:8080}`. It MUST NOT hardcode deployable values such as hosts, ports, URLs, JDBC connection strings, usernames, or passwords. It MUST NOT emit Hibernate dialect/platform settings, OpenAPI, Postman, Manifest, frontend, mobile, logging, Docker, Java `@Configuration`, validation, or Java `config/` scaffolding.
+
+#### Scenario: Project config generator emits exactly one application YAML file
+
+- GIVEN `generate_project_config_sources()` is invoked without table, enum, relational model, base-package, or application-name input
+- WHEN the returned sources are inspected
+- THEN exactly one file exists at `src/main/resources/application.yml`
+- AND that file content contains no Java package declaration
+
+#### Scenario: Application YAML contains only required no-default placeholders
+
+- GIVEN `generate_project_config_sources()` is invoked
+- WHEN the generated YAML content is inspected
+- THEN it contains the six required no-default placeholders
+- AND it contains no placeholder default value
+- AND it contains no Hibernate dialect or database platform property
 
 ### Requirement: Enum Type Generation
 
