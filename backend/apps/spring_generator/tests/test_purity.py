@@ -7,9 +7,10 @@ Generator Purity requirement). Covers both public entry points:
 import os
 from unittest.mock import patch
 
-from apps.relational_mapping.domain.schema import Column, PrimaryKey
+from apps.relational_mapping.domain.schema import Column, PrimaryKey, RelationalModel
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.renderer import (
+    generate_model_sources,
     generate_project_config_sources,
     generate_shared_error_sources,
     generate_table_sources,
@@ -79,6 +80,37 @@ def test_project_config_generation_does_not_inspect_environment_or_run_subproces
         "subprocess.check_output"
     ) as mock_check_output:
         generate_project_config_sources()
+
+    mock_getenv.assert_not_called()
+    mock_environ_get.assert_not_called()
+    mock_run.assert_not_called()
+    mock_popen.assert_not_called()
+    mock_check_call.assert_not_called()
+    mock_check_output.assert_not_called()
+
+
+def test_model_source_generation_succeeds_with_no_db_access():
+    sources = generate_model_sources(RelationalModel(tables=(_product_table(),)))
+
+    assert len(sources.files) == 9
+
+
+def test_model_source_generation_never_calls_the_validation_engine():
+    with patch("apps.uml_modeling.validation.engine.validate") as mock_validate:
+        generate_model_sources(RelationalModel(tables=(_product_table(),)))
+
+    mock_validate.assert_not_called()
+
+
+def test_model_source_generation_does_not_inspect_environment_or_run_subprocesses():
+    with patch("os.getenv") as mock_getenv, patch.object(os.environ, "get") as mock_environ_get, patch(
+        "subprocess.run"
+    ) as mock_run, patch("subprocess.Popen") as mock_popen, patch(
+        "subprocess.check_call"
+    ) as mock_check_call, patch(
+        "subprocess.check_output"
+    ) as mock_check_output:
+        generate_model_sources(RelationalModel(tables=(_product_table(),)))
 
     mock_getenv.assert_not_called()
     mock_environ_get.assert_not_called()

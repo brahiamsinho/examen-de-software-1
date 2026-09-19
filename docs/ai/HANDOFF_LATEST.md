@@ -13,11 +13,13 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   SDD cycle, the completed and archived but not-yet-committed
   `2026-09-19-spring-boot-generator-inheritance` cycle, the completed and
   archived but not-yet-committed `2026-09-19-spring-boot-generator-config-layer`
-  cycle, plus this handoff refresh; run `git status` to check.
-- No active OpenSpec change. 23 archived cycles.
-- Tests: backend 670 (`docker compose exec -T backend pytest -q`), frontend
+  cycle, plus the completed and archived but not-yet-committed
+  `2026-09-19-spring-boot-whole-model-orchestrator` change; run `git status`
+  to check.
+- Active OpenSpec change: none. `2026-09-19-spring-boot-whole-model-orchestrator` is archived. 24 archived cycles.
+- Tests: backend 685 (`docker compose exec -T backend pytest -q`), Spring generator 238 (`docker compose exec -T backend pytest apps/spring_generator/tests -q`), frontend
   335 (`cd frontend && npm test`, last run during the config-layer verify; the
-  config slice changed no frontend code).
+  orchestrator slice changed no frontend code).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
   until it answers, then `docker compose up -d`.
 
@@ -107,6 +109,11 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
     `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JPA_DDL_AUTO`,
     `SERVER_PORT`). It has no table/model inputs, no filesystem effects, no
     environment reads, no dialect/platform setting, and no Java `config/` layer.
+  - `generate_model_sources(model, *, base_package)` is now archived: it
+    aggregates table files, enum files, shared errors, and project config in
+    order, and raises `GeneratedSourcePathCollisionError` on duplicate exact
+    output paths before returning any aggregate. Docker verification passed:
+    `238/238` Spring generator tests and `685/685` backend tests.
   - Rejected with typed errors (`UngeneratableSourceError` family): non-UUID
     or composite PK, composite FK, malformed/unsupported discriminator-backed
     inheritance metadata, enum column without a type name, illegal identifiers/
@@ -162,8 +169,9 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 2. Filtering/search: waits for §33 generation metadata (`searchable`,
    `sortable`, …), which the schema does not have.
 3. Relation-navigation sub-endpoints (`GET /parent/{id}/children`) and
-   bidirectional `@OneToMany`: need whole-`RelationalModel` awareness, and a
-   caller that walks the whole model does not exist yet.
+   bidirectional `@OneToMany`: whole-`RelationalModel` orchestration now exists,
+   but these relationship-navigation behaviors still need their own design and
+   generation rules.
 4. Broader generated backend config remains deferred: the YAML singleton exists, but Java `config/` classes, profiles, runtime scaffolding, and orchestration do not.
 5. Item 13 (compile), 14 (OpenAPI), 15 (Postman), 16 (Domain Manifest).
    Spec contradiction to resolve with the user before item 14: §25 says

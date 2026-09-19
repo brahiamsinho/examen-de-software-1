@@ -7,12 +7,11 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
-**As of 2026-09-19** (`main` at `743a572`, 23 archived SDD cycles, backend
-670 tests, no active OpenSpec change after archiving
-`2026-09-19-spring-boot-generator-config-layer`): the UML modeling core
+**As of 2026-09-19** (`main` at `743a572`, 24 archived SDD cycles, backend
+685 tests, no active OpenSpec change): the UML modeling core
 (canonical model, validation engine, command bus, persistence, canvas with
 locking), multi-tenant identity/auth, realtime collaboration, the UML →
-RelationalModel mapper, and five slices of the Spring Boot generator all exist
+RelationalModel mapper, and six slices of the Spring Boot generator all exist
 and are archived. The mapper now preserves UML class ownership for
 attribute-derived relational columns via `Column.owning_class_id`, while
 synthetic/discriminator/FK/join columns keep that metadata unset. The generator
@@ -20,7 +19,10 @@ emits Java **source text only** for one table at a time (`domain/`,
 `persistence/`, `application/`, `api/`, `errors/`), with discriminator-backed
 Single Table inputs limited to root/subclass domain entities plus the root
 repository, plus one pure project-singleton `src/main/resources/application.yml`
-resource generator.
+resource generator. The archived whole-model orchestrator slice adds the pure
+`generate_model_sources(...)` aggregate API and exact duplicate generated-path
+rejection; Docker verification passed for the focused Spring generator suite
+and full backend regression (`238/238` spring generator tests, `685/685` backend tests).
 
 What does **not** exist: compilation of any generated Java (§37 item 13),
 inheritance DTO/service/controller/API behavior, filtering/search, the generated
@@ -581,7 +583,7 @@ SDD Cycle 1 (`canonical-uml-model`, items 1–3) was verified and archived on
 2026-09-05; the command bus (item 4) was archived on 2026-09-12. Both are in
 `openspec/changes/archive/`.
 
-Item 12 (Spring Boot backend generator) now has five archived text-only slices:
+Item 12 (Spring Boot backend generator) now has six archived text-only slices:
 `2026-09-18-spring-boot-generator-core` (scalar-only tables,
 `domain/`+`persistence/`), `2026-09-18-spring-boot-generator-relationships-enums`
 (FK relationship fields, enum fields, and standalone enum source),
@@ -599,9 +601,9 @@ no filesystem effects, and no Java `config/` classes). Still out of scope for a 
 inheritance API behavior, bidirectional `@OneToMany`, `@ManyToMany`/
 `@JoinTable`, filtering/search (pending a §33 generation-metadata extension),
 relation-navigation sub-resource endpoints, broader `config/` layer generation,
-and an orchestrating caller that walks a whole `RelationalModel`, combines
-per-table/per-enum output, calls `generate_shared_error_sources` exactly once,
-and calls the config singleton once per generated project (including
-cross-artifact Java class-name collision detection). Item 13 (generated backend
+and broader generated-project behavior beyond the now-archived orchestrating caller.
+`generate_model_sources(...)` walks a whole `RelationalModel`, combines per-table/per-enum output,
+calls `generate_shared_error_sources` exactly once, calls the config singleton once per generated project,
+and rejects exact duplicate output paths before returning an aggregate. Item 13 (generated backend
 compilable) still has no JVM/Gradle host anywhere in repo infra and remains its
 own future cycle.

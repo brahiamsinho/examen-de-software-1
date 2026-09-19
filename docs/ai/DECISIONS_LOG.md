@@ -1,5 +1,17 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle archive: Spring Boot whole-model source orchestrator (`2026-09-19-spring-boot-whole-model-orchestrator`)
+
+`sdd-archive` composed the whole-model orchestrator delta into `openspec/specs/spring-boot-generation/spec.md` and moved the change to `openspec/changes/archive/2026-09-19-2026-09-19-spring-boot-whole-model-orchestrator/`. The archived canonical spec now includes requirements for deterministic whole-model aggregation, singleton shared errors and application YAML, typed duplicate-path rejection, whole-model determinism/purity, and preservation of lower-level generator contracts.
+
+Archive evidence records 13/13 tasks complete and verification green: `238/238` Spring generator tests and `685/685` backend tests. No commit or push was performed, and `.pi` remains excluded from intended commits.
+
+## 2026-09-19 — Cycle apply partial: Spring Boot whole-model source orchestrator (`2026-09-19-spring-boot-whole-model-orchestrator`)
+
+`sdd-apply` added the pure whole-model orchestration API in `backend/apps/spring_generator/emit/renderer.py`: `generate_model_sources(model, *, base_package="com.modelia.generated")` walks `RelationalModel.tables`, then `RelationalModel.enum_types`, then appends shared errors and the project `application.yml` singleton. It delegates to the existing table, enum, shared-error, and project-config generators and does not add materialization, compilation, Docker, Gradle, OpenAPI, Postman, frontend, mobile, mapper, validation, or Java template behavior.
+
+A new `GeneratedSourcePathCollisionError(UngeneratableSourceError)` in `emit/errors.py` rejects exact duplicate generated paths with deterministic `path` and `occurrences` payloads before returning any `GeneratedSources`. Tests were added for aggregate order, empty/global singleton output, package propagation, lower-level byte identity, inheritance table boundaries, duplicate path collisions, determinism, and purity. Docker verification now passes: focused model/determinism/purity checks `31 passed`, preexisting API regression `37 passed`, full Spring generator suite `238 passed`, and full backend regression `685 passed`.
+
 ## 2026-09-19 — Cycle apply: Spring Boot generator config singleton (`2026-09-19-spring-boot-generator-config-layer`)
 
 `sdd-apply` implemented the approved strict-TDD bounded slice for project

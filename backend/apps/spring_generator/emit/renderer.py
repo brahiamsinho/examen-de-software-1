@@ -12,7 +12,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from apps.relational_mapping.domain.schema import EnumType, Table
+from apps.relational_mapping.domain.schema import EnumType, RelationalModel, Table
 from apps.spring_generator.domain.sources import GeneratedFile, GeneratedSources
 from apps.spring_generator.emit.context import (
     build_controller_context,
@@ -25,6 +25,7 @@ from apps.spring_generator.emit.context import (
 )
 from apps.spring_generator.emit.inheritance_context import build_inheritance_hierarchy_context
 from apps.spring_generator.emit.errors import (
+    GeneratedSourcePathCollisionError,
     reject_invalid_resource_path,
     reject_out_of_scope,
     reject_ungeneratable_enum,
@@ -177,6 +178,46 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
             GeneratedFile(path=controller_path, contents=controller_source),
         )
     )
+
+
+def _extend_generated_files(files: list[GeneratedFile], sources: GeneratedSources) -> None:
+    files.extend(sources.files)
+
+
+def _reject_duplicate_generated_paths(files: tuple[GeneratedFile, ...]) -> None:
+    counts: dict[str, int] = {}
+    first_collision: str | None = None
+
+    for generated_file in files:
+        path = generated_file.path
+        counts[path] = counts.get(path, 0) + 1
+        if counts[path] == 2 and first_collision is None:
+            first_collision = path
+
+    if first_collision is not None:
+        raise GeneratedSourcePathCollisionError(
+            path=first_collision,
+            occurrences=counts[first_collision],
+        )
+
+
+def generate_model_sources(
+    model: RelationalModel, *, base_package: str = "com.modelia.generated"
+) -> GeneratedSources:
+    files: list[GeneratedFile] = []
+
+    for table in model.tables:
+        _extend_generated_files(files, generate_table_sources(table, base_package=base_package))
+
+    for enum_type in model.enum_types:
+        files.append(generate_enum_source(enum_type, base_package=base_package))
+
+    _extend_generated_files(files, generate_shared_error_sources(base_package=base_package))
+    _extend_generated_files(files, generate_project_config_sources())
+
+    candidate = tuple(files)
+    _reject_duplicate_generated_paths(candidate)
+    return GeneratedSources(files=candidate)
 
 
 def generate_project_config_sources() -> GeneratedSources:

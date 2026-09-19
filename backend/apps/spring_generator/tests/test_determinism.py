@@ -10,7 +10,7 @@ output: fixed DD50a layer order, DD50b DTO field order, and the new
 """
 from hypothesis import given, strategies as st
 
-from apps.relational_mapping.domain.schema import Column, EnumType, ForeignKey, PrimaryKey, Table
+from apps.relational_mapping.domain.schema import Column, EnumType, ForeignKey, PrimaryKey, RelationalModel, Table
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.context import (
     build_entity_context,
@@ -18,7 +18,12 @@ from apps.spring_generator.emit.context import (
     build_response_dto_context,
 )
 from apps.spring_generator.emit.naming import camel_case, relationship_base_name
-from apps.spring_generator.emit.renderer import generate_enum_source, generate_project_config_sources, generate_table_sources
+from apps.spring_generator.emit.renderer import (
+    generate_enum_source,
+    generate_model_sources,
+    generate_project_config_sources,
+    generate_table_sources,
+)
 
 _TABLE_NAMES = ["product", "order_item", "customer", "invoice"]
 _COLUMN_NAMES = ["name", "description", "quantity", "amount", "notes", "active"]
@@ -210,3 +215,46 @@ def test_project_config_generation_is_byte_identical():
     assert [generated_file.path for generated_file in first.files] == ["src/main/resources/application.yml"]
     assert [generated_file.path for generated_file in second.files] == ["src/main/resources/application.yml"]
     assert first.files[0].contents == second.files[0].contents
+
+
+def test_model_source_generation_is_byte_identical():
+    product = Table(
+        name="product",
+        columns=(
+            Column(name="id", type=ColumnType.UUID, nullable=False),
+            Column(name="name", type=ColumnType.VARCHAR, nullable=False, length=120),
+        ),
+        primary_key=PrimaryKey(column_names=("id",), name="pk_product"),
+    )
+    order = Table(
+        name="order",
+        columns=(
+            Column(name="id", type=ColumnType.UUID, nullable=False),
+            Column(name="product_id", type=ColumnType.UUID, nullable=False),
+            Column(name="status", type=ColumnType.ENUM, nullable=False, enum_type_name="order_status"),
+        ),
+        primary_key=PrimaryKey(column_names=("id",), name="pk_order"),
+        foreign_keys=(
+            ForeignKey(
+                name="fk_order__product_id",
+                column_names=("product_id",),
+                referenced_table="product",
+                referenced_column_names=("id",),
+            ),
+        ),
+    )
+    model = RelationalModel(
+        tables=(product, order),
+        enum_types=(EnumType(name="order_status", labels=("PENDING", "PAID")),),
+    )
+
+    first = generate_model_sources(model, base_package="com.example.generated")
+    second = generate_model_sources(model, base_package="com.example.generated")
+
+    assert first == second
+    assert [generated_file.path for generated_file in first.files] == [
+        generated_file.path for generated_file in second.files
+    ]
+    assert [generated_file.contents for generated_file in first.files] == [
+        generated_file.contents for generated_file in second.files
+    ]

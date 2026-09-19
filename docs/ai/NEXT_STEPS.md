@@ -6,7 +6,7 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
-The Spring Boot generator (§37 item 12) has five archived generator slices, all
+The Spring Boot generator (§37 item 12) has six archived generator slices, all
 text-only: `spring-boot-generator-core` (entity + repository),
 `spring-boot-generator-relationships-enums` (FK relationships, enum fields,
 standalone enum source), `spring-boot-generator-application-api-layer` (DTOs,
@@ -15,8 +15,9 @@ service, REST controller, shared error handling),
 Table domain classes plus one root repository only), and
 `2026-09-19-spring-boot-generator-config-layer` (pure project-singleton
 `src/main/resources/application.yml` only, six required no-default placeholders
-including `JPA_DDL_AUTO`, no dialect/platform, no Java `config/` classes and no
-whole-model orchestrator). The relational mapper has the archived
+including `JPA_DDL_AUTO`, no dialect/platform, no Java `config/` classes), and
+`2026-09-19-spring-boot-whole-model-orchestrator` (pure in-memory
+`generate_model_sources(...)` aggregation with exact duplicate-path rejection). The relational mapper has the archived
 `relational-column-ownership` prerequisite: attribute-derived columns carry
 `owning_class_id`; non-attribute columns keep `None`.
 
@@ -30,12 +31,9 @@ whole-model orchestrator). The relational mapper has the archived
    `application.yml` singleton now exists with six required no-default
    placeholders only; Java `config/` classes, profiles, Docker/runtime
    scaffolding, and orchestration are still not started.
-3. **Whole-model orchestrator** — a function that walks a `RelationalModel`,
-   calls the per-table/per-enum generators, calls the shared-error generator
-   exactly once, and detects cross-artifact Java class-name collisions (e.g. a
-   table `order` and an enum `order`). It also unlocks bidirectional
-   `@OneToMany` and relation-navigation sub-endpoints, which need the whole
-   model.
+3. **Relationship navigation and bidirectional generation design** — the now-archived whole-model orchestrator unlocks future bidirectional `@OneToMany` and
+   relation-navigation sub-endpoints, but those behaviors remain unimplemented
+   and need their own SDD cycle.
 4. **Filtering/search** — blocked until the relational schema carries §33
    generation metadata (`searchable`, `sortable`, `crud`, `readOnly`, …).
 5. **§37 item 13, generated backend compilable** — nothing compiles Java today.

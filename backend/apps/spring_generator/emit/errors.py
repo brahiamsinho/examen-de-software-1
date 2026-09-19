@@ -20,6 +20,15 @@ class UngeneratableTableError(UngeneratableSourceError):
     """Base for every error `reject_out_of_scope` raises."""
 
 
+class GeneratedSourcePathCollisionError(UngeneratableSourceError):
+    def __init__(self, path: str, occurrences: int):
+        self.path = path
+        self.occurrences = occurrences
+        super().__init__(
+            "Generated source path {!r} appears {} times".format(path, occurrences)
+        )
+
+
 class UnsupportedPrimaryKeyError(UngeneratableTableError):
     def __init__(self, table_name: str, column_names: tuple[str, ...], reason: str):
         self.table_name = table_name
