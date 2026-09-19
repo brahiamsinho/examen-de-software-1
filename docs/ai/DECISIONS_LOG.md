@@ -1,5 +1,13 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle apply: Spring Boot generator Single Table inheritance (`2026-09-19-spring-boot-generator-inheritance`)
+
+`sdd-apply` implemented the approved single-PR `size:exception` slice with Strict TDD. A discriminator-backed `Table` now passes typed validation when it has a UUID PK, a discriminator column present in `columns`, non-empty ordered `source_class_ids`, discriminator values for every hierarchy id, and assignable owned fields. Malformed shapes raise `MalformedInheritanceTableError` with stable reasons such as `source_class_ids_required`, `discriminator_value_required`, `unknown_column_owner`, `unowned_column_unsupported`, and `subclass_relationship_unsupported`.
+
+The renderer now branches only after the existing base-package, table-shape, and resource-path checks. Supported inheritance tables emit `domain/<Root>.java`, each subclass domain class in `Table.source_class_ids[1:]` order using `pascal_case(class_id)`, and exactly one root `persistence/<Root>Repository.java`. The root entity is concrete and carries `@Inheritance(SINGLE_TABLE)`, `@DiscriminatorColumn`, and `@DiscriminatorValue`; subclasses extend the root and carry only their own discriminator value. The discriminator column is metadata only, and field partitioning is driven by `Column.owning_class_id`; subclass-owned relationship fields are rejected.
+
+The non-discriminator path remains byte-identical: existing six-file generation still uses the old templates and order, protected by a SHA-256 snapshot test for a scalar + enum + FK `Product` table. This slice deliberately adds no inheritance DTOs, services, controllers, subclass repositories, Java compilation, config, OpenAPI, Postman, Domain Manifest, frontend, mobile, or infrastructure work. Evidence: `docker compose exec -T backend pytest apps/spring_generator/tests -q` reported 208 passed, and `docker compose exec -T backend pytest -q` reported 655 passed. No commit has been created yet.
+
 ## 2026-09-19 — Cycle apply: Relational column ownership metadata (`relational-column-ownership`)
 
 `sdd-apply` implemented the archived `relational-column-ownership` cycle with

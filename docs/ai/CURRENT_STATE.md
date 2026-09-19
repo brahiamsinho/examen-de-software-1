@@ -7,22 +7,23 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
-**As of 2026-09-19** (`main` at `743a572`, 21 archived SDD cycles, backend
-636 tests, no open change after archiving `relational-column-ownership`): the
-UML modeling core (canonical model, validation engine, command bus,
-persistence, canvas with locking), multi-tenant identity/auth, realtime
-collaboration, the UML → RelationalModel mapper, and three slices of the
-Spring Boot generator all exist and are archived. The mapper now preserves UML
-class ownership for attribute-derived relational columns via
-`Column.owning_class_id`, while synthetic/discriminator/FK/join columns keep
-that metadata unset. The generator emits Java **source text only** for one
-table at a time (`domain/`, `persistence/`, `application/`, `api/`,
-`errors/`).
+**As of 2026-09-19** (`main` at `743a572`, 22 archived SDD cycles, backend
+655 tests, no active OpenSpec change after archiving
+`2026-09-19-spring-boot-generator-inheritance`): the UML modeling core
+(canonical model, validation engine, command bus, persistence, canvas with
+locking), multi-tenant identity/auth, realtime collaboration, the UML →
+RelationalModel mapper, and four slices of the Spring Boot generator all exist
+and are archived. The mapper now preserves UML class ownership for
+attribute-derived relational columns via `Column.owning_class_id`, while
+synthetic/discriminator/FK/join columns keep that metadata unset. The generator
+emits Java **source text only** for one table at a time (`domain/`,
+`persistence/`, `application/`, `api/`, `errors/`), with discriminator-backed
+Single Table inputs limited to root/subclass domain entities plus the root
+repository.
 
 What does **not** exist: compilation of any generated Java (§37 item 13),
-Spring inheritance generation (the generator still rejects discriminator
-tables intentionally), filtering/search, the generated `config/` layer,
-OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
+inheritance DTO/service/controller/API behavior, filtering/search, the generated
+`config/` layer, OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
 the assistant, voice, XMI and image → UML. Undo/Redo and Presence (§37 items
 7 and 10) have no dedicated archived cycle and are not verified as
 implemented. See `HANDOFF_LATEST.md` for the stage summary and
@@ -579,20 +580,22 @@ SDD Cycle 1 (`canonical-uml-model`, items 1–3) was verified and archived on
 2026-09-05; the command bus (item 4) was archived on 2026-09-12. Both are in
 `openspec/changes/archive/`.
 
-Item 12 (Spring Boot backend generator) now has three slices implemented:
+Item 12 (Spring Boot backend generator) now has four implemented slices:
 `2026-09-18-spring-boot-generator-core` (scalar-only tables, `domain/`+
 `persistence/`), `2026-09-18-spring-boot-generator-relationships-enums`
-(FK relationship fields, enum fields, and standalone enum source), and
+(FK relationship fields, enum fields, and standalone enum source),
 `2026-09-18-spring-boot-generator-application-api-layer` (DTOs, service,
 REST controller, and shared error handling — `application/`, `application/
-dto/`, `api/`, `errors/`; see the Domain section above). Still out of
-scope for a future slice: Single Table inheritance generation,
-bidirectional `@OneToMany`, `@ManyToMany`/`@JoinTable`, filtering/search
-(pending a §33 generation-metadata extension), relation-navigation
-sub-resource endpoints, `validation/`/`config/` layer generation, and an
-orchestrating caller that walks a whole `RelationalModel`, combines
-per-table/per-enum output, and calls `generate_shared_error_sources`
-exactly once per generated project (including cross-artifact Java
-class-name collision detection). Item 13 (generated backend compilable)
-still has no JVM/Gradle host anywhere in repo infra and remains its own
-future cycle.
+dto/`, `api/`, `errors/`), and `2026-09-19-spring-boot-generator-inheritance`
+(archived, not committed: discriminator-backed Single Table tables now emit
+root/subclass domain entities plus exactly one root repository; no inheritance
+DTOs, services, controllers, or subclass repositories). Still out
+of scope for a future slice: inheritance API behavior, bidirectional
+`@OneToMany`, `@ManyToMany`/`@JoinTable`, filtering/search (pending a §33
+generation-metadata extension), relation-navigation sub-resource endpoints,
+`validation/`/`config/` layer generation, and an orchestrating caller that
+walks a whole `RelationalModel`, combines per-table/per-enum output, and calls
+`generate_shared_error_sources` exactly once per generated project (including
+cross-artifact Java class-name collision detection). Item 13 (generated backend
+compilable) still has no JVM/Gradle host anywhere in repo infra and remains its
+own future cycle.

@@ -6,24 +6,22 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
-The Spring Boot generator (§37 item 12) has three archived generator slices,
-all one-`Table`-at-a-time and text-only: `spring-boot-generator-core` (entity +
+The Spring Boot generator (§37 item 12) has four archived generator slices, all
+one-`Table`-at-a-time and text-only: `spring-boot-generator-core` (entity +
 repository), `spring-boot-generator-relationships-enums` (FK relationships,
-enum fields, standalone enum source) and
-`spring-boot-generator-application-api-layer` (DTOs, service, REST controller,
-shared error handling). The relational mapper now also has the archived
-`relational-column-ownership` prerequisite: attribute-derived columns carry
-`owning_class_id`; non-attribute columns keep `None`. No OpenSpec change is
-currently open.
+enum fields, standalone enum source), `spring-boot-generator-application-api-layer`
+(DTOs, service, REST controller, shared error handling), and
+`2026-09-19-spring-boot-generator-inheritance` (discriminator-backed Single
+Table domain classes plus one root repository only). The relational mapper has
+the archived `relational-column-ownership` prerequisite: attribute-derived
+columns carry `owning_class_id`; non-attribute columns keep `None`.
 
 ## Next candidates, in dependency order
 
-1. **Design and generate Spring inheritance.** The user chose the recommended
-   metadata path and the prerequisite is done: `Column.owning_class_id` exists
-   for UML attribute-derived columns. The next inheritance cycle should decide
-   how a discriminator-backed Single Table produces root/subclass Java classes,
-   DTO/API/service behavior, and tests. Keep the current Spring discriminator
-   rejection until that design lands.
+1. **Design inheritance API behavior only if requested.** The archived
+   inheritance slice intentionally stops at JPA Single Table domain entities
+   plus the root repository. DTOs, services, controllers, subclass repositories,
+   Java compilation, OpenAPI, Postman, and Domain Manifest remain future work.
 2. **`config/` layer of the generated backend** — not started. It must keep the
    "externally configurable, nothing hardcoded" rule (`application.yml` +
    environment variables, no literal host/port/URL). Probably a

@@ -1,0 +1,25 @@
+package {{ package }};
+
+{% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
+{% endfor %}
+{% endfor %}@Entity
+{% if table_name is not none %}@Table(name = "{{ table_name }}")
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn(name = "{{ discriminator_column }}")
+{% endif %}@DiscriminatorValue("{{ discriminator_value }}")
+public class {{ class_name }}{% if extends_class_name is not none %} extends {{ extends_class_name }}{% endif %} {
+{% for field in fields %}
+{% for annotation in field.annotations %}    {{ annotation }}
+{% endfor %}    private {{ field.java_type }} {{ field.name }};
+{% endfor %}
+    public {{ class_name }}() {
+    }
+{% for field in fields %}
+    public {{ field.java_type }} {{ field.getter }}() {
+        return this.{{ field.name }};
+    }
+
+    public void {{ field.setter }}({{ field.java_type }} {{ field.name }}) {
+        this.{{ field.name }} = {{ field.name }};
+    }
+{% endfor %}}

@@ -55,6 +55,23 @@ class InheritanceUnsupportedError(UngeneratableTableError):
         )
 
 
+class MalformedInheritanceTableError(UngeneratableTableError):
+    def __init__(
+        self,
+        table_name: str,
+        reason: str,
+        class_id: str | None = None,
+        column_name: str | None = None,
+    ):
+        self.table_name = table_name
+        self.reason = reason
+        self.class_id = class_id
+        self.column_name = column_name
+        super().__init__(
+            "Table {!r} has malformed inheritance metadata: {!r}".format(table_name, reason)
+        )
+
+
 class UnsupportedColumnTypeError(UngeneratableTableError):
     def __init__(self, table_name: str, column_name: str, column_type: ColumnType):
         self.table_name = table_name
@@ -107,11 +124,82 @@ class DuplicateEnumConstantError(UngeneratableEnumError):
         )
 
 
+def _has_inheritance_metadata(table: Table) -> bool:
+    return table.discriminator_column is not None or bool(table.discriminator_values)
+
+
+def _reject_malformed_inheritance(table: Table) -> None:
+    if table.discriminator_column is None:
+        raise MalformedInheritanceTableError(
+            table_name=table.name,
+            reason="discriminator_column_required",
+        )
+
+    if not table.source_class_ids:
+        raise MalformedInheritanceTableError(
+            table_name=table.name,
+            reason="source_class_ids_required",
+        )
+
+    if table.column_by_name(table.discriminator_column) is None:
+        raise MalformedInheritanceTableError(
+            table_name=table.name,
+            reason="discriminator_column_missing",
+            column_name=table.discriminator_column,
+        )
+
+    hierarchy_ids = tuple(table.source_class_ids)
+    hierarchy_set = set(hierarchy_ids)
+    for class_id in hierarchy_ids:
+        if class_id not in table.discriminator_values:
+            raise MalformedInheritanceTableError(
+                table_name=table.name,
+                reason="discriminator_value_required",
+                class_id=class_id,
+            )
+
+    pk_column_name = table.primary_key.column_names[0]
+    fk_column_names: set[str] = set()
+    for foreign_key in table.foreign_keys:
+        for column_name in foreign_key.column_names:
+            fk_column_names.add(column_name)
+
+    for column in table.columns:
+        owner = column.owning_class_id
+        if owner is not None and owner not in hierarchy_set:
+            raise MalformedInheritanceTableError(
+                table_name=table.name,
+                reason="unknown_column_owner",
+                class_id=owner,
+                column_name=column.name,
+            )
+
+    root_class_id = hierarchy_ids[0]
+    for column in table.columns:
+        if column.name == pk_column_name or column.name == table.discriminator_column:
+            continue
+        if column.name in fk_column_names:
+            owner = column.owning_class_id
+            if owner is not None and owner != root_class_id:
+                raise MalformedInheritanceTableError(
+                    table_name=table.name,
+                    reason="subclass_relationship_unsupported",
+                    class_id=owner,
+                    column_name=column.name,
+                )
+            continue
+        if column.owning_class_id is None:
+            raise MalformedInheritanceTableError(
+                table_name=table.name,
+                reason="unowned_column_unsupported",
+                column_name=column.name,
+            )
+
+
 def reject_out_of_scope(table: Table) -> None:
-    """DD35's fixed check order: PK shape -> composite FK (first
-    offender in `foreign_keys` order) -> discriminator -> unnamed enum
-    column (first offender in `columns` order). Raises the first
-    violated rule; raises nothing for a generatable table.
+    """Fixed check order: PK shape -> composite FK -> unnamed enum ->
+    supported inheritance shape. Raises the first violated rule; raises
+    nothing for a generatable table.
     """
     primary_key = table.primary_key
     pk_column = table.column_by_name(primary_key.column_names[0]) if len(primary_key.column_names) == 1 else None
@@ -130,16 +218,14 @@ def reject_out_of_scope(table: Table) -> None:
                 column_names=foreign_key.column_names,
             )
 
-    if table.discriminator_column is not None or table.discriminator_values:
-        raise InheritanceUnsupportedError(
-            table_name=table.name, discriminator_column=table.discriminator_column
-        )
-
     for column in table.columns:
         if column.type is ColumnType.ENUM and column.enum_type_name is None:
             raise UnsupportedColumnTypeError(
                 table_name=table.name, column_name=column.name, column_type=column.type
             )
+
+    if _has_inheritance_metadata(table):
+        _reject_malformed_inheritance(table)
 
 
 def reject_invalid_resource_path(table: Table) -> None:

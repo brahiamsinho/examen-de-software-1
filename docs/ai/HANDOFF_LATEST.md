@@ -10,9 +10,11 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 
 - Code state: branch `main` == `origin/main` at `743a572`. Current working
   tree contains the completed but not-yet-committed `relational-column-ownership`
-  SDD cycle plus this handoff refresh; run `git status` to check.
-- No active OpenSpec change. 21 archived cycles.
-- Tests: backend 636 (`docker compose exec -T backend pytest -q`), frontend
+  SDD cycle, the completed and archived but not-yet-committed
+  `2026-09-19-spring-boot-generator-inheritance` cycle, plus this handoff
+  refresh; run `git status` to check.
+- No active OpenSpec change. 22 archived cycles.
+- Tests: backend 655 (`docker compose exec -T backend pytest -q`), frontend
   335 (vitest, last run during the `spring-boot-generator-core` verify; the
   frontend has not changed since).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
@@ -34,7 +36,7 @@ implementation order. Status against it:
 | 9 Realtime (Channels/Daphne) | Done (WebSocket sync + per-node claim locking) |
 | 10 Presence | No dedicated archived cycle; not verified as implemented |
 | 11 UML → RelationalModel | Done |
-| 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for one table at a time; see below |
+| 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for non-inheritance tables and domain + root repository for discriminator-backed Single Table tables; see below |
 | 13 Generated backend compilable | Not started (nothing compiles Java yet) |
 | 14 OpenAPI, 15 Postman, 16 Domain Manifest | Not started |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
@@ -50,7 +52,8 @@ uml-document-list · 09-14 realtime-uml-collaboration,
 uml-relationship-kinds · 09-15 uml-node-position-sync · 09-16
 uml-class-operations · 09-18 uml-relational-mapping,
 spring-boot-generator-core, spring-boot-generator-relationships-enums,
-spring-boot-generator-application-api-layer, relational-column-ownership.
+spring-boot-generator-application-api-layer, relational-column-ownership,
+2026-09-19-spring-boot-generator-inheritance.
 
 Fixes done outside an SDD cycle (each logged in `DECISIONS_LOG.md`):
 - `f605592` client-side lock self-expiry (a lock whose release message was
@@ -81,19 +84,25 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
   `MULTI_PARENT_GENERALIZATION` rejects multi-parent generalization (Single
   Table needs a tree).
 - `backend/apps/spring_generator/` (pure, filesystem-free, deterministic):
-  - `generate_table_sources(table, *, base_package)` → 6 files under
-    `src/main/java/<pkg>/`: `domain/<E>.java` (JPA entity),
-    `persistence/<E>Repository.java`, `application/dto/<E>RequestDto.java`,
+  - `generate_table_sources(table, *, base_package)` → for non-discriminator
+    tables, 6 files under `src/main/java/<pkg>/`: `domain/<E>.java` (JPA
+    entity), `persistence/<E>Repository.java`,
+    `application/dto/<E>RequestDto.java`,
     `application/dto/<E>ResponseDto.java`, `application/<E>Service.java`,
     `api/<E>Controller.java`. FK columns become `@ManyToOne`/`@OneToOne` +
-    `@JoinColumn` on the entity but flat `UUID` fields on the DTOs.
+    `@JoinColumn` on the entity but flat `UUID` fields on the DTOs. For
+    supported discriminator-backed Single Table tables, the same entry point
+    emits only root/subclass domain entities plus the root repository in
+    hierarchy order; subclass Java names use `pascal_case(class_id)`, the
+    root remains concrete, and the discriminator is metadata only.
   - `generate_enum_source(enum_type, *, base_package)` → standalone Java enum.
   - `generate_shared_error_sources(*, base_package)` → `errors/
     ResourceNotFoundException.java` + `errors/GlobalExceptionHandler.java`
     (one set per generated project, deliberately not per table).
   - Rejected with typed errors (`UngeneratableSourceError` family): non-UUID
-    or composite PK, composite FK, discriminator column (inheritance), enum
-    column without a type name, illegal identifiers/resource paths.
+    or composite PK, composite FK, malformed/unsupported discriminator-backed
+    inheritance metadata, enum column without a type name, illegal identifiers/
+    resource paths.
 - Everything is validated as **text only**. No JVM, no Gradle, no
   compilation anywhere in the repo.
 
@@ -138,10 +147,10 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 
 ## Blocked / open
 
-1. **Spring inheritance generation.** The ownership metadata prerequisite is
-   now done, but `spring_generator` still intentionally rejects discriminator
-   tables. A new SDD cycle must design how one Single Table maps to root and
-   subclass Java entities/DTO/service behavior before enabling generation.
+1. **Inheritance API behavior remains deferred.** The domain + root repository
+   Single Table slice is applied, but inheritance DTOs, services, controllers,
+   subclass repositories, generated Java compilation, OpenAPI, Postman, and
+   Domain Manifest behavior remain out of scope for future cycles.
 2. Filtering/search: waits for §33 generation metadata (`searchable`,
    `sortable`, …), which the schema does not have.
 3. Relation-navigation sub-endpoints (`GET /parent/{id}/children`) and

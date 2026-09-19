@@ -23,6 +23,7 @@ from apps.spring_generator.emit.context import (
     build_response_dto_context,
     build_service_context,
 )
+from apps.spring_generator.emit.inheritance_context import build_inheritance_hierarchy_context
 from apps.spring_generator.emit.errors import (
     reject_invalid_resource_path,
     reject_out_of_scope,
@@ -54,10 +55,52 @@ def _validate_base_package(base_package: str) -> None:
         raise ValueError("base_package {!r} is not a valid Java package name".format(base_package))
 
 
+def _table_has_inheritance_metadata(table: Table) -> bool:
+    return table.discriminator_column is not None or bool(table.discriminator_values)
+
+
+def _render_inheritance_table_sources(table: Table, *, base_package: str) -> GeneratedSources:
+    hierarchy_context = build_inheritance_hierarchy_context(table, base_package=base_package)
+    template = _ENVIRONMENT.get_template("InheritanceEntity.java.j2")
+    pkg_path = package_path(base_package)
+
+    files: list[GeneratedFile] = []
+    entity_contexts = [hierarchy_context.root]
+    entity_contexts.extend(hierarchy_context.subclasses)
+    for entity_context in entity_contexts:
+        entity_source = template.render(
+            package=entity_context.package,
+            class_name=entity_context.class_name,
+            table_name=entity_context.table_name,
+            extends_class_name=entity_context.extends_class_name,
+            discriminator_column=entity_context.discriminator_column,
+            discriminator_value=entity_context.discriminator_value,
+            fields=entity_context.fields,
+            import_groups=entity_context.import_groups,
+        )
+        entity_path = "src/main/java/{}/domain/{}.java".format(pkg_path, entity_context.class_name)
+        files.append(GeneratedFile(path=entity_path, contents=entity_source))
+
+    repository_context = hierarchy_context.repository
+    repository_source = _ENVIRONMENT.get_template("Repository.java.j2").render(
+        package=repository_context.package,
+        class_name=repository_context.class_name,
+        repository_name=repository_context.repository_name,
+        import_groups=repository_context.import_groups,
+    )
+    repository_path = "src/main/java/{}/persistence/{}.java".format(pkg_path, repository_context.repository_name)
+    files.append(GeneratedFile(path=repository_path, contents=repository_source))
+
+    return GeneratedSources(files=tuple(files))
+
+
 def generate_table_sources(table: Table, *, base_package: str = "com.modelia.generated") -> GeneratedSources:
     _validate_base_package(base_package)
     reject_out_of_scope(table)
     reject_invalid_resource_path(table)
+
+    if _table_has_inheritance_metadata(table):
+        return _render_inheritance_table_sources(table, base_package=base_package)
 
     entity_context = build_entity_context(table, base_package=base_package)
     repository_context = build_repository_context(table, base_package=base_package)

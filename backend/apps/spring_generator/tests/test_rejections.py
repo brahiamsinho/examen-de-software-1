@@ -14,15 +14,53 @@ from apps.relational_mapping.domain.schema import Column, ForeignKey, PrimaryKey
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.errors import (
     CompositeForeignKeyUnsupportedError,
-    InheritanceUnsupportedError,
+    MalformedInheritanceTableError,
     UngeneratableSourceError,
     UngeneratableTableError,
     UnsupportedColumnTypeError,
     UnsupportedPrimaryKeyError,
 )
 from apps.spring_generator.emit.errors import reject_out_of_scope
-from apps.spring_generator.emit.renderer import generate_table_sources
 from apps.spring_generator.tests.factories import a_column, a_table
+
+
+def _vehicle_table(
+    *,
+    discriminator_values: dict | None = None,
+    extra_columns: tuple[Column, ...] = (),
+    foreign_keys: tuple[ForeignKey, ...] = (),
+) -> Table:
+    columns = (
+        Column(name="id", type=ColumnType.UUID, nullable=False),
+        Column(name="class_type", type=ColumnType.VARCHAR, nullable=False),
+        Column(
+            name="vin",
+            type=ColumnType.VARCHAR,
+            nullable=False,
+            source_element_id="attr-vin",
+            owning_class_id="vehicle",
+        ),
+        Column(
+            name="door_count",
+            type=ColumnType.INTEGER,
+            nullable=True,
+            source_element_id="attr-door-count",
+            owning_class_id="car",
+        ),
+    )
+    return Table(
+        name="vehicle",
+        columns=columns + extra_columns,
+        primary_key=PrimaryKey(column_names=("id",), name="pk_vehicle"),
+        foreign_keys=foreign_keys,
+        source_class_ids=("vehicle", "car"),
+        discriminator_column="class_type",
+        discriminator_values=(
+            {"vehicle": "VEHICLE", "car": "CAR"}
+            if discriminator_values is None
+            else discriminator_values
+        ),
+    )
 
 
 def test_composite_primary_key_is_rejected():
@@ -98,37 +136,105 @@ def test_table_with_single_column_foreign_key_raises_nothing():
     assert reject_out_of_scope(table) is None
 
 
-def test_table_with_discriminator_column_is_rejected():
-    table = a_table(discriminator_column="class_type")
+def test_supported_discriminator_table_raises_nothing():
+    table = _vehicle_table()
 
-    with pytest.raises(InheritanceUnsupportedError) as excinfo:
+    assert reject_out_of_scope(table) is None
+
+
+def test_discriminator_values_without_discriminator_column_are_malformed():
+    table = a_table(discriminator_values={"vehicle": "VEHICLE"}, source_class_ids=("vehicle",))
+
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
         reject_out_of_scope(table)
 
+    assert excinfo.value.reason == "discriminator_column_required"
     assert excinfo.value.table_name == table.name
-    assert excinfo.value.discriminator_column == "class_type"
-    assert isinstance(excinfo.value, UngeneratableTableError)
-    assert isinstance(excinfo.value, UngeneratableSourceError)
 
 
-def test_discriminator_table_with_owned_attribute_column_is_still_rejected_before_rendering():
+def test_discriminator_table_with_empty_source_class_ids_is_malformed():
+    table = a_table(discriminator_column="class_type", discriminator_values={"vehicle": "VEHICLE"})
+
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.reason == "source_class_ids_required"
+
+
+def test_discriminator_table_missing_discriminator_column_in_columns_is_malformed():
     table = a_table(
-        columns=(
-            Column(name="id", type=ColumnType.UUID),
-            Column(
-                name="vin",
-                type=ColumnType.VARCHAR,
-                source_element_id="attr-vin",
-                owning_class_id="class-vehicle",
-            ),
-        ),
-        discriminator_column="class_type",
+        discriminator_column="kind",
+        discriminator_values={"vehicle": "VEHICLE"},
+        source_class_ids=("vehicle",),
     )
 
-    with pytest.raises(InheritanceUnsupportedError) as excinfo:
-        generate_table_sources(table)
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
+        reject_out_of_scope(table)
 
-    assert excinfo.value.table_name == table.name
-    assert excinfo.value.discriminator_column == "class_type"
+    assert excinfo.value.reason == "discriminator_column_missing"
+    assert excinfo.value.column_name == "kind"
+
+
+def test_discriminator_table_missing_discriminator_value_is_malformed():
+    table = _vehicle_table(discriminator_values={"vehicle": "VEHICLE"})
+
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.reason == "discriminator_value_required"
+    assert excinfo.value.class_id == "car"
+
+
+def test_discriminator_table_with_owner_outside_hierarchy_is_malformed():
+    table = _vehicle_table(
+        extra_columns=(
+            a_column(
+                name="boat_code",
+                type=ColumnType.VARCHAR,
+                source_element_id="attr-boat-code",
+                owning_class_id="boat",
+            ),
+        )
+    )
+
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.reason == "unknown_column_owner"
+    assert excinfo.value.column_name == "boat_code"
+    assert excinfo.value.class_id == "boat"
+
+
+def test_discriminator_table_with_unowned_scalar_is_malformed():
+    table = _vehicle_table(extra_columns=(a_column(name="legacy_code", type=ColumnType.VARCHAR),))
+
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.reason == "unowned_column_unsupported"
+    assert excinfo.value.column_name == "legacy_code"
+
+
+def test_discriminator_table_with_subclass_owned_fk_is_malformed():
+    fk = ForeignKey(
+        name="fk_vehicle__garage_id",
+        column_names=("garage_id",),
+        referenced_table="garage",
+        referenced_column_names=("id",),
+    )
+    table = _vehicle_table(
+        extra_columns=(
+            a_column(name="garage_id", type=ColumnType.UUID, nullable=True, owning_class_id="car"),
+        ),
+        foreign_keys=(fk,),
+    )
+
+    with pytest.raises(MalformedInheritanceTableError) as excinfo:
+        reject_out_of_scope(table)
+
+    assert excinfo.value.reason == "subclass_relationship_unsupported"
+    assert excinfo.value.column_name == "garage_id"
+    assert excinfo.value.class_id == "car"
 
 
 def test_table_with_unnamed_enum_column_is_rejected():
@@ -180,13 +286,13 @@ def test_check_order_composite_foreign_key_before_discriminator():
         reject_out_of_scope(table)
 
 
-def test_check_order_discriminator_before_unnamed_enum():
+def test_check_order_unnamed_enum_before_inheritance_shape():
     table = a_table(
         columns=(a_column(name="status", type=ColumnType.ENUM, enum_type_name=None),),
         discriminator_column="class_type",
     )
 
-    with pytest.raises(InheritanceUnsupportedError):
+    with pytest.raises(UnsupportedColumnTypeError):
         reject_out_of_scope(table)
 
 

@@ -20,6 +20,8 @@ def a_column(
     precision: int | None = None,
     scale: int | None = None,
     enum_type_name: str | None = None,
+    source_element_id: str | None = None,
+    owning_class_id: str | None = None,
 ) -> Column:
     return Column(
         name=name,
@@ -29,6 +31,8 @@ def a_column(
         precision=precision,
         scale=scale,
         enum_type_name=enum_type_name,
+        source_element_id=source_element_id,
+        owning_class_id=owning_class_id,
     )
 
 
@@ -69,6 +73,8 @@ def a_table(
     foreign_keys: tuple = (),
     unique_constraints: tuple = (),
     discriminator_column: str | None = None,
+    discriminator_values: dict | None = None,
+    source_class_ids: tuple = (),
 ) -> Table:
     """A minimal generatable table: UUID PK named `id` plus any extra
     scalar columns. Callers needing an out-of-scope shape (composite
@@ -85,5 +91,7 @@ def a_table(
         primary_key=primary_key if primary_key is not None else a_primary_key(),
         foreign_keys=foreign_keys,
         unique_constraints=unique_constraints,
+        source_class_ids=source_class_ids,
         discriminator_column=discriminator_column,
+        discriminator_values={} if discriminator_values is None else discriminator_values,
     )
