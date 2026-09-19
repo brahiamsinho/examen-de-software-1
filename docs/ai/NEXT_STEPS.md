@@ -42,6 +42,32 @@ AI/vision/generation work ahead of a stable canonical model, validation,
 and single mutation path — the spec is explicit about this ordering
 constraint.
 
+## Spring Boot generator — `application/` + `api/` layers — status: implemented, pending verify/archive
+
+`2026-09-18-spring-boot-generator-application-api-layer` (extends both
+prior slices) adds a callable REST surface: `generate_table_sources`
+now emits 6 files per `Table` — entity, repository, request/response
+DTO, service, and REST controller — and a new sibling
+`generate_shared_error_sources(*, base_package)` emits the two
+per-project `errors/` files exactly once. Relationship fields are
+flattened to raw FK `UUID` scalars on the DTOs (never the related
+entity type), fixing a real EAGER-fetch nested-entity serialization
+defect confirmed during exploration.
+
+- explore → propose → spec → design → tasks → **apply**: done. 55 new
+  backend tests (`spring_generator` 133 → 188), 631/631 backend tests
+  pass, single PR (`size:exception`, confirmed by the user).
+- Remaining for this cycle: **`sdd-verify`** (confirm the implementation
+  against `openspec/changes/2026-09-18-spring-boot-generator-application-api-layer/specs/**`
+  and `design.md`), then **`sdd-archive`**.
+- Explicit follow-ups, deliberately out of scope this cycle (proposal Out
+  of Scope): filtering and search (pending a §33 generation-metadata
+  extension), relation-navigation sub-resource endpoints
+  (`GET /parent/{id}/children`), any §33 metadata consumption,
+  `Repository.java.j2` changes, `validation/`/`config/` layer generation,
+  compilation/Gradle verification of generated Java (item 13),
+  OpenAPI/Postman, and the Domain Manifest.
+
 ## Spring Boot generator — relationships (FK) + enum types — status: implemented, pending verify/archive
 
 `2026-09-18-spring-boot-generator-relationships-enums` (extends

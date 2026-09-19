@@ -1,0 +1,46 @@
+package {{ package }};
+
+{% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
+{% endfor %}
+{% endfor %}@RestController
+@RequestMapping("{{ resource_path }}")
+public class {{ class_name }} {
+
+    private final {{ service_type }} {{ service_field }};
+
+    public {{ class_name }}({{ service_type }} {{ service_field }}) {
+        this.{{ service_field }} = {{ service_field }};
+    }
+
+    @PostMapping("")
+    @ResponseStatus(HttpStatus.CREATED)
+    public {{ response_dto }} create(@Valid @RequestBody {{ request_dto }} request) {
+        return {{ service_field }}.create(request);
+    }
+
+    @GetMapping("/{id}")
+    public {{ response_dto }} findById(@PathVariable UUID id) {
+        return {{ service_field }}.findById(id);
+    }
+
+    @PutMapping("/{id}")
+    public {{ response_dto }} update(@PathVariable UUID id, @Valid @RequestBody {{ request_dto }} request) {
+        return {{ service_field }}.update(id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        {{ service_field }}.delete(id);
+    }
+
+    @GetMapping("")
+    public Page<{{ response_dto }}> list(Pageable pageable) {
+        return {{ service_field }}.list(pageable);
+    }
+
+    @GetMapping("/count")
+    public long count() {
+        return {{ service_field }}.count();
+    }
+}

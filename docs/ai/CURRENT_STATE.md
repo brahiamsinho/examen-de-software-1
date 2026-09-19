@@ -455,6 +455,35 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   (structural-only per proposal D2: expected paths, class/field/
   annotation lines, brace balance — no `javac`, no Java parser), full
   suite green. `sdd-verify`/`sdd-archive` are the remaining steps.
+- **SDD Cycle (`2026-09-18-spring-boot-generator-application-api-layer`) is
+  implemented** (`backend/apps/spring_generator/`, spec §22, item 12 —
+  third slice, extends both cycles below): `generate_table_sources(table)`
+  grows from 2 to **6** emitted files per call, in fixed layer order
+  `domain/`, `persistence/`, `application/dto/<E>RequestDto.java`,
+  `application/dto/<E>ResponseDto.java`, `application/<E>Service.java`,
+  `api/<E>Controller.java` (DD50a) — a generated backend now has a callable
+  REST surface for the first time. A new sibling entry point
+  `generate_shared_error_sources(*, base_package) -> GeneratedSources`
+  (DD42, mirroring DD30's `generate_enum_source` precedent) emits exactly
+  two per-project `errors/` files once, never per-`Table`. **A real defect
+  is fixed in the same slice**: the DTO layer flattens every relationship
+  field to a raw FK `UUID` scalar (e.g. `categoryId`, never the related
+  entity type) instead of letting JPA's EAGER-fetch `@ManyToOne`/
+  `@OneToOne` serialize nested entities, which would have contradicted
+  spec §27's flat-FK-id UI contract. FK resolution in the service always
+  goes through `relatedRepository.findById(...).orElseThrow(...)` — never
+  `EntityManager.getReference()`, which would defer the not-found check
+  past the point the service can convert it into the typed 404. **DD48
+  amends DD18**: the entity's no-arg constructor is now `public`, not
+  `protected` — a compilation prerequisite, since DD39 puts the service in
+  a different package (`application`) than the entity (`domain`), and
+  `protected` would not compile across that boundary. Resource path
+  segments are pluralized and kebab-cased by a new dependency-free
+  `naming.resource_path_segment` (DD45; `order_line` → `/api/order-lines`).
+  55 new backend tests (`spring_generator` grows from 133 to 188), full
+  631-test backend suite green, single PR (`size:exception`, confirmed by
+  the user over the session's 400-line budget). `sdd-verify`/`sdd-archive`
+  are the remaining steps.
 - **SDD Cycle (`2026-09-18-spring-boot-generator-relationships-enums`) is
   implemented** (`backend/apps/spring_generator/`, spec §22 — second
   slice, extends the core cycle above): `generate_table_sources(table)`
@@ -532,14 +561,20 @@ validation engine. Implementation (`sdd-apply`) is complete; `sdd-verify`
 and `sdd-archive` remain before item 4 (`UmlCommand` + Command Bus)
 starts as its own cycle.
 
-Item 12 (Spring Boot backend generator) now has two slices implemented:
+Item 12 (Spring Boot backend generator) now has three slices implemented:
 `2026-09-18-spring-boot-generator-core` (scalar-only tables, `domain/`+
-`persistence/`) and `2026-09-18-spring-boot-generator-relationships-enums`
-(FK relationship fields, enum fields, and standalone enum source — see
-the Domain section above). Still out of scope for a future slice: Single
-Table inheritance generation, bidirectional `@OneToMany`,
-`@ManyToMany`/`@JoinTable`, and an orchestrating caller that walks a
-whole `RelationalModel` and combines per-table/per-enum output (including
-cross-artifact Java class-name collision detection). Item 13 (generated
-backend compilable) still has no JVM/Gradle host anywhere in repo infra
-and remains its own future cycle.
+`persistence/`), `2026-09-18-spring-boot-generator-relationships-enums`
+(FK relationship fields, enum fields, and standalone enum source), and
+`2026-09-18-spring-boot-generator-application-api-layer` (DTOs, service,
+REST controller, and shared error handling — `application/`, `application/
+dto/`, `api/`, `errors/`; see the Domain section above). Still out of
+scope for a future slice: Single Table inheritance generation,
+bidirectional `@OneToMany`, `@ManyToMany`/`@JoinTable`, filtering/search
+(pending a §33 generation-metadata extension), relation-navigation
+sub-resource endpoints, `validation/`/`config/` layer generation, and an
+orchestrating caller that walks a whole `RelationalModel`, combines
+per-table/per-enum output, and calls `generate_shared_error_sources`
+exactly once per generated project (including cross-artifact Java
+class-name collision detection). Item 13 (generated backend compilable)
+still has no JVM/Gradle host anywhere in repo infra and remains its own
+future cycle.

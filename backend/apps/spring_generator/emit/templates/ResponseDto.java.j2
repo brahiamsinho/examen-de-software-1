@@ -2,9 +2,7 @@ package {{ package }};
 
 {% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
 {% endfor %}
-{% endfor %}@Entity
-@Table(name = "{{ table_name }}")
-public class {{ class_name }} {
+{% endfor %}public class {{ class_name }} {
 {% for field in fields %}
 {% for annotation in field.annotations %}    {{ annotation }}
 {% endfor %}    private {{ field.java_type }} {{ field.name }};

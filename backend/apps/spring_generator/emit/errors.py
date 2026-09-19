@@ -76,6 +76,15 @@ class InvalidJavaIdentifierError(UngeneratableSourceError):
         )
 
 
+class InvalidResourcePathError(UngeneratableTableError):
+    def __init__(self, table_name: str, segment: str):
+        self.table_name = table_name
+        self.segment = segment
+        super().__init__(
+            "Table {!r} yields an invalid resource path segment {!r}".format(table_name, segment)
+        )
+
+
 class UngeneratableEnumError(UngeneratableSourceError):
     """Base for every error `reject_ungeneratable_enum` raises (DD33)."""
 
@@ -131,6 +140,20 @@ def reject_out_of_scope(table: Table) -> None:
             raise UnsupportedColumnTypeError(
                 table_name=table.name, column_name=column.name, column_type=column.type
             )
+
+
+def reject_invalid_resource_path(table: Table) -> None:
+    """DD45's fifth check, run after `reject_out_of_scope`'s four
+    (DD35): `naming.resource_path_segment(table.name)` must satisfy its
+    own `^[a-z0-9]+(-[a-z0-9]+)*$` whitelist. Raises nothing for a
+    table whose resource path segment is legal.
+    """
+    # Deferred import: naming.py imports this module's
+    # InvalidResourcePathError, so a module-level import here would
+    # create a cycle.
+    from apps.spring_generator.emit.naming import resource_path_segment
+
+    resource_path_segment(table.name)
 
 
 def reject_ungeneratable_enum(enum_type: EnumType) -> None:

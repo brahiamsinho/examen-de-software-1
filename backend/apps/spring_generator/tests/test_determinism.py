@@ -1,15 +1,22 @@
 """Property tests for the spec's determinism criterion (design.md DD12,
-DD36): (a) repeated calls are byte-identical, (b) field order ==
+DD36, DD50): (a) repeated calls are byte-identical, (b) field order ==
 `table.columns` declaration order (one field per column, DD23), (c)
 imports deduped/grouped/sorted, (d) braces and parens balanced in
 every emitted file. Strategies widened to FK-bearing and enum-bearing
 tables (DD36 — no new ordering rule needed, this file is the proof).
+Widened further (DD50) to cover the 6-file `generate_table_sources`
+output: fixed DD50a layer order, DD50b DTO field order, and the new
+`org.springframework.*` import group.
 """
 from hypothesis import given, strategies as st
 
 from apps.relational_mapping.domain.schema import Column, EnumType, ForeignKey, PrimaryKey, Table
 from apps.relational_mapping.domain.types import ColumnType
-from apps.spring_generator.emit.context import build_entity_context
+from apps.spring_generator.emit.context import (
+    build_entity_context,
+    build_request_dto_context,
+    build_response_dto_context,
+)
 from apps.spring_generator.emit.naming import camel_case, relationship_base_name
 from apps.spring_generator.emit.renderer import generate_enum_source, generate_table_sources
 
@@ -145,6 +152,45 @@ def test_braces_and_parens_are_balanced_in_every_emitted_file(table):
     for generated_file in sources.files:
         assert generated_file.contents.count("{") == generated_file.contents.count("}")
         assert generated_file.contents.count("(") == generated_file.contents.count(")")
+
+
+@given(_tables())
+def test_generate_table_sources_file_order_is_fixed_layer_order(table):
+    sources = generate_table_sources(table)
+
+    suffixes = ("/domain/", "/persistence/", "/application/dto/", "/application/dto/", "/application/", "/api/")
+    assert len(sources.files) == 6
+    for generated_file, suffix in zip(sources.files, suffixes):
+        assert suffix in generated_file.path
+    # application/dto request precedes response, application precedes api.
+    paths = [generated_file.path for generated_file in sources.files]
+    assert paths[2].endswith("RequestDto.java")
+    assert paths[3].endswith("ResponseDto.java")
+
+
+@given(_tables())
+def test_dto_field_order_matches_table_columns_declaration_order(table):
+    request_context = build_request_dto_context(table, base_package="com.modelia.generated")
+    response_context = build_response_dto_context(table, base_package="com.modelia.generated")
+
+    pk_column_name = table.primary_key.column_names[0]
+    expected_response_names = [camel_case(column.name) for column in table.columns]
+    expected_request_names = [
+        camel_case(column.name) for column in table.columns if column.name != pk_column_name
+    ]
+
+    assert [field.name for field in response_context.fields] == expected_response_names
+    assert [field.name for field in request_context.fields] == expected_request_names
+
+
+@given(_tables())
+def test_service_and_controller_imports_include_org_springframework_group(table):
+    sources = generate_table_sources(table)
+    service_source = next(f for f in sources.files if f.path.endswith("Service.java")).contents
+    controller_source = next(f for f in sources.files if f.path.endswith("Controller.java")).contents
+
+    assert "import org.springframework." in service_source
+    assert "import org.springframework." in controller_source
 
 
 @given(_enum_types())

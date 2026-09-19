@@ -13,7 +13,7 @@ concatenation of the generator's own Python source.
 """
 import re
 
-from apps.spring_generator.emit.errors import InvalidJavaIdentifierError
+from apps.spring_generator.emit.errors import InvalidJavaIdentifierError, InvalidResourcePathError
 
 _LEGAL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _UNDERSCORE_BOUNDARY = re.compile(r"_([A-Za-z0-9])")
@@ -21,6 +21,9 @@ _LEADING_CHAR = re.compile(r"^[A-Za-z]")
 _TRAILING_ID_SUFFIX = re.compile(r"_id$")
 _CAMEL_PASCAL_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
 _NON_ALNUM_RUN = re.compile(r"[^A-Za-z0-9]+")
+_PLURAL_SIBILANT_SUFFIX = re.compile(r"(s|x|z|ch|sh)$")
+_PLURAL_CONSONANT_Y_SUFFIX = re.compile(r"[^aeiou]y$")
+_RESOURCE_PATH_SEGMENT = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 # Java 21 reserved words, contextual keywords, and literals that would
 # otherwise collide with a generated field/method name.
@@ -99,3 +102,41 @@ def screaming_snake_case(label: str) -> str:
 def package_path(base_package: str) -> str:
     """`"com.modelia.generated"` -> `"com/modelia/generated"`."""
     return base_package.replace(".", "/")
+
+
+def _join_with_separator(parts: list[str], separator: str) -> str:
+    """Separator-join without `str.join` (DD14 guard)."""
+    joined = ""
+    for index, part in enumerate(parts):
+        joined = part if index == 0 else "{}{}{}".format(joined, separator, part)
+    return joined
+
+
+def _pluralize_word(word: str) -> str:
+    """DD45's fixed 3-rule pluralizer: (1) `s|x|z|ch|sh$` -> `+es`,
+    (2) consonant + `y$` -> `ies`, (3) otherwise `+s`.
+    """
+    if _PLURAL_SIBILANT_SUFFIX.search(word):
+        return _PLURAL_SIBILANT_SUFFIX.sub(lambda match: "{}es".format(match.group(1)), word)
+    if _PLURAL_CONSONANT_Y_SUFFIX.search(word):
+        return _PLURAL_CONSONANT_Y_SUFFIX.sub(lambda match: "{}ies".format(match.group(0)[0]), word)
+    return "{}s".format(word)
+
+
+def resource_path_segment(table_name: str) -> str:
+    """DD45: pluralize the last `_`-separated word of `table_name`, then
+    lowercase and replace `_` with `-` (`"order_line"` -> `"order-lines"`,
+    `"category"` -> `"categories"`). Raises `InvalidResourcePathError`
+    when the resulting segment fails the `^[a-z0-9]+(-[a-z0-9]+)*$`
+    whitelist — this whitelist is distinct from DD16's identifier
+    whitelist because `-` is illegal in a Java identifier but is the
+    dominant REST convention for a plural kebab-case path segment.
+    """
+    words = table_name.split("_")
+    words[-1] = _pluralize_word(words[-1])
+    pluralized = _join_with_separator(words, "_")
+    segment = pluralized.lower().replace("_", "-")
+
+    if not _RESOURCE_PATH_SEGMENT.match(segment):
+        raise InvalidResourcePathError(table_name=table_name, segment=segment)
+    return segment

@@ -36,10 +36,11 @@ def test_entity_has_entity_and_table_annotations():
     assert "public class Product {" in source
 
 
-def test_entity_has_protected_no_arg_constructor():
+def test_entity_has_public_no_arg_constructor():
     source = _entity_source()
 
-    assert "protected Product() {" in source
+    assert "public Product() {" in source
+    assert "protected Product() {" not in source
 
 
 def test_entity_has_getter_and_setter_per_field():

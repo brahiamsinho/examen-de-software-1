@@ -1,12 +1,14 @@
 """Generation must complete with no DB connection available and no
 `relational_mapping`/`uml_modeling` validation routine invoked (spec:
-Generator Purity requirement).
+Generator Purity requirement). Covers both public entry points:
+`generate_table_sources` (per-`Table`) and `generate_shared_error_sources`
+(per-project, DD42).
 """
 from unittest.mock import patch
 
 from apps.relational_mapping.domain.schema import Column, PrimaryKey
 from apps.relational_mapping.domain.types import ColumnType
-from apps.spring_generator.emit.renderer import generate_table_sources
+from apps.spring_generator.emit.renderer import generate_shared_error_sources, generate_table_sources
 from apps.spring_generator.tests.factories import a_table
 
 
@@ -23,11 +25,26 @@ def test_generation_succeeds_with_no_db_access():
     # so a passing test already proves no DB connection was opened.
     sources = generate_table_sources(_product_table())
 
-    assert len(sources.files) == 2
+    assert len(sources.files) == 6
 
 
 def test_generation_never_calls_the_validation_engine():
     with patch("apps.uml_modeling.validation.engine.validate") as mock_validate:
         generate_table_sources(_product_table())
+
+    mock_validate.assert_not_called()
+
+
+def test_shared_error_sources_generation_succeeds_with_no_db_access():
+    # Same purity argument as above: no `django_db`/`db` fixture
+    # requested, so a passing test already proves no DB connection.
+    sources = generate_shared_error_sources(base_package="com.modelia.generated")
+
+    assert len(sources.files) == 2
+
+
+def test_shared_error_sources_generation_never_calls_the_validation_engine():
+    with patch("apps.uml_modeling.validation.engine.validate") as mock_validate:
+        generate_shared_error_sources(base_package="com.modelia.generated")
 
     mock_validate.assert_not_called()

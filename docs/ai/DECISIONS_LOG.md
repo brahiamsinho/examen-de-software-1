@@ -1,5 +1,104 @@
 # Decisions Log
 
+## 2026-09-18 — Cycle apply: Spring Boot generator `application/`+`api/` layers (`2026-09-18-spring-boot-generator-application-api-layer`)
+
+`sdd-apply` implemented all 23 tasks (Phases 1–8) from
+`openspec/changes/2026-09-18-spring-boot-generator-application-api-layer/tasks.md`
+with strict TDD, single PR (`size:exception`, confirmed by the user over the
+400-line review budget; this session's apply resumed after a rate-limit
+interruption mid-Phase-4, picking up from the persisted `tasks.md` checkpoints
+with no rework). Extends both archived cycles (DD1–DD36): `generate_table_sources`
+grows from 2 to 6 emitted files, and a new sibling `generate_shared_error_sources`
+emits the two per-project `errors/` files.
+
+**Design decisions DD37–DD50** (`design.md`) landed as specified: DTOs live in
+`application/dto/` as two classes, `<E>RequestDto`/`<E>ResponseDto` — a
+sub-package of `application/`, never a new top-level `dto/` (which §22's
+literal directory list never names) and never `api/` (which would invert
+`application/ → api/` layering) (DD37); DTO field rules — one field per
+`table.columns`, request omits the PK, a FK column becomes `UUID
+<camelCase(column.name)>` (never the related entity type, keeping the `Id`
+suffix unlike DD26's JPA field name, so two FKs to the same table stay
+distinct), an enum column keeps its enum type, request fields carry forwarded
+`@NotNull`/`@Size`, response fields carry none, and neither DTO ever gets a
+JPA annotation (DD38); `<E>Service` in `application`, `@Service`, constructor
+injection, `private final` fields, class-level `@Transactional(readOnly =
+true)` + method-level on the three mutators, exactly six public methods —
+`create`/`findById`/`update`/`delete`/`list(Pageable)`/`count()`, a single
+`Pageable` parameter covering both pagination and sorting since it already
+carries a `Sort` (DD39); FK resolution always via
+`relatedRepository.findById(...).orElseThrow(...)`, never
+`EntityManager.getReference()` (which defers the not-found check past where
+the service can convert it into the typed 404) — one repository per distinct
+`fk.referenced_table`, deduplicated and ordered by first appearance, a
+self-reference dedups against the entity's own repository adding no extra
+constructor parameter, and a nullable FK whose DTO value is `null` skips the
+lookup (DD40); one generic `ResourceNotFoundException(String resourceName,
+UUID id) extends RuntimeException` in `<base_package>.errors`, not a
+per-entity hierarchy — the advice is a singleton generated with no knowledge
+of how many tables exist, so a per-entity type would be structurally
+impossible under the one-`Table` signature (DD41); a new
+`generate_shared_error_sources(*, base_package) -> GeneratedSources` entry
+point, taking no `Table`, reusing `_ENVIRONMENT`/`_validate_base_package`/
+`package_path`, emitting the two `errors/` files exactly once — never from
+`generate_table_sources`, which would produce N byte-identical copies at the
+same path (DD42); `GlobalExceptionHandler` is `@RestControllerAdvice` (not
+bare `@ControllerAdvice`, which resolves a returned object as a view name
+without `@ResponseBody`), two handlers returning `ProblemDetail` (RFC 7807,
+zero extra generated classes) for 404/400, the validation handler building its
+`field -> message` map via a plain `for` loop over
+`ex.getBindingResult().getFieldErrors()` (DD43); DTO ↔ entity conversion lives
+in two `private` methods on the service, `toResponseDto`/`applyRequestDto` —
+no mapper class, no MapStruct (would add an annotation processor to every
+generated `build.gradle`, the same argument DD18 used against Lombok), no
+`BeanUtils.copyProperties` (cannot bridge `UUID categoryId` ↔ `Category
+category`); the individual statement lines are precomputed in `context.py` as
+an ordered `tuple[str, ...]` via `.format()`, the template only loops and
+indents (DD44); resource path segment = `naming.resource_path_segment(table.
+name)` — pluralize the last `_`-separated word via a fixed 3-rule `re.sub`
+chain, then lowercase and replace `_` with `-`, validated against
+`^[a-z0-9]+(-[a-z0-9]+)*$` and raising the new `InvalidResourcePathError`
+(`UngeneratableTableError` subclass) as DD35's fifth check (DD45); the
+endpoint table — `POST ""` → 201, `GET "/{id}"` → 200, `PUT "/{id}"` → 200
+(not `PATCH`, since the request DTO carries every non-PK field), `DELETE
+"/{id}"` → 204, `GET ""` → paginated 200, `GET "/count"` → 200 — Spring's
+pattern comparator deterministically ranks the literal `/count` segment above
+`/{id}`'s variable, so the two never collide (DD46); the controller binds
+`Pageable` directly with zero custom `@RequestParam` parsing — Spring Boot
+auto-configures the resolver whenever spring-data and spring-web are both on
+the classpath (DD47); **DD48 amends DD18, the only backwards-incompatible
+change this cycle**: the entity's no-arg constructor becomes `public`, not
+`protected` — a compilation prerequisite, since DD39 puts the service in
+`<base_package>.application` while the entity lives in `<base_package>.
+domain`, and `protected` grants access only within the same package (DD48);
+six new templates, all data-driven, every loop body obeying the DD13
+whitespace lesson (a content line never ends with a `{% %}` block tag), with
+comma-separated lists precomputed via `_comma_join` (DD49); determinism rules
+for the new artifacts — `GeneratedSources.files` order is fixed layer order
+(Entity, Repository, RequestDto, ResponseDto, Service, Controller), DTO field
+order is `table.columns` order with the PK simply omitted from the request,
+service constructor parameter order is own repository first then each
+distinct FK-referenced-table repository in first-appearance order, and DD27's
+same-package import suppression does **not** extend to `application.dto` —
+the service and controller must import the DTOs explicitly, since
+`<pkg>.application.dto.*` is a different package from `<pkg>.application`
+(DD50).
+
+**Verification.** 55 new backend tests: `test_resource_path.py` (new, DD45),
+`test_dto_generation.py` (new, DD37/DD38), `test_service_generation.py` (new,
+14 tests, DD39/DD40/DD44), `test_error_sources.py` (new, 7 tests, DD41–DD43),
+`test_controller_generation.py` (new, 7 tests, DD45–DD47), plus modifications
+to `test_entity_structure.py` (DD48 ctor flip), `test_paths_and_package.py`
+(6-file expectations), `test_determinism.py` (widened to all six files: fixed
+layer order, DTO field order, `org.springframework.*` import group), and
+`test_purity.py` (extended to `generate_shared_error_sources`).
+`test_no_concat_guard.py` stayed green unmodified over every modified `emit/`
+module. Full backend suite: 631/631 passed, zero regressions. No deviations
+from `design.md` were required — every DD landed exactly as specified,
+including DD48's scope delta (flagged in `design.md`'s Open Questions as a
+proposal-unanticipated change to a file the proposal listed as untouched, and
+accepted as-is).
+
 ## 2026-09-18 — Cycle apply: Spring Boot generator relationships (FK) + enum types (`2026-09-18-spring-boot-generator-relationships-enums`)
 
 `sdd-apply` implemented all 27 tasks (Phases 1–5) from

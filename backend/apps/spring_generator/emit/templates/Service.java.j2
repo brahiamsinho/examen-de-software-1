@@ -1,0 +1,64 @@
+package {{ package }};
+
+{% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
+{% endfor %}
+{% endfor %}@Service
+@Transactional(readOnly = true)
+public class {{ class_name }} {
+
+    private final {{ repository_type }} {{ repository_field }};
+{% for dependency in dependencies %}    private final {{ dependency.type_name }} {{ dependency.field_name }};
+{% endfor %}
+    public {{ class_name }}({{ constructor_parameters }}) {
+{% for assignment in constructor_assignments %}        {{ assignment }}
+{% endfor %}    }
+
+    @Transactional
+    public {{ entity_class }}ResponseDto create({{ entity_class }}RequestDto request) {
+        {{ entity_class }} entity = new {{ entity_class }}();
+        applyRequestDto(entity, request);
+        {{ entity_class }} saved = {{ repository_field }}.save(entity);
+        return toResponseDto(saved);
+    }
+
+    public {{ entity_class }}ResponseDto findById(UUID id) {
+        {{ entity_class }} entity = {{ repository_field }}.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("{{ resource_name }}", id));
+        return toResponseDto(entity);
+    }
+
+    @Transactional
+    public {{ entity_class }}ResponseDto update(UUID id, {{ entity_class }}RequestDto request) {
+        {{ entity_class }} entity = {{ repository_field }}.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("{{ resource_name }}", id));
+        applyRequestDto(entity, request);
+        {{ entity_class }} saved = {{ repository_field }}.save(entity);
+        return toResponseDto(saved);
+    }
+
+    @Transactional
+    public void delete(UUID id) {
+        if (!{{ repository_field }}.existsById(id)) {
+            throw new ResourceNotFoundException("{{ resource_name }}", id);
+        }
+        {{ repository_field }}.deleteById(id);
+    }
+
+    public Page<{{ entity_class }}ResponseDto> list(Pageable pageable) {
+        return {{ repository_field }}.findAll(pageable).map(this::toResponseDto);
+    }
+
+    public long count() {
+        return {{ repository_field }}.count();
+    }
+
+    private {{ entity_class }}ResponseDto toResponseDto({{ entity_class }} entity) {
+        {{ entity_class }}ResponseDto dto = new {{ entity_class }}ResponseDto();
+{% for statement in to_response_statements %}        {{ statement }}
+{% endfor %}        return dto;
+    }
+
+    private void applyRequestDto({{ entity_class }} entity, {{ entity_class }}RequestDto request) {
+{% for statement in apply_request_statements %}        {{ statement }}
+{% endfor %}    }
+}

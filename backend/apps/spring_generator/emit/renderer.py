@@ -14,8 +14,20 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from apps.relational_mapping.domain.schema import EnumType, Table
 from apps.spring_generator.domain.sources import GeneratedFile, GeneratedSources
-from apps.spring_generator.emit.context import build_entity_context, build_enum_context, build_repository_context
-from apps.spring_generator.emit.errors import reject_out_of_scope, reject_ungeneratable_enum
+from apps.spring_generator.emit.context import (
+    build_controller_context,
+    build_entity_context,
+    build_enum_context,
+    build_repository_context,
+    build_request_dto_context,
+    build_response_dto_context,
+    build_service_context,
+)
+from apps.spring_generator.emit.errors import (
+    reject_invalid_resource_path,
+    reject_out_of_scope,
+    reject_ungeneratable_enum,
+)
 from apps.spring_generator.emit.naming import package_path
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -45,9 +57,14 @@ def _validate_base_package(base_package: str) -> None:
 def generate_table_sources(table: Table, *, base_package: str = "com.modelia.generated") -> GeneratedSources:
     _validate_base_package(base_package)
     reject_out_of_scope(table)
+    reject_invalid_resource_path(table)
 
     entity_context = build_entity_context(table, base_package=base_package)
     repository_context = build_repository_context(table, base_package=base_package)
+    request_dto_context = build_request_dto_context(table, base_package=base_package)
+    response_dto_context = build_response_dto_context(table, base_package=base_package)
+    service_context = build_service_context(table, base_package=base_package)
+    controller_context = build_controller_context(table, base_package=base_package)
 
     entity_source = _ENVIRONMENT.get_template("Entity.java.j2").render(
         package=entity_context.package,
@@ -62,15 +79,88 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
         repository_name=repository_context.repository_name,
         import_groups=repository_context.import_groups,
     )
+    request_dto_source = _ENVIRONMENT.get_template("RequestDto.java.j2").render(
+        package=request_dto_context.package,
+        class_name=request_dto_context.class_name,
+        fields=request_dto_context.fields,
+        import_groups=request_dto_context.import_groups,
+    )
+    response_dto_source = _ENVIRONMENT.get_template("ResponseDto.java.j2").render(
+        package=response_dto_context.package,
+        class_name=response_dto_context.class_name,
+        fields=response_dto_context.fields,
+        import_groups=response_dto_context.import_groups,
+    )
+    service_source = _ENVIRONMENT.get_template("Service.java.j2").render(
+        package=service_context.package,
+        class_name=service_context.class_name,
+        entity_class=service_context.entity_class,
+        repository_field=service_context.repository_field,
+        repository_type=service_context.repository_type,
+        dependencies=service_context.dependencies,
+        constructor_parameters=service_context.constructor_parameters,
+        constructor_assignments=service_context.constructor_assignments,
+        to_response_statements=service_context.to_response_statements,
+        apply_request_statements=service_context.apply_request_statements,
+        resource_name=service_context.resource_name,
+        import_groups=service_context.import_groups,
+    )
+    controller_source = _ENVIRONMENT.get_template("Controller.java.j2").render(
+        package=controller_context.package,
+        class_name=controller_context.class_name,
+        service_field=controller_context.service_field,
+        service_type=controller_context.service_type,
+        request_dto=controller_context.request_dto,
+        response_dto=controller_context.response_dto,
+        resource_path=controller_context.resource_path,
+        import_groups=controller_context.import_groups,
+    )
 
     pkg_path = package_path(base_package)
     entity_path = "src/main/java/{}/domain/{}.java".format(pkg_path, entity_context.class_name)
     repository_path = "src/main/java/{}/persistence/{}.java".format(pkg_path, repository_context.repository_name)
+    request_dto_path = "src/main/java/{}/application/dto/{}.java".format(pkg_path, request_dto_context.class_name)
+    response_dto_path = "src/main/java/{}/application/dto/{}.java".format(pkg_path, response_dto_context.class_name)
+    service_path = "src/main/java/{}/application/{}.java".format(pkg_path, service_context.class_name)
+    controller_path = "src/main/java/{}/api/{}.java".format(pkg_path, controller_context.class_name)
 
     return GeneratedSources(
         files=(
             GeneratedFile(path=entity_path, contents=entity_source),
             GeneratedFile(path=repository_path, contents=repository_source),
+            GeneratedFile(path=request_dto_path, contents=request_dto_source),
+            GeneratedFile(path=response_dto_path, contents=response_dto_source),
+            GeneratedFile(path=service_path, contents=service_source),
+            GeneratedFile(path=controller_path, contents=controller_source),
+        )
+    )
+
+
+def generate_shared_error_sources(*, base_package: str = "com.modelia.generated") -> GeneratedSources:
+    """DD42: sibling entry point to `generate_table_sources`, taking no
+    `Table`. Reuses the same Jinja `_ENVIRONMENT`, `_validate_base_package`,
+    and `package_path`. Pure function of `base_package` alone (DD3) —
+    emits the two per-project `errors/` files exactly once per call.
+    """
+    _validate_base_package(base_package)
+
+    errors_package = "{}.errors".format(base_package)
+
+    exception_source = _ENVIRONMENT.get_template("ResourceNotFoundException.java.j2").render(
+        package=errors_package,
+    )
+    handler_source = _ENVIRONMENT.get_template("GlobalExceptionHandler.java.j2").render(
+        package=errors_package,
+    )
+
+    pkg_path = package_path(base_package)
+    exception_path = "src/main/java/{}/errors/ResourceNotFoundException.java".format(pkg_path)
+    handler_path = "src/main/java/{}/errors/GlobalExceptionHandler.java".format(pkg_path)
+
+    return GeneratedSources(
+        files=(
+            GeneratedFile(path=exception_path, contents=exception_source),
+            GeneratedFile(path=handler_path, contents=handler_source),
         )
     )
 
