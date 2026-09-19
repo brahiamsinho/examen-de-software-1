@@ -7,12 +7,25 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
-**Nothing from the real UML/CASE-tool domain exists yet.** No
-`CanonicalUmlModel`, no canvas, no collaboration, no code generation, no
-AI/voice/XMI features have been built. What exists is a dockerized
-infrastructure skeleton that is mid-migration from its original generic
-scaffold onto the corrected stack, plus SDD tooling that has been
-initialized but not yet used for a real cycle.
+**As of 2026-09-19** (`main` at `0aa211a`, 20 archived SDD cycles, backend
+631 tests, no open change): the UML modeling core (canonical model,
+validation engine, command bus, persistence, canvas with locking), multi-
+tenant identity/auth, realtime collaboration, the UML → RelationalModel
+mapper, and three slices of the Spring Boot generator all exist and are
+archived. The generator emits Java **source text only** for one table at a
+time (`domain/`, `persistence/`, `application/`, `api/`, `errors/`).
+
+What does **not** exist: compilation of any generated Java (§37 item 13),
+inheritance generation, filtering/search, the generated `config/` layer,
+OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
+the assistant, voice, XMI and image → UML. Undo/Redo and Presence (§37 items
+7 and 10) have no dedicated archived cycle and are not verified as
+implemented. See `HANDOFF_LATEST.md` for the stage summary and
+`NEXT_STEPS.md` for what comes next.
+
+> The per-area sections below (Backend, Frontend, Mobile, SDD / planning,
+> Domain) were appended cycle by cycle; where an older sentence in them
+> contradicts this paragraph, this paragraph wins.
 
 ### Backend
 
@@ -522,11 +535,13 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   single PR (`size:exception`, confirmed by the user over the session's
   800-line budget). `sdd-verify`/`sdd-archive` are the remaining steps.
 
-## Pending (SDD Cycle 1 and beyond)
+## Pending (status against spec section 37)
 
-Per the spec's own recommended implementation order (section 37), the next
-work — once explored/proposed via SDD — should proceed roughly in this
-order:
+This is the spec's own recommended implementation order, kept as a reference
+list. **Status as of 2026-09-19:** items 1–6, 8, 9 and 11 are done and
+archived; item 12 is partial (see the paragraph after the list); items 7
+(Undo/Redo) and 10 (Presence) have no dedicated archived cycle; items 13–26
+are not started.
 
 1. `CanonicalUmlModel`
 2. `ProjectDocument` + `DiagramLayout`
@@ -555,11 +570,9 @@ order:
 25. XMI 2.1
 26. Image → UML (Moondream)
 
-SDD Cycle 1 (see `NEXT_STEPS.md`) targeted items 1–3 only:
-`CanonicalUmlModel`, `ProjectDocument`/`DiagramLayout`, and the
-validation engine. Implementation (`sdd-apply`) is complete; `sdd-verify`
-and `sdd-archive` remain before item 4 (`UmlCommand` + Command Bus)
-starts as its own cycle.
+SDD Cycle 1 (`canonical-uml-model`, items 1–3) was verified and archived on
+2026-09-05; the command bus (item 4) was archived on 2026-09-12. Both are in
+`openspec/changes/archive/`.
 
 Item 12 (Spring Boot backend generator) now has three slices implemented:
 `2026-09-18-spring-boot-generator-core` (scalar-only tables, `domain/`+

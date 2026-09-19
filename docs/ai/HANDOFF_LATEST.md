@@ -1,98 +1,164 @@
 # Handoff — Latest
 
-## What's done
+Updated 2026-09-19. Read this first, then `CURRENT_STATE.md` (long, per-area
+detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
+DD1–DD50 for the last three generator cycles). Older per-cycle detail lives
+in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
+`openspec/specs/` (21 merged capability specs).
 
-### SDD Cycle 4: UML Document List (ARCHIVED 2026-09-13)
+## Snapshot
 
-- **Document List Endpoint (`uml-document-list`)**: Added `GET /orgs/{org_slug}/documents` endpoint returning a lightweight summary of every document in the organization, ordered newest-updated-first, gated exactly like the existing document read (any member, VIEWER+).
-  - Backend: `list_documents(*, organization)` service in `services.py`, `DocumentSummaryOut` schema in `schemas.py`, registered endpoint in `api.py` with `resolve_membership` gate (DD1–DD3).
-  - Frontend: `listDocuments(orgSlug)` fetch + `DocumentSummary` type in `lib/uml_documents.ts` (DD4); `useDocuments(orgSlug)` container hook with local state + render-time slug tracking in new `state/documents.ts` (DD5); presentational `DocumentList` component with rows linking to `/documents/{id}` and empty state in new `components/workspace/DocumentList.tsx` (DD6–DD7).
-  - Dashboard Integration: `dashboard/page.tsx` now calls `useDocuments`, renders "Mis Diagramas" header with "Nuevo Diagrama" button (disclosure) above the list, shows loading state during fetch (DD8).
-- **Backend**: Zero diff — no model, migration, or command-bus changes. Three files modified additively: `services.py`, `schemas.py`, `api.py`. 319/319 tests pass.
-- **Frontend**: Two files created (`state/documents.ts`, `components/workspace/DocumentList.tsx`), two modified (`lib/uml_documents.ts`, `dashboard/page.tsx`). 254/254 tests pass, including 3 new regression tests for VIEWER-hides-button, EDITOR-shows-button, and DOM-order assertions.
-- **Architecture Decisions**: DD1–DD8 logged to `docs/ai/DECISIONS_LOG.md` covering sole-reassembler invariant, lightweight summary schema, read-gate parity, hook shape (local state + render-time reset, not atom), link-based navigation, no-date-column (server-order already captures intent), and hooks above conditional early return.
-- **Verification**: 573/573 tests pass (319 backend + 254 frontend, including 3 new regression tests re-run fresh this cycle). Build succeeds (docker compose build + next build). Lint clean (frontend; backend has no configured linter per project). Models/migrations diff empty. All 20 implementation tasks complete and independently re-confirmed against source. Verdict: **PASS** (0 CRITICAL, 0 WARNING).
-- **Specs**: Delta specs for `uml-document-persistence` (1 ADDED: Document List) and `web-uml-canvas` (1 ADDED: Dashboard Document List + 1 MODIFIED: Create-Document Entry Point) merged into main specs via `gentle-ai sdd-archive-compose`. Spec compliance: 10/10 scenarios fully COMPLIANT (up from 9/10 + 1 PARTIAL after prior cycle's WARNINGs were fixed).
-- **Change archived**: `openspec/changes/archive/2026-09-13-uml-document-list/` contains proposal, design (8 DD table), tasks (20/20 complete), verify-report (PASS, both prior WARNINGs fixed), and delta specs.
-- `docs/ai/` updated: `DECISIONS_LOG.md` appended DD1–DD8; `CURRENT_STATE.md` notes `/dashboard` now lists organization documents with empty state.
+- Code state: branch `main` == `origin/main` at `0aa211a`. The only changes
+  possibly not yet committed are this handoff refresh (`docs/ai/*` and the
+  new note under `docs/ai/sessions/`); run `git status` to check.
+- No active OpenSpec change. 20 archived cycles.
+- Tests: backend 631 (`docker compose exec -T backend pytest -q`), frontend
+  335 (vitest, last run during the `spring-boot-generator-core` verify; the
+  frontend has not changed since).
+- If Docker is down on Windows: start Docker Desktop and poll `docker info`
+  until it answers, then `docker compose up -d`.
 
-### SDD Cycle 3: UML Canvas Remove UI (ARCHIVED 2026-09-13)
+## What stage the project is in
 
-- **Remove UI Controls (`uml-canvas-remove-ui`)**: Added three new presentational controls — `RemoveClassControl`, `RemoveAttributeControl`, `RemoveRelationshipControl` — enabling users to delete classes, attributes, and relationships from the canvas.
-  - `RemoveClassControl`: class `<select>` with confirmation step showing exact cascade count (client-derived from `relationships` prop); confirmation required before `RemoveClass` submission.
-  - `RemoveAttributeControl`: class → attribute select chain, immediate submit with no confirmation; resets both selections on refetch if selected ids disappear.
-  - `RemoveRelationshipControl`: relationship `<select>` with endpoint-name-plus-kind labeling (`"ClassName → TargetName (kind)"`), distinguishing multiple relationships between the same class pair; immediate submit with no confirmation.
-- **Backend**: Zero diff — all three remove command shapes (`RemoveClass`, `RemoveAttribute`, `RemoveRelationship`) and their cascade behavior already exist in `apps/uml_documents/schemas.py` and the command bus.
-- **UML Command Union**: Extended `UmlCommandIn` with three new members (DD1); remaining gap is `RenameClass` (no UI collects a new name, proposal Out of Scope).
-- **Stale Selection Prevention (DD2)**: All three controls use derivation-based staleness elimination — selected id persists in `useState`, but rendered selection is `selected = options.find(o => o.id === rawId) ?? null` on every render, collapsing missing ids to null immediately without an effect. Prevents silent no-op backend submissions when a selected id disappears mid-refetch.
-- **Cross-Control Submission Lock (Phase 8)**: Added `isSubmitting` boolean to `useDocument`, set `true` before `submitCommand`'s POST and cleared in `finally`. All six command-submitting controls (`Add*` + `Remove*`) receive `disabled` prop wired to this lock, preventing concurrent submission races where two commands resolve out-of-order, leaving the canvas reflecting only one.
-- **Verification**: 235/235 tests pass (0 regressions), build succeeds, lint clean, backend/ empty diff confirmed. All 4 requirements and 11/11 scenarios fully COMPLIANT. Verdict: **PASS** (0 CRITICAL, 0 WARNING).
-- **Specs**: Delta spec for `web-uml-canvas` merged into `openspec/specs/web-uml-canvas/spec.md` with 4 new requirements: Remove Class Command, Remove Attribute Command, Remove Relationship Command, Stale Selection Reset After Refetch.
-- **Change archived**: `openspec/changes/archive/2026-09-13-uml-canvas-remove-ui/` contains proposal, design, tasks, verify-report, and delta spec.
-- `docs/ai/` updated: `DECISIONS_LOG.md` logged DD1–DD8 (command union, stale-selection derivation, placeholder-option guards, in-component confirmation branches, cascade-count derivation, endpoint-name-plus-kind labeling, form grouping, shared error/submitting blocks); `CURRENT_STATE.md` reflects UML canvas now supports 6 of 7 command shapes (only `RenameClass` remains).
+The exam spec is `product-04-next-django.md`; section 37 gives the
+implementation order. Status against it:
 
-### SDD Cycle 1: Canonical UML Model, Project Document, Validation Engine (ARCHIVED 2026-09-05)
+| §37 item | Status |
+|---|---|
+| 1–3 CanonicalUmlModel, ProjectDocument/DiagramLayout, validation engine | Done |
+| 4 UmlCommand + Command Bus | Done |
+| 5 Canvas (Cytoscape) | Done (incl. remove UI, relationship kinds, operations compartment) |
+| 6 Persistence (Django ORM) | Done |
+| 7 Undo/Redo | No dedicated archived cycle; not verified as implemented |
+| 8 Auth + ownership (multi-tenant) | Done |
+| 9 Realtime (Channels/Daphne) | Done (WebSocket sync + per-node claim locking) |
+| 10 Presence | No dedicated archived cycle; not verified as implemented |
+| 11 UML → RelationalModel | Done |
+| 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for one table at a time; see below |
+| 13 Generated backend compilable | Not started (nothing compiles Java yet) |
+| 14 OpenAPI, 15 Postman, 16 Domain Manifest | Not started |
+| 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
-- **Canonical UML Model (`uml-domain-model`)**: `CanonicalUmlModel` frozen dataclass (alias `UmlModel`) with classes, enumerations, relationships, generation metadata. Supports 8 primitive types (String, Text, Integer, Long, Decimal, Boolean, Date, DateTime) and enumeration references (by id, not name, to survive renames). Multiplicity structured as `(lower: int, upper: int|None)` with parse/format round-trip for UML string syntax.
-- **Project Document (`project-document`)**: `ProjectDocument` envelope wrapping `CanonicalUmlModel`, split into semantic `UmlModel` + visual `DiagramLayout`. Includes UUID identity, opaque `owner_id` (non-empty), revision (increments by 1 per mutation), timestamps. No ORM/persistence this cycle.
-- **Validation Engine (`uml-validation`)**: Single `validate(model) -> ValidationResult` entry point collecting exhaustive diagnostics. 10 fixed-severity rules (8 ERROR, 2 WARNING). ERROR blocks persistence/generation; WARNING never blocks. Diagnostics carry severity, SCREAMING_SNAKE code, message, slash-rooted id-based path, element reference.
-- **Backend**: New Django app `backend/apps/uml_modeling/` with pure Python domain layer (no Django/Ninja/Pydantic imports). One INSTALLED_APPS entry. DB-free, no models/migrations/endpoints. All 23 tasks complete (8 phases, strict TDD). 81 tests pass (80 uml_modeling + 1 pre-existing).
-- **Specs**: Three new capability specs moved to `openspec/specs/` as canonical source of truth: `uml-domain-model/spec.md`, `project-document/spec.md`, `uml-validation/spec.md`.
-- **Change archived**: `openspec/changes/archive/2026-09-05-canonical-uml-model/` contains proposal, design, tasks, verify-report, and delta specs.
-- `docs/ai/` real-state convention updated: `CURRENT_STATE.md`, `ARCHITECTURE.md`, `NEXT_STEPS.md`, `DECISIONS_LOG.md` reflect Cycle-1 completion with 8 proposal decisions (D0-D8) and 9 design decisions (DD1-DD9).
+## Archived cycles (chronological)
 
-### Prior infrastructure (infra scaffold — Sept 5, commit 9be999a)
+2026-09-05 canonical-uml-model · 09-06 multi-tenant-identity,
+tenant-aware-registration-login, frontend-auth-integration,
+ssr-protected-routes · 09-10 organization-member-management · 09-11
+email-verification-password-reset · 09-12 uml-command-bus,
+uml-document-persistence, uml-canvas-ui · 09-13 uml-canvas-remove-ui,
+uml-document-list · 09-14 realtime-uml-collaboration,
+uml-relationship-kinds · 09-15 uml-node-position-sync · 09-16
+uml-class-operations · 09-18 uml-relational-mapping,
+spring-boot-generator-core, spring-boot-generator-relationships-enums,
+spring-boot-generator-application-api-layer.
 
-- Full top-level layout created: `backend/`, `frontend/`, `mobile/`,
-  `docs/ai/`, root `docker-compose.yml`, root `env.example`, `.gitignore`,
-  `README.md`.
-- Backend: hand-written Django 5 project (`config` settings package),
-  empty `apps/` package, `django-environ`-based settings (DB, CORS,
-  ALLOWED_HOSTS, SECRET_KEY, DEBUG all from env vars), DRF + CORS
-  installed, `requirements/{base,dev,prod}.txt`, `entrypoint.sh`
-  (wait-for-postgres + migrate + exec), multi-stage `Dockerfile`
-  (`base`/`dev`/`prod`), `.dockerignore`, `backend/env.example`.
-- Frontend: scaffolded via `create-next-app@latest` (TypeScript, ESLint,
-  App Router, `src/` dir, no Tailwind, npm, no Turbopack flag — landed on
-  Next.js 16.3.3 / React 19.2.8). Added `src/lib/env.ts` (throws at import
-  if `NEXT_PUBLIC_API_URL` missing) and `src/lib/api.ts` (fetch wrapper
-  using it). `next.config.ts` sets `output: "standalone"`. Multi-stage
-  `Dockerfile` (`deps`/`dev`/`build`/`prod`), `.dockerignore`,
-  `frontend/env.local.example`. The nested `.git` that `create-next-app`
-  auto-initializes was removed so the repo root stays un-initialized.
-- Mobile: scaffolded via `flutter create --org com.examen.software
-  --project-name mobile mobile`. Added
-  `lib/core/config/app_config.dart` reading `API_BASE_URL` via
-  `String.fromEnvironment` (default `http://10.0.2.2:8000`). Rest of the
-  default counter-app template left untouched. Not dockerized, no
-  `mobile` service in compose, per spec.
-- `docker-compose.yml`: `db` (postgres:16-alpine + healthcheck), `backend`
-  (target `dev`, bind mount, `env_file: ./backend/.env`, depends on
-  healthy db), `frontend` (target `dev`, bind mount + anonymous
-  `node_modules` volume, `env_file: ./frontend/.env.local`, depends on
-  backend). No `mobile` service.
-- `docs/ai/*` written with real, specific content (this set of files).
+Fixes done outside an SDD cycle (each logged in `DECISIONS_LOG.md`):
+- `f605592` client-side lock self-expiry (a lock whose release message was
+  lost stayed "locked" forever because Redis TTL expiry broadcasts nothing).
+- `b00141e` `broadcast_document` now pre-serializes through `DocumentOut`
+  before `group_send`: channels_redis uses msgpack, which cannot encode
+  `UUID`/`datetime`. The in-memory test channel layer hides this class of
+  bug; only the real Redis layer exposes it.
+- Git history was rewritten and force-pushed once to strip
+  `Co-Authored-By`/`Claude-Session` trailers (the user does not want AI
+  attribution on the repo).
 
-## What's not done
+## The generation pipeline (what exists today)
 
-- No git repository initialized anywhere (deliberate, per instructions).
-- No `docker compose up`/build was ever run — the compose file and
-  Dockerfiles are untested against a live Docker daemon.
-- No HTTP/WS API endpoints; Ninja/Pydantic schema adapters deferred.
-- No persistence (Django ORM, migrations); `revision` field exists but concurrency enforcement is tech debt (item 6).
-- No Canvas/Cytoscape.js, Command Bus, Undo/Redo, Auth, Realtime/Channels, Relational mapping, Generators, OpenAPI, Assistant, STT, XMI, Vision (items 4-26, beyond Cycle 1 scope).
-- No Flutter screens beyond scaffold; mobile generation not yet implemented.
-- Env-example files at every level had to be written as `env.example`
-  (no leading dot) instead of `.env.example`, because of a sandbox
-  restriction — see `DECISIONS_LOG.md`. They need to be manually renamed
-  before `docker compose up` will pick them up as intended.
+```
+CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator--> Java source text
+ (uml_modeling)     (relational_mapping)    Table/Column/FK/    (spring_generator)   (in memory only)
+                                            EnumType
+```
+
+- `backend/apps/relational_mapping/`: pure, DB-free mapper. Single Table
+  inheritance with a `class_type` discriminator, synthetic UUID PK on every
+  table, native PG ENUM, composition = `NOT NULL` + `ON DELETE CASCADE`,
+  N:M = join table. Validation rule `MULTI_PARENT_GENERALIZATION` rejects
+  multi-parent generalization (Single Table needs a tree).
+- `backend/apps/spring_generator/` (pure, filesystem-free, deterministic):
+  - `generate_table_sources(table, *, base_package)` → 6 files under
+    `src/main/java/<pkg>/`: `domain/<E>.java` (JPA entity),
+    `persistence/<E>Repository.java`, `application/dto/<E>RequestDto.java`,
+    `application/dto/<E>ResponseDto.java`, `application/<E>Service.java`,
+    `api/<E>Controller.java`. FK columns become `@ManyToOne`/`@OneToOne` +
+    `@JoinColumn` on the entity but flat `UUID` fields on the DTOs.
+  - `generate_enum_source(enum_type, *, base_package)` → standalone Java enum.
+  - `generate_shared_error_sources(*, base_package)` → `errors/
+    ResourceNotFoundException.java` + `errors/GlobalExceptionHandler.java`
+    (one set per generated project, deliberately not per table).
+  - Rejected with typed errors (`UngeneratableSourceError` family): non-UUID
+    or composite PK, composite FK, discriminator column (inheritance), enum
+    column without a type name, illegal identifiers/resource paths.
+- Everything is validated as **text only**. No JVM, no Gradle, no
+  compilation anywhere in the repo.
+
+## Conventions you must not break
+
+- `emit/*.py` may not build source text by string concatenation. The LibCST
+  guard `tests/test_no_concat_guard.py` bans `+`, `.join`, `%` and
+  source-bearing f-strings. Use `.format()` or `re.sub`.
+- Jinja `trim_blocks` swallows the newline after any `{% %}` tag, even an
+  inline one ending a content line inside a loop. Use inline expressions
+  `{{ a if cond else b }}` there (this collapsed enum constants onto one
+  line once).
+- Frozen dataclasses, deterministic order (`Table.columns` order),
+  byte-identical output across calls, typed exceptions.
+- Java package boundaries matter: the entity's no-arg constructor is
+  `public` because the service lives in another package than the entity.
+- `validation/` and `config/` output is still forbidden by the spec.
+- Triple closed-union touch point for any new UML command: `UmlCommand`
+  (Python), `CommandIn` (Pydantic), `UmlCommandIn` (TypeScript).
+- The validation registry (`uml_modeling/validation/engine.py` `RULES`,
+  now 12 rules) is guarded by a hard-coded count test, and growing it also
+  breaks closed-set assertions in `test_diagnostics.py` and
+  `test_validation_integration.py`.
+
+## Decisions already made with the user (do not re-ask)
+
+- Generated backends must be externally configurable: no hardcoded
+  host/port/URL in templates (they will be deployed to the cloud).
+- Generated frontend/mobile (§26) is deferred. The user intends Flutter
+  instead of the spec's Next.js PWA + Capacitor (a deliberate deviation),
+  but said "that comes later". Note `mobile/` already holds a real Flutter
+  app; it is Modelia's own review/consult client against the Django API, not
+  a client for generated backends.
+- Future direction for item 13: an ephemeral container with JVM/Gradle plus
+  a fresh PostgreSQL to compile/run generated code. Nothing built yet.
+- UML operations (e.g. `crearUsuario`) do not generate endpoints: per §23 the
+  API is derived from structural metadata, not operation names.
+- Delivery: for every oversized cycle the user chose "size:exception, single
+  PR". Commit and push to `main` after each archived cycle (confirm before
+  pushing if unsure).
+- No `Co-Authored-By`/AI attribution in commits; conventional commits only.
+
+## Blocked / open
+
+1. **Inheritance generation (needs a user decision).** `Column` in
+   `relational_mapping/domain/schema.py` has no owning-UML-class field, so
+   which fields belong to which subclass cannot be rebuilt for 2+ sibling
+   subclasses. Options: (a) add `owning_class_id` to `Column` (reopens an
+   archived cycle), (b) limit to single-subclass trees, (c) defer.
+2. Filtering/search: waits for §33 generation metadata (`searchable`,
+   `sortable`, …), which the schema does not have.
+3. Relation-navigation sub-endpoints (`GET /parent/{id}/children`) and
+   bidirectional `@OneToMany`: need whole-`RelationalModel` awareness, and a
+   caller that walks the whole model does not exist yet.
+4. `config/` layer of the generated backend: not started.
+5. Item 13 (compile), 14 (OpenAPI), 15 (Postman), 16 (Domain Manifest).
+   Spec contradiction to resolve with the user before item 14: §25 says
+   "OpenAPI nativo de Django Ninja" but §22 mandates springdoc-openapi for
+   the generated backend.
 
 ## How to resume
 
-1. Rename every `env.example`/`env.local.example` to its dotfile form
-   (`.env`, `.env.local`) per the root `README.md` quickstart, filling in
-   real values.
-2. Run `docker compose up --build` and verify all three services come up
-   and the frontend can reach the backend (once an API route exists to
-   test against — there are none yet beyond `/admin/`).
-3. See `docs/ai/NEXT_STEPS.md` for what to build next.
+1. `docker compose up -d`, then `docker compose exec -T backend pytest -q`
+   must report 631 passed before you change anything.
+2. Work through SDD (hybrid store: `openspec/` + Engram, Strict TDD):
+   explore → propose → spec/design → tasks → apply → verify → archive →
+   commit. Ask the user the open questions before `sdd-propose`, one
+   question at a time.
+3. After each sub-agent phase, re-run the test suite yourself instead of
+   trusting its self-report.
+4. After finishing, update `CURRENT_STATE.md`, `NEXT_STEPS.md` and this
+   file, and add a note under `docs/ai/sessions/`.
