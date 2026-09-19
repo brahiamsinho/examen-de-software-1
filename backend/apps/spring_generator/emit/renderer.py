@@ -31,6 +31,10 @@ from apps.spring_generator.emit.errors import (
     reject_ungeneratable_enum,
 )
 from apps.spring_generator.emit.naming import package_path
+from apps.spring_generator.emit.scaffold_context import (
+    build_application_class_context,
+    build_build_script_context,
+)
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -218,6 +222,61 @@ def generate_model_sources(
     candidate = tuple(files)
     _reject_duplicate_generated_paths(candidate)
     return GeneratedSources(files=candidate)
+
+
+def generate_project_sources(
+    model: RelationalModel, *, base_package: str = "com.modelia.generated"
+) -> GeneratedSources:
+    """DD69/DD74: the model aggregate followed by the three scaffold files,
+    with one duplicate-path check over the combined tuple before the
+    aggregate is built (DD57 atomicity). Both collaborators are called by
+    module-global name so a test can inject a collision (DD71).
+    """
+    files: list[GeneratedFile] = []
+
+    _extend_generated_files(files, generate_model_sources(model, base_package=base_package))
+    _extend_generated_files(files, generate_project_scaffold_sources(base_package=base_package))
+
+    candidate = tuple(files)
+    _reject_duplicate_generated_paths(candidate)
+    return GeneratedSources(files=candidate)
+
+
+def generate_project_scaffold_sources(*, base_package: str = "com.modelia.generated") -> GeneratedSources:
+    """DD61: pure entry point emitting the three files that turn the model
+    aggregate into a Gradle project: `build.gradle`, `settings.gradle`, and
+    the root-package `Application.java` (DD67). Takes no `Table`/model. Every
+    emitted character lives under `emit/templates/` and every version comes
+    from `emit/versions.py` (DD62/DD64).
+    """
+    _validate_base_package(base_package)
+
+    build_script_context = build_build_script_context(base_package=base_package)
+    application_context = build_application_class_context(base_package=base_package)
+
+    build_script_source = _ENVIRONMENT.get_template("build.gradle.j2").render(
+        group=build_script_context.group,
+        version=build_script_context.version,
+        spring_boot_version=build_script_context.spring_boot_version,
+        java_version=build_script_context.java_version,
+    )
+    settings_source = _ENVIRONMENT.get_template("settings.gradle.j2").render()
+    application_source = _ENVIRONMENT.get_template("Application.java.j2").render(
+        package=application_context.package,
+        class_name=application_context.class_name,
+    )
+
+    application_path = "src/main/java/{}/{}.java".format(
+        package_path(base_package), application_context.class_name
+    )
+
+    return GeneratedSources(
+        files=(
+            GeneratedFile(path="build.gradle", contents=build_script_source),
+            GeneratedFile(path="settings.gradle", contents=settings_source),
+            GeneratedFile(path=application_path, contents=application_source),
+        )
+    )
 
 
 def generate_project_config_sources() -> GeneratedSources:

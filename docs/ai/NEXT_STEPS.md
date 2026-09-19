@@ -6,7 +6,7 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
-The Spring Boot generator (§37 item 12) has six archived generator slices, all
+The Spring Boot generator (§37 item 12) has seven archived generator slices, all
 text-only: `spring-boot-generator-core` (entity + repository),
 `spring-boot-generator-relationships-enums` (FK relationships, enum fields,
 standalone enum source), `spring-boot-generator-application-api-layer` (DTOs,
@@ -17,7 +17,10 @@ Table domain classes plus one root repository only), and
 `src/main/resources/application.yml` only, six required no-default placeholders
 including `JPA_DDL_AUTO`, no dialect/platform, no Java `config/` classes), and
 `2026-09-19-spring-boot-whole-model-orchestrator` (pure in-memory
-`generate_model_sources(...)` aggregation with exact duplicate-path rejection). The relational mapper has the archived
+`generate_model_sources(...)` aggregation with exact duplicate-path rejection),
+plus the archived `2026-09-19-spring-boot-project-scaffold` (pure
+`build.gradle`/`settings.gradle`/`Application.java` scaffold and
+`generate_project_sources(...)`, §37 item 13 slice 1 of 3). The relational mapper has the archived
 `relational-column-ownership` prerequisite: attribute-derived columns carry
 `owning_class_id`; non-attribute columns keep `None`.
 
@@ -36,13 +39,38 @@ including `JPA_DDL_AUTO`, no dialect/platform, no Java `config/` classes), and
    and need their own SDD cycle.
 4. **Filtering/search** — blocked until the relational schema carries §33
    generation metadata (`searchable`, `sortable`, `crud`, `readOnly`, …).
-5. **§37 item 13, generated backend compilable** — nothing compiles Java today.
-   Agreed direction: an ephemeral container with a JVM/Gradle image plus a fresh
-   PostgreSQL. It needs new infrastructure (no JVM service or CI exists) and is
-   its own cycle.
+5. **§37 item 13, generated backend compilable — slice 1 of 3 done.**
+   `2026-09-19-spring-boot-project-scaffold` added the pure scaffold text
+   (`generate_project_scaffold_sources`, `generate_project_sources`, versions in
+   `emit/versions.py`); nothing compiles Java yet. Remaining, in order:
+   - **Slice 2 `generated-project-compile-check`**: a writer
+     (`write_sources(sources: GeneratedSources, target_dir)` in its own app, no
+     import from `emit/`, re-validating POSIX-relative paths, `newline="\n"`)
+     plus an ephemeral runner (`gradle:9.7.1-jdk21`, reading `GRADLE_VERSION`
+     and the JDK from `emit/versions.py`) that runs `gradle build` on
+     `generate_project_sources(...)` output. Needs new infrastructure (no JVM
+     service or CI exists).
+   - **Slice 3 `generated-project-boot-smoke`**: boot the compiled app against a
+     fresh PostgreSQL and exercise a CRUD endpoint (the slice-0 spike already
+     proved this by hand).
+   - Also deferred: Gradle wrapper (binary jar, `GeneratedFile.contents` is `str`),
+     `.gitignore`, Dockerfile.
 6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.
    Resolve first with the user: §25 says "OpenAPI nativo de Django Ninja" but
    §22 mandates springdoc-openapi in the generated stack.
+
+## Known defect, queued as its own small change
+
+`emit/inheritance_context.py:169` names each subclass entity with
+`pascal_case(class_id)` (the UML element id) instead of the UML class name, which
+is available as `discriminator_values[class_id]`. Real class ids are uuid4 hex or
+UUIDs and 10 of 16 start with a digit, so `generate_model_sources` and
+`generate_project_sources` raise `InvalidJavaIdentifierError` on any model whose
+inheritance class ids come from `new_id()`. Every inheritance test passes readable
+ids (`"vehicle"`, `"car"`, `"truck"`), which is why the suite never caught it. It
+also contradicts the archived inheritance spec text. Found in the slice-0 spike
+(worked around there with readable ids). It needs its own small SDD change with a
+uuid-id regression test; it was deliberately **not** fixed in the scaffold change.
 
 ## Explicitly deferred by the user
 

@@ -1,5 +1,32 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle archived: Spring Boot project scaffold, slice 1 of 3 (`2026-09-19-spring-boot-project-scaffold`)
+
+`sdd-apply` implemented all 20 tasks with Strict TDD, single PR (`size:exception`, the user's standing choice; it was applied by the orchestrator from that standing choice, not asked again). `sdd-verify` passed with warnings (no critical); the two code warnings were fixed before archive, so the suite ended at 764 backend tests (685 before the change). This is slice 1 of §37 item 13 ("generated backend compilable"): pure scaffold text only. Nothing writes, compiles or runs; slice 2 (`generated-project-compile-check`) will compile it and slice 3 (`generated-project-boot-smoke`) will boot it against a fresh PostgreSQL. The slice-0 spike proved the shape for real: `gradle build --no-daemon` gave BUILD SUCCESSFUL in 49 s, and the app booted against PostgreSQL 16.
+
+Decisions (DD61-DD74, full rationale in the change `design.md`):
+
+- **DD61** both new entry points live in `emit/renderer.py` (`generate_project_scaffold_sources`, `generate_project_sources`); if it must ever split, the seam is entry-point family, not helper extraction.
+- **DD62** new `emit/versions.py` is the only place a generated-toolchain version exists: `SPRING_BOOT_VERSION="4.1.1"`, `JAVA_VERSION=21` (an `int`), `PROJECT_VERSION="0.0.1-SNAPSHOT"`, `GRADLE_VERSION="9.7.1"`. `GRADLE_VERSION` renders nothing yet; slice 2's `gradle:9.7.1-jdk21` runner image reads it.
+- **DD63** frozen contexts and builders in `emit/scaffold_context.py`, a sibling of `inheritance_context.py`.
+- **DD64** the three templates contain zero `{% %}` and zero `{#`: pure `{{ }}` substitution, which makes the `trim_blocks` trap impossible by construction.
+- **DD65** `build.gradle` reproduces the spike oracle: `java` + `org.springframework.boot` plugins, `SpringBootPlugin.BOM_COORDINATES` platform, `mavenCentral()` only, toolchain 21, three starters (`webmvc`, `data-jpa`, `validation`) + `runtimeOnly postgresql`. No `io.spring.dependency-management`, springdoc, Kotlin DSL, wrapper or `.gitignore`.
+- **DD66** `settings.gradle` is one static line rendered with no context; `generated-backend` is literal template text.
+- **DD67** `Application.java` sits in the root base package (`@SpringBootApplication` scans downward; `config/` is spec-forbidden); path built with `.format()` from the same `class_name` the template renders.
+- **DD68** fixed scaffold order: `build.gradle`, `settings.gradle`, `src/main/java/<pkg>/Application.java`.
+- **DD69** `generate_project_sources` = model aggregate (contiguous prefix, untouched), then scaffold, then one duplicate-path check over the combined tuple before building `GeneratedSources` (atomic).
+- **DD70** no new error type: invalid `base_package` keeps the bare `ValueError` (DD20); collisions reuse `GeneratedSourcePathCollisionError`. Promoting the `ValueError` is a separate cross-cutting change.
+- **DD71** no scaffold/model collision is reachable today, so the test injects one by monkeypatching the module-global `renderer.generate_project_scaffold_sources`; `generate_project_sources` therefore calls its collaborators by module-global name.
+- **DD72** "versions live in one place" is enforced by a negative source scan over `emit/**/*.py` (minus `versions.py`) and `emit/templates/*.j2` for `4.1.1`, `9.7.1` and a bare `21`.
+- **DD73** the hardcoded-value test deliberately omits `postgres` and `port` (the GAV `org.postgresql:postgresql` is a coordinate, not a deployable value).
+- **DD74** `generate_project_sources(model, *, base_package) -> GeneratedSources` is the sole input contract for the future slice-2 writer; no writer, path re-validation or runner dependency was added here.
+
+Apply-time deviations from `design.md` (see the session note): the `Application.java` template follows the verbatim spike oracle from `exploration.md` (no blank line between the class declaration and `main`; the design's template had one), which closes the design's only open question about the exact body; and the DD72 scan found one real leak, a comment `# Java 21 reserved words` in `emit/naming.py`, reworded to `# Java reserved words` (comment only, no behavior change).
+
+Evidence: `docker compose exec -T backend pytest -q` reported 762 passed (685 before + 77 new); `pytest apps/spring_generator/tests -q` reported 315 passed (238 before + 77 new). The existing inheritance SHA-256 snapshot and `test_no_concat_guard.py` pass unmodified, so `generate_model_sources` is byte-identical. No commit or push was performed by apply.
+
+Known separate defect, not fixed here: `emit/inheritance_context.py:169` names subclass entities with `pascal_case(class_id)` instead of using the UML class name from `discriminator_values[class_id]`, so real uuid-based class ids raise `InvalidJavaIdentifierError` (10 of 16 uuid4 hex ids start with a digit). Every inheritance test passes readable ids, so the suite never caught it. Queued in `NEXT_STEPS.md` as its own small change.
+
 ## 2026-09-19 — Cycle archive: Spring Boot whole-model source orchestrator (`2026-09-19-spring-boot-whole-model-orchestrator`)
 
 `sdd-archive` composed the whole-model orchestrator delta into `openspec/specs/spring-boot-generation/spec.md` and moved the change to `openspec/changes/archive/2026-09-19-2026-09-19-spring-boot-whole-model-orchestrator/`. The archived canonical spec now includes requirements for deterministic whole-model aggregation, singleton shared errors and application YAML, typed duplicate-path rejection, whole-model determinism/purity, and preservation of lower-level generator contracts.

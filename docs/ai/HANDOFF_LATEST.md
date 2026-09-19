@@ -2,24 +2,22 @@
 
 Updated 2026-09-19. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD50 for the last three generator cycles). Older per-cycle detail lives
+DD1–DD74 for the last four generator cycles). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 `openspec/specs/` (21 merged capability specs).
 
 ## Snapshot
 
-- Code state: branch `main` == `origin/main` at `743a572`. Current working
-  tree contains the completed but not-yet-committed `relational-column-ownership`
-  SDD cycle, the completed and archived but not-yet-committed
-  `2026-09-19-spring-boot-generator-inheritance` cycle, the completed and
-  archived but not-yet-committed `2026-09-19-spring-boot-generator-config-layer`
-  cycle, plus the completed and archived but not-yet-committed
-  `2026-09-19-spring-boot-whole-model-orchestrator` change; run `git status`
-  to check.
-- Active OpenSpec change: none. `2026-09-19-spring-boot-whole-model-orchestrator` is archived. 24 archived cycles.
-- Tests: backend 685 (`docker compose exec -T backend pytest -q`), Spring generator 238 (`docker compose exec -T backend pytest apps/spring_generator/tests -q`), frontend
+- Code state: everything up to `c876f79` is committed. The
+  `2026-09-19-spring-boot-project-scaffold` change is verified and archived, and
+  its commit is the one that follows `c876f79` on `main` (check `git log`). The
+  untracked `.pi/` folder is deliberately never committed; run `git status` to
+  check.
+- Active OpenSpec change: none. 25 cycles are archived; the last one is
+  `2026-09-19-spring-boot-project-scaffold`.
+- Tests: backend 764 (`docker compose exec -T backend pytest -q`; it was 685 before the scaffold change), Spring generator 317 (`docker compose exec -T backend pytest apps/spring_generator/tests -q`; it was 238 before), frontend
   335 (`cd frontend && npm test`, last run during the config-layer verify; the
-  orchestrator slice changed no frontend code).
+  orchestrator and scaffold slices changed no frontend code).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
   until it answers, then `docker compose up -d`.
 
@@ -40,7 +38,7 @@ implementation order. Status against it:
 | 10 Presence | No dedicated archived cycle; not verified as implemented |
 | 11 UML → RelationalModel | Done |
 | 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for non-inheritance tables and domain + root repository for discriminator-backed Single Table tables; see below |
-| 13 Generated backend compilable | Not started (nothing compiles Java yet) |
+| 13 Generated backend compilable | **Slice 1 of 3 done** (pure scaffold text: `build.gradle`, `settings.gradle`, `Application.java`); slice 2 compile-check and slice 3 boot-smoke not started, nothing compiles Java yet |
 | 14 OpenAPI, 15 Postman, 16 Domain Manifest | Not started |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
@@ -57,7 +55,9 @@ uml-class-operations · 09-18 uml-relational-mapping,
 spring-boot-generator-core, spring-boot-generator-relationships-enums,
 spring-boot-generator-application-api-layer, relational-column-ownership,
 2026-09-19-spring-boot-generator-inheritance,
-2026-09-19-spring-boot-generator-config-layer.
+2026-09-19-spring-boot-generator-config-layer,
+2026-09-19-spring-boot-whole-model-orchestrator,
+2026-09-19-spring-boot-project-scaffold.
 
 Fixes done outside an SDD cycle (each logged in `DECISIONS_LOG.md`):
 - `f605592` client-side lock self-expiry (a lock whose release message was
@@ -114,6 +114,17 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
     order, and raises `GeneratedSourcePathCollisionError` on duplicate exact
     output paths before returning any aggregate. Docker verification passed:
     `238/238` Spring generator tests and `685/685` backend tests.
+  - `generate_project_scaffold_sources(*, base_package)` (archived) → exactly three files in fixed order: `build.gradle`,
+    `settings.gradle`, `src/main/java/<pkg>/Application.java` (root package, not
+    `config/`). Rendered from three `emit/templates/*.j2` files that contain no
+    `{% %}` blocks; every version comes from `emit/versions.py` (Spring Boot
+    4.1.1, Java 21, project 0.0.1-SNAPSHOT, Gradle 9.7.1 declared for slice 2).
+    `generate_project_sources(model, *, base_package)` = the
+    `generate_model_sources` output followed by those three files, with one
+    duplicate-path check over the combined tuple. Both are pure and take the same
+    validated `base_package`. The scaffold reproduces a slice-0 spike that
+    compiled (`gradle build`, BUILD SUCCESSFUL) and booted for real, but nothing
+    in the repo compiles it yet (slices 2-3).
   - Rejected with typed errors (`UngeneratableSourceError` family): non-UUID
     or composite PK, composite FK, malformed/unsupported discriminator-backed
     inheritance metadata, enum column without a type name, illegal identifiers/
@@ -135,6 +146,13 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 - Java package boundaries matter: the entity's no-arg constructor is
   `public` because the service lives in another package than the entity.
 - `validation/` and `config/` output is still forbidden by the spec.
+- Pinned toolchain versions live only in `emit/versions.py`; a test scans
+  `emit/**/*.py` and `emit/templates/*.j2` for restated `4.1.1`, `9.7.1` or a
+  bare `21`. Do not write them anywhere else.
+- Known defect, own small change (see `NEXT_STEPS.md`):
+  `emit/inheritance_context.py:169` uses `pascal_case(class_id)` for subclass
+  names instead of `discriminator_values[class_id]`, so uuid-based class ids
+  raise `InvalidJavaIdentifierError`.
 - Triple closed-union touch point for any new UML command: `UmlCommand`
   (Python), `CommandIn` (Pydantic), `UmlCommandIn` (TypeScript).
 - The validation registry (`uml_modeling/validation/engine.py` `RULES`,
@@ -181,7 +199,8 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 ## How to resume
 
 1. `docker compose up -d`, then `docker compose exec -T backend pytest -q`
-   should report about 670 passed before you change anything.
+   should report 764 passed (685 before the scaffold change) before you change
+   anything.
 2. Work through SDD (hybrid store: `openspec/` + Engram, Strict TDD):
    explore → propose → spec/design → tasks → apply → verify → archive →
    commit. Ask the user the open questions before `sdd-propose`, one

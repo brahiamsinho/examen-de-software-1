@@ -25,7 +25,7 @@ _PLURAL_SIBILANT_SUFFIX = re.compile(r"(s|x|z|ch|sh)$")
 _PLURAL_CONSONANT_Y_SUFFIX = re.compile(r"[^aeiou]y$")
 _RESOURCE_PATH_SEGMENT = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
-# Java 21 reserved words, contextual keywords, and literals that would
+# Java reserved words, contextual keywords, and literals that would
 # otherwise collide with a generated field/method name.
 _JAVA_RESERVED_WORDS = frozenset(
     {

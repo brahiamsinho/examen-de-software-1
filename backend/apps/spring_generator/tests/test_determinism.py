@@ -22,6 +22,8 @@ from apps.spring_generator.emit.renderer import (
     generate_enum_source,
     generate_model_sources,
     generate_project_config_sources,
+    generate_project_scaffold_sources,
+    generate_project_sources,
     generate_table_sources,
 )
 
@@ -257,4 +259,37 @@ def test_model_source_generation_is_byte_identical():
     ]
     assert [generated_file.contents for generated_file in first.files] == [
         generated_file.contents for generated_file in second.files
+    ]
+
+
+def test_project_scaffold_generation_is_byte_identical():
+    first = generate_project_scaffold_sources(base_package="com.example.generated")
+    second = generate_project_scaffold_sources(base_package="com.example.generated")
+
+    assert first == second
+    assert [generated_file.path for generated_file in first.files] == [
+        "build.gradle",
+        "settings.gradle",
+        "src/main/java/com/example/generated/Application.java",
+    ]
+    assert [generated_file.contents for generated_file in first.files] == [
+        generated_file.contents for generated_file in second.files
+    ]
+
+
+@given(_tables())
+def test_project_generation_is_byte_identical_and_ends_with_the_scaffold(table):
+    model = RelationalModel(tables=(table,))
+
+    first = generate_project_sources(model, base_package="com.example.generated")
+    second = generate_project_sources(model, base_package="com.example.generated")
+
+    assert first == second
+    assert [generated_file.contents for generated_file in first.files] == [
+        generated_file.contents for generated_file in second.files
+    ]
+    assert [generated_file.path for generated_file in first.files[-3:]] == [
+        "build.gradle",
+        "settings.gradle",
+        "src/main/java/com/example/generated/Application.java",
     ]

@@ -7,8 +7,9 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
-**As of 2026-09-19** (`main` at `743a572`, 24 archived SDD cycles, backend
-685 tests, no active OpenSpec change): the UML modeling core
+**As of 2026-09-19** (25 archived SDD cycles, the latest being
+`2026-09-19-spring-boot-project-scaffold`; no open change; backend 764 tests,
+685 before that change): the UML modeling core
 (canonical model, validation engine, command bus, persistence, canvas with
 locking), multi-tenant identity/auth, realtime collaboration, the UML →
 RelationalModel mapper, and six slices of the Spring Boot generator all exist
@@ -24,7 +25,23 @@ resource generator. The archived whole-model orchestrator slice adds the pure
 rejection; Docker verification passed for the focused Spring generator suite
 and full backend regression (`238/238` spring generator tests, `685/685` backend tests).
 
-What does **not** exist: compilation of any generated Java (§37 item 13),
+`spring_generator` now has **seven public entry points**: `generate_table_sources`,
+`generate_enum_source`, `generate_shared_error_sources`,
+`generate_project_config_sources`, `generate_model_sources`, and the two new
+scaffold entry points `generate_project_scaffold_sources(*, base_package)` (exactly
+`build.gradle`, `settings.gradle`, root-package `Application.java`) and
+`generate_project_sources(model, *, base_package)` (the model aggregate followed
+by those three files). Toolchain versions live only in `emit/versions.py`
+(Spring Boot 4.1.1, Java 21, project 0.0.1-SNAPSHOT, Gradle 9.7.1). This is
+§37 item 13 **slice 1 of 3**: pure scaffold text, nothing writes, compiles or
+runs yet (slice 2 compile-check, slice 3 boot-smoke). After this change:
+`764` backend tests, `317` Spring generator tests. Separately, a manual spike
+(outside the test suite, nothing committed) built the full `generate_project_sources`
+output for a sample model with `gradle build` in `gradle:9.7.1-jdk21`
+(BUILD SUCCESSFUL, 41 files) and booted an equivalent hand-scaffolded project
+against Postgres 16; that is evidence, not an automated check, until slice 2.
+
+What does **not** exist: compilation of any generated Java (§37 item 13, slices 2-3),
 inheritance DTO/service/controller/API behavior, filtering/search, the generated
 `config/` layer, OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
 the assistant, voice, XMI and image → UML. Undo/Redo and Presence (§37 items
@@ -605,5 +622,8 @@ and broader generated-project behavior beyond the now-archived orchestrating cal
 `generate_model_sources(...)` walks a whole `RelationalModel`, combines per-table/per-enum output,
 calls `generate_shared_error_sources` exactly once, calls the config singleton once per generated project,
 and rejects exact duplicate output paths before returning an aggregate. Item 13 (generated backend
-compilable) still has no JVM/Gradle host anywhere in repo infra and remains its
-own future cycle.
+compilable) is now **slice 1 of 3 done** via `2026-09-19-spring-boot-project-scaffold`
+(pure scaffold text: `build.gradle`, `settings.gradle`, `Application.java`, plus
+`generate_project_sources`). Slices 2 (`generated-project-compile-check`) and 3
+(`generated-project-boot-smoke`) still need a JVM/Gradle host, which does not exist
+in repo infra, so nothing compiles yet.
