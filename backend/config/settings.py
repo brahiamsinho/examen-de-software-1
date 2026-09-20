@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "apps.domain_manifest",
     "apps.uml_commands",
     "apps.uml_documents",
+    "apps.generation_export",
     "apps.users",
     "apps.organizations",
 ]

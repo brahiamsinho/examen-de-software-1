@@ -18,6 +18,7 @@ every `GET` are unaffected.
 """
 from ninja import NinjaAPI
 
+from apps.generation_export.api import generation_router
 from apps.organizations.api import (
     memberships_router,
     organizations_router,
@@ -41,6 +42,7 @@ api.add_router("/auth", auth_router, tags=["auth"])
 api.add_router("/orgs", organizations_router, tags=["organizations"])
 api.add_router("/orgs/{org_slug}/members", memberships_router, tags=["memberships"])
 api.add_router("/orgs/{org_slug}/documents", documents_router, tags=["documents"])
+api.add_router("/orgs/{org_slug}/documents", generation_router, tags=["generation"])
 register_user_exception_handlers(api)
 register_organization_exception_handlers(api)
 register_uml_documents_exception_handlers(api)

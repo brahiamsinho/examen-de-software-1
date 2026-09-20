@@ -111,7 +111,11 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError({ status: response.status, code, detail });
 }
 
-async function performRequest<T>(path: string, init: ApiFetchInit): Promise<T> {
+async function performRequest<T>(
+  path: string,
+  init: ApiFetchInit,
+  readBody: (response: Response) => Promise<T>,
+): Promise<T> {
   const { json, ...rest } = init;
   const unsafe = isUnsafeMethod(rest.method);
   const headers = new Headers(rest.headers);
@@ -157,10 +161,13 @@ async function performRequest<T>(path: string, init: ApiFetchInit): Promise<T> {
     throw await toApiError(response);
   }
 
+  return readBody(response);
+}
+
+async function readJsonBody<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
-
   return (await response.json()) as T;
 }
 
@@ -171,5 +178,24 @@ async function performRequest<T>(path: string, init: ApiFetchInit): Promise<T> {
  * test failure — this seam makes that class of bug unrepresentable.
  */
 export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
-  return performRequest<T>(path, init);
+  return performRequest<T>(path, init, readJsonBody<T>);
+}
+
+export type ApiBlob = { blob: Blob; filename: string | null };
+
+function filenameFromDisposition(header: string | null): string | null {
+  const match = header?.match(/filename="?([^";]+)"?/i);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Same credentialed transport as `apiFetch`, for endpoints that answer with
+ * a file (the generated-backend zip) instead of JSON. Errors still surface
+ * as `ApiError`/`NetworkError`, so callers handle a 422 exactly like JSON.
+ */
+export async function apiFetchBlob(path: string, init: ApiFetchInit = {}): Promise<ApiBlob> {
+  return performRequest<ApiBlob>(path, init, async (response) => ({
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get("content-disposition")),
+  }));
 }

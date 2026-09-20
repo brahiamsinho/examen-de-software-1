@@ -11,12 +11,14 @@ import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
+import { DownloadBackendButton } from "@/components/workspace/DownloadBackendButton";
 import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeControl";
 import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
 import { RemoveOperationControl } from "@/components/workspace/RemoveOperationControl";
 import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelationshipControl";
 import { GenerationProfilePanel } from "@/components/workspace/GenerationProfilePanel";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
+import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { useDocument } from "@/state/document";
 import { activeOrgSlugAtom } from "@/state/organizations";
 
@@ -175,6 +177,8 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
         </div>
 
         <aside className="flex w-full flex-col gap-6 lg:w-96 lg:shrink-0">
+          <DownloadBackendButton onDownload={() => downloadGeneratedBackend(orgSlug, docId)} />
+
           <ValidationPanel lastValidation={lastValidation} />
 
           <Card>

@@ -18,6 +18,11 @@ import { activeOrgSlugAtom } from "@/state/organizations";
 const useDocumentMock = vi.fn();
 vi.mock("@/state/document", () => ({ useDocument: (...args: unknown[]) => useDocumentMock(...args) }));
 
+const downloadMock = vi.fn();
+vi.mock("@/lib/generation_export", () => ({
+  downloadGeneratedBackend: (...args: unknown[]) => downloadMock(...args),
+}));
+
 vi.mock("@/components/workspace/DiagramCanvas", () => ({
   DiagramCanvas: ({
     model,
@@ -518,5 +523,24 @@ describe("DocumentPage — realtime node lock affordance (DD12)", () => {
 
     fireEvent.click(await screen.findByText("Claim c1"));
     expect(sendClaim).toHaveBeenCalledWith("c1");
+  });
+});
+
+describe("DocumentPage — backend download", () => {
+  it("downloads the generated backend of this document for the active org", async () => {
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+    downloadMock.mockResolvedValue(undefined);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Descargar backend" }));
+
+    expect(downloadMock).toHaveBeenCalledWith("acme", "doc-1");
   });
 });

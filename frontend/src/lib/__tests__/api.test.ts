@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch, invalidateCsrfToken } from "@/lib/api";
+import { apiFetch, apiFetchBlob, invalidateCsrfToken } from "@/lib/api";
 
 function setCsrfCookie(value: string) {
   document.cookie = `csrftoken=${value}; path=/`;
@@ -153,5 +153,59 @@ describe("apiFetch", () => {
     const [, init] = vi.mocked(fetch).mock.calls[0]!;
     expect(init?.body).toBe(JSON.stringify({ email: "a@b.com" }));
     expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
+  });
+});
+
+describe("apiFetchBlob", () => {
+  beforeEach(() => {
+    clearCsrfCookie();
+    invalidateCsrfToken();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the body as a Blob plus the attachment filename, sending credentials", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("zip-bytes", {
+        status: 200,
+        headers: {
+          "content-type": "application/zip",
+          "content-disposition": 'attachment; filename="demo-backend.zip"',
+        },
+      }),
+    );
+
+    const result = await apiFetchBlob("/api/orgs/acme/documents/1/generate");
+
+    expect(result.filename).toBe("demo-backend.zip");
+    expect(await result.blob.text()).toBe("zip-bytes");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("returns a null filename when Content-Disposition is missing", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("x", { status: 200 }));
+
+    const result = await apiFetchBlob("/api/orgs/acme/documents/1/generate");
+
+    expect(result.filename).toBeNull();
+  });
+
+  it("throws ApiError with the server detail and code on a 422", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      errorResponse(422, { detail: "El documento no tiene clases para generar.", code: "nothing_to_generate" }),
+    );
+
+    await expect(apiFetchBlob("/api/orgs/acme/documents/1/generate")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 422,
+      code: "nothing_to_generate",
+      detail: "El documento no tiene clases para generar.",
+    });
   });
 });
