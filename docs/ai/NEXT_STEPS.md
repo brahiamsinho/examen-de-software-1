@@ -6,9 +6,11 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
+**Update 2026-09-20 (later):** `generated-project-postman-collection` is verified PASS WITH WARNINGS and archived (31/31 tasks, Strict TDD, gate green, backend 900 tests); delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged. Uncommitted, awaits `size:exception` acceptance before commit (authored size about 1246 lines, tests dominate). **Next: Domain Manifest (§37 item 16)**. Optional: import `postman_collection.json` into the Postman application (not done yet).
+
 **Update 2026-09-20:** `generated-project-openapi-springdoc` is verified PASS WITH WARNINGS
-and archived. Next: commit (never `.pi/`). After that, §37 items 15-16 (Postman collection, Domain Manifest)
-consume the `/v3/api-docs` document that the generated project now serves.
+and archived (committed as `a834ca2`). The `/v3/api-docs` document it serves is what the
+Postman change above consumes; the Domain Manifest (§37 item 16) is next.
 
 The Spring Boot generator (§37 item 12) has seven archived generator slices, all
 text-only: `spring-boot-generator-core` (entity + repository),
@@ -36,14 +38,14 @@ archived to `openspec/changes/archive/2026-09-19-spring-generator-inheritance-su
 It fixes the former subclass-naming defect (`emit/inheritance_context.py:169` now uses
 `pascal_case(table.discriminator_values[class_id])`), and the compile-check sample
 model uses frozen uuid4-hex class ids. Delta spec is merged into the main
-`openspec/specs/spring-boot-generation/spec.md`. Next: commit (never `.pi/`).
+`openspec/specs/spring-boot-generation/spec.md`.
 
 ## Next candidates, in dependency order
 
 1. **Design inheritance API behavior only if requested.** The archived
    inheritance slice intentionally stops at JPA Single Table domain entities
    plus the root repository. DTOs, services, controllers, subclass repositories,
-   Java compilation, OpenAPI, Postman, and Domain Manifest remain future work.
+   Java compilation and the Domain Manifest remain future work (OpenAPI and Postman exist at the project level).
 2. **Broader generated backend configuration remains deferred.** The bounded
    `application.yml` singleton now exists with six required no-default
    placeholders only; Java `config/` classes, profiles, Docker/runtime
@@ -68,14 +70,15 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
      archived 2026-09-19 (18/18 tasks); §37 item 13 is now complete. The gate boots
      the jar against a throwaway Postgres and runs a CRUD round-trip; see
      `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/gate-evidence.md`.
-     Next: commit (never `.pi/`).
+     (committed.)
    - Also deferred: Gradle wrapper (binary jar, `GeneratedFile.contents` is `str`),
      `.gitignore`, Dockerfile.
 6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.
    Resolved with the user (see `DECISIONS_LOG.md`): the generated Spring backend uses
    springdoc-openapi (§22 wins over §25); Django Ninja's OpenAPI stays for Modelia's
-   own API. Next change: springdoc in the scaffold (single-source its version in
-   `emit/versions.py`, confirm Boot 4.1.1 support), then Postman and Domain Manifest.
+   own API. Springdoc is in the scaffold (`emit/versions.py`, Boot 4.1.1 confirmed) and the
+   Postman collection is applied (`generated-project-postman-collection`); the Domain
+   Manifest remains.
 
 ## Explicitly deferred by the user
 

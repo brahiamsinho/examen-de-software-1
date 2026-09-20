@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "apps.relational_mapping",
     "apps.spring_generator",
     "apps.generation_runner",
+    "apps.postman_export",
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.users",

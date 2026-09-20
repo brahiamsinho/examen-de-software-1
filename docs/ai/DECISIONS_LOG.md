@@ -1,5 +1,25 @@
 # Decisions Log
 
+## 2026-09-20 — Change archived: Generated project Postman collection (`generated-project-postman-collection`)
+
+`sdd-apply` implemented all 31 tasks in Strict TDD (converter + CLI); the compose/script half is proven by recorded gate runs (DD101). §37 item 15: the smoke exports the real `/v3/api-docs` body and a new offline app `apps.postman_export` turns it into a Postman Collection v2.1.0 plus an environment file, as a third gate step. Status: verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted
+
+- **DD108** `scripts/boot-smoke.sh` copies `$BODY` to the relative `docs/openapi.json` as the LAST statement before `PASS` (`mkdir -p docs || die 8`, `cp ... || die 8`; new exit 8). Any later `_http` call would overwrite `$BODY`; `generate-project` wipes the volume so the export cannot go stale.
+- **DD109** new app `apps.postman_export` (no models, no migrations): pure `converter/` plus plain `__main__` `cli.py`; registered after `apps.generation_runner`; a decoupling guard forbids Django/generator imports and any importer of the app.
+- **DD110** the converter is pure stdlib Python; no `openapi-to-postmanv2` Node container.
+- **DD111** fixed output names `postman_collection.json` / `postman_environment.json`; `info.name` = OpenAPI `info.title`.
+- **DD112** determinism: items sorted by (path, method), folders by tag; no `_postman_id`/ids/timestamps; `json.dumps(indent=2, sort_keys=True, ensure_ascii=False)` + `"\n"`, written with `newline="\n"`.
+- **DD113** compose service `generate-postman`: profile `jvm-verify`, no `depends_on` (it would re-run the generator and wipe the export), no `rm -rf`, literal command array; third sequential gate step.
+- **DD114** fixture first: the real body was captured by the gate and committed as `tests/fixtures/api-docs.json` (14408 B, springdoc 3.1.1, 2026-09-20, all five controllers) before any fixture-dependent test.
+- **DD115** exactly one status test per request on the lowest documented 2xx code; no id chaining, no `auth` block; `baseUrl` exists only in the environment file (`--base-url`, default empty).
+- **DD116** the real `pageable` query param is `required: true` with a `$ref` to the `Pageable` schema (page int min 0, size int min 1, sort array), not an inline object: it is resolved and expanded into `page=0`, `size=20` (one named constant, Spring Data default) and a disabled empty `sort`.
+- **DD117** `Page<T>` responses are flat named schemas (`PageCustomerResponseDto`); the converter never reads response bodies.
+- **DD118** the fixture was kept whole rather than trimmed to Customer (not oversized).
+- **DD119** an operation with no numeric 2xx documented gets no test event.
+- **DD120** pytest cannot see `scripts/` or compose (DD101): proven by `gate-evidence.md`, gate exit 0 (three steps), negative A exit 8 and negative B exit 1, all reverted byte-identically.
+
+Totals: backend 900 (840 + 60 in `apps/postman_export`). Authored size is about 1246 lines (source 363, tests 845, scripts/compose/settings 38), over the 800-line budget because of tests: `size:exception` recommended. Verified PASS WITH WARNINGS and archived, not committed.
+
 ## 2026-09-20 — Change archived: Generated project OpenAPI via springdoc (`generated-project-openapi-springdoc`)
 
 `sdd-apply` implemented all 22 tasks (Strict TDD for the Docker-free half; the bash half is proven by recorded gate runs). §37 item 14, part 1: the generated `build.gradle` now declares springdoc and the boot smoke asserts `GET /v3/api-docs`. Status: verified PASS WITH WARNINGS (0 CRITICAL) and archived; the commit is what remains. Evidence: `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/gate-evidence.md`.

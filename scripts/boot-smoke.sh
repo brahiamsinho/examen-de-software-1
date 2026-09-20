@@ -15,6 +15,7 @@
 #             6 HTTP status mismatch (incl. non-200 /v3/api-docs),
 #               or id absent/malformed
 #             7 /v3/api-docs body lacks the openapi field or /api/customers
+#             8 OpenAPI export could not be written
 set -euo pipefail
 
 BASE_URL=${SMOKE_BASE_URL:-http://127.0.0.1:${SERVER_PORT:-8080}}
@@ -130,5 +131,13 @@ DOC=$(<"$BODY")
 DOC=${DOC//[[:space:]]/}
 case $DOC in *'"openapi":'*) ;; *) die 7 "/v3/api-docs carries no openapi field" ;; esac
 case $DOC in *'"/api/customers"'*) ;; *) die 7 "/v3/api-docs does not document /api/customers" ;; esac
+
+# 10. Export the OpenAPI body for the Postman converter (generated-project-postman-collection,
+# DD108). $BODY still holds the /v3/api-docs response: this MUST stay the last
+# statement before PASS, because any later _http call would overwrite $BODY.
+# The path is relative to the working directory (the generated project); the
+# next generate-project run wipes the volume, so the export cannot go stale.
+mkdir -p docs || die 8 "could not create the docs directory"
+cp "$BODY" docs/openapi.json || die 8 "could not write docs/openapi.json"
 
 log "PASS"

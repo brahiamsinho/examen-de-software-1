@@ -7,8 +7,27 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
+**Update 2026-09-20 (change `generated-project-postman-collection` verified PASS WITH WARNINGS and archived; uncommitted; delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged at archive):** §37 item 15.
+`scripts/boot-smoke.sh` now exports the real `/v3/api-docs` body to
+`docs/openapi.json` inside the generated project (last statement before `PASS`, new
+exit 8, DD108). The new offline Django app `apps.postman_export` (pure stdlib
+`converter/` + plain `__main__` CLI, DD109-DD112, DD115) converts it into
+`postman_collection.json` + `postman_environment.json` (Postman v2.1.0, tag folders,
+`{{baseUrl}}` only in the environment, one status test per request, no auth, no id
+chaining), run as the third step of `bash scripts/verify-generated-project.sh` through
+the new compose service `generate-postman` (no `depends_on`, DD113). Fixture-first:
+the committed real capture `backend/apps/postman_export/tests/fixtures/api-docs.json`
+(springdoc 3.1.1, 2026-09-20) drives the tests; the real `pageable` parameter is a
+`$ref` schema (DD116). Gate green (exit 0, `BUILD SUCCESSFUL`, 201/200/204/404,
+both files written); negative A exit 8 and negative B exit 1, all reverted
+byte-identically. Tests: backend 900 (840 + 60 new in `apps/postman_export`).
+Importing the collection into the Postman application was NOT run. Authored size is
+about 1246 lines (tests dominate): `size:exception` recommended. Domain Manifest
+(item 16) is still pending. Evidence:
+`openspec/changes/generated-project-postman-collection/gate-evidence.md`.
+
 **Update 2026-09-20 (change verified PASS WITH WARNINGS and archived at
-`openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`; uncommitted):** 
+`openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`; committed as `a834ca2`):** 
 `generated-project-openapi-springdoc` (§37 item 14, part 1). The generated `build.gradle` now declares
 `org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1` (single-sourced in
 `emit/versions.py`, DD103-DD104) and `scripts/boot-smoke.sh` asserts
@@ -21,7 +40,7 @@ still pending. Evidence: `openspec/changes/archive/2026-09-20-generated-project-
 
 **Update 2026-09-19 (change verified PASS WITH WARNINGS and archived at
 `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`; §37 item 13
-is complete, 3 of 3; the commit is what remains):**
+is complete, 3 of 3; committed as `765dbd5`):**
 `generated-project-boot-smoke` (18/18 tasks) is implemented. The
 manual gate `bash scripts/verify-generated-project.sh` now compiles the sample
 project and then boots the jar against a throwaway `gen-db` Postgres
@@ -106,10 +125,11 @@ snapshot `test_inheritance_backward_compatibility.py` is unmodified and passing.
 merged into main spec. The previous "Still missing: ... the inheritance-naming bugfix" no longer applies.
 
 What does **not** exist: inheritance DTO/service/controller/API behavior, filtering/search, the generated
-`config/` layer, static OpenAPI export, Postman collection, the Domain Manifest, a generated frontend/mobile,
+`config/` layer, the Domain Manifest, a generated frontend/mobile,
 the assistant, voice, XMI and image → UML. The generated backend now serves an OpenAPI document
-at runtime via `/v3/api-docs` (springdoc 3.1.1), but a static `openapi.json` export, operationId/tag tuning,
-and ProblemDetail documentation remain future work. Undo/Redo and Presence (§37 items
+at runtime via `/v3/api-docs` (springdoc 3.1.1), and the gate exports that document and a Postman
+collection inside the generated project (`docs/openapi.json`, `postman_collection.json`); operationId/tag tuning, id-chained newman-runnable
+collections and ProblemDetail documentation remain future work. Undo/Redo and Presence (§37 items
 7 and 10) have no dedicated archived cycle and are not verified as
 implemented. See `HANDOFF_LATEST.md` for the stage summary and
 `NEXT_STEPS.md` for what comes next.

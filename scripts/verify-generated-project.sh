@@ -6,7 +6,8 @@
 # `gradle build` on it inside the Gradle image whose tag is derived from
 # backend/apps/spring_generator/emit/versions.py (no version literal here), then
 # boots the jar against a throwaway Postgres and runs one CRUD round-trip
-# (scripts/boot-smoke.sh).
+# (scripts/boot-smoke.sh), then converts the exported OpenAPI document into a
+# Postman collection (generate-postman).
 #
 # Usage (Git Bash, repo root):  bash scripts/verify-generated-project.sh
 # Exit 0 means BUILD SUCCESSFUL and the smoke passed. Negative case:
@@ -45,7 +46,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Two sequential steps (not depends_on) so a Gradle failure keeps its own output
+# Sequential steps (not depends_on) so a Gradle failure keeps its own output
 # and `set -e` stops the gate before the smoke (DD94).
 docker compose --profile jvm-verify run --rm jvm-verify
 docker compose --profile jvm-verify run --rm jvm-boot-smoke
+# Third step: convert the OpenAPI export the smoke wrote into a Postman
+# collection. It runs last, after the smoke, because generate-project wipes the
+# volume and generate-postman has no depends_on (DD113); a springdoc shape the
+# converter cannot handle fails the gate here.
+docker compose --profile jvm-verify run --rm generate-postman

@@ -176,6 +176,24 @@ services:
         condition: service_healthy
     command: ["bash", "/scripts/boot-smoke.sh"]
 
+  # Converts the OpenAPI export written by jvm-boot-smoke (docs/openapi.json)
+  # into a Postman collection + environment (generated-project-postman-collection).
+  # Deliberately NO depends_on and NO rm -rf: depending on generate-project
+  # would re-run the generator and wipe the export the smoke just wrote (DD113).
+  # verify-generated-project.sh runs it as the third sequential step.
+  generate-postman:
+    build:
+      context: ./backend
+      target: dev
+    profiles: [jvm-verify]
+    entrypoint: []
+    user: root
+    volumes:
+      - ./backend:/app:ro
+      - generated_project:/generated
+    # Literal only, no shell (DD83, DD84, DD113).
+    command: ["python", "-m", "apps.postman_export.cli", "--openapi", "/generated/project/docs/openapi.json", "--out-dir", "/generated/project/docs"]
+
 volumes:
   postgres_data:
   generated_project:
