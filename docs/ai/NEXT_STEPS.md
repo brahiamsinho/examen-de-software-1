@@ -6,6 +6,10 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
+**Update 2026-09-20:** `generated-project-openapi-springdoc` is verified PASS WITH WARNINGS
+and archived. Next: commit (never `.pi/`). After that, §37 items 15-16 (Postman collection, Domain Manifest)
+consume the `/v3/api-docs` document that the generated project now serves.
+
 The Spring Boot generator (§37 item 12) has seven archived generator slices, all
 text-only: `spring-boot-generator-core` (entity + repository),
 `spring-boot-generator-relationships-enums` (FK relationships, enum fields,

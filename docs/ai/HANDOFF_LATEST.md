@@ -1,42 +1,45 @@
 # Handoff — Latest
 
-Updated 2026-09-19. Read this first, then `CURRENT_STATE.md` (long, per-area
+Updated 2026-09-20. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD91; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
-subclass-naming fix). Older per-cycle detail lives
+DD1–DD107; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
+subclass-naming fix, DD103–DD107 the archived springdoc-openapi cycle). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
-`openspec/specs/` (22 merged capability specs).
+`openspec/specs/` (24 merged capability specs).
 
 ## Snapshot
 
-- **Newest work (uncommitted; verified PASS WITH WARNINGS and archived at
+- **Newest work (2026-09-20, uncommitted; verified PASS WITH WARNINGS and archived at
+  `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`; §37 item 14
+  part 1 complete):** change `generated-project-openapi-springdoc` (DD103-DD107).
+  Touched: `emit/versions.py`, `emit/scaffold_context.py`, `emit/renderer.py`,
+  `emit/templates/build.gradle.j2`, `scripts/boot-smoke.sh`, three test files.
+  Gate green (exit 0, `GET /v3/api-docs -> 200`), negative exit 7 reverted,
+  evidence in the change's `gate-evidence.md`. Tests: backend 840, `apps/spring_generator` 325,
+  `apps/generation_runner` 68. OpenAPI now served by the generated backend via springdoc.
+  Next: Postman collection, Domain Manifest (§37 items 15-16). Never commit `.pi/`.
+- **Previous work (uncommitted; verified PASS WITH WARNINGS and archived at
   `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`; §37 item 13
   complete):** change `generated-project-boot-smoke` (18/18 tasks,
-  `size:exception` accepted). It
-  adds `gen-db` and `jvm-boot-smoke` to `docker-compose.yml` (profile
+  `size:exception` accepted). Adds `gen-db` and `jvm-boot-smoke` to `docker-compose.yml` (profile
   `jvm-verify`, no ports), `scripts/boot-smoke.sh`, a second step plus an EXIT
   cleanup trap in `scripts/verify-generated-project.sh`, and the Docker-free
   contract test `backend/apps/generation_runner/tests/test_boot_smoke_contract.py`
   (DD92-DD102). Gate: `bash scripts/verify-generated-project.sh` -> exit 0
   (`BUILD SUCCESSFUL`, ready in 4-5s, 201/200/204/404); negative
-  `GEN_DB_PASSWORD=wrong bash ...` -> exit 4. Two harness-design findings were
-  fixed forward (separate `GEN_DB_SERVER_PASSWORD` so the negative case can fail;
-  root-cause lines in the failure dump); no generator defect. Tests: backend 836,
-  `apps/generation_runner` 67. Next: commit (never `.pi/`). Deferred: Gradle
-  wrapper, OpenAPI/Postman/Domain Manifest (§37 items 14-16), frontend/mobile
+  `GEN_DB_PASSWORD=wrong bash ...` -> exit 4. Tests: backend 836,
+  `apps/generation_runner` 67. Deferred: Gradle
+  wrapper, Postman/Domain Manifest, frontend/mobile
   generation, actuator/Flyway, names-with-spaces limitation.
-- Code state: the last commit is `48456ae` (`feat(spring-generator): generate
-  Gradle project scaffold`). **Uncommitted work in the tree**: the
-  `generated-project-compile-check` change (`backend/apps/generation_runner/`,
-  `scripts/verify-generated-project.sh`, `docker-compose.yml` additions, one line
-  in `backend/config/settings.py`, one line in `.gitignore`, and
-  `openspec/changes/generated-project-compile-check/`). The untracked `.pi/`
+- Code state: the last commit is `0599ea1` (`docs: record springdoc-openapi decision`). 
+  **Uncommitted work in the tree**: the
+  `generated-project-openapi-springdoc` change, now archived. The untracked `.pi/`
   folder is deliberately never committed; run `git status` to check.
-- Last archived OpenSpec change: `spring-generator-inheritance-subclass-naming`
-  (26/26 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived, **not yet committed**).
-  Its edits (source, tests, sample model) are uncommitted in the tree next to the
-  still-uncommitted compile-check work. 27 cycles are archived; the last one is
-  `2026-09-19-spring-generator-inheritance-subclass-naming`.
+- Last archived OpenSpec change: `generated-project-openapi-springdoc`
+  (22/22 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
+  `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`).
+  28 cycles are archived; the last one is
+  `2026-09-20-generated-project-openapi-springdoc`.
 - Subclass-naming fix (DD87-DD91): `emit/inheritance_context.py:169` now uses
   `pascal_case(table.discriminator_values[class_id])`; fixtures use class-name
   discriminator values; `samples/sample_model.py` uses frozen uuid4-hex class ids.
@@ -75,8 +78,9 @@ implementation order. Status against it:
 | 10 Presence | No dedicated archived cycle; not verified as implemented |
 | 11 UML → RelationalModel | Done |
 | 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for non-inheritance tables and domain + root repository for discriminator-backed Single Table tables; see below |
-| 13 Generated backend compilable | **Slice 1 of 3 archived; slice 2 (compile check) verified PASS WITH WARNINGS and archived, uncommitted** (writer + sample model + manual compose Gradle gate, `BUILD SUCCESSFUL`); slice 3 boot-smoke not started |
-| 14 OpenAPI, 15 Postman, 16 Domain Manifest | Not started |
+| 13 Generated backend compilable | **Done** — all 3 slices archived (scaffold text, compile check, boot-smoke; manual gate evidence `BUILD SUCCESSFUL`); uncommitted |
+| 14 OpenAPI | **Slice 1 of 3 archived** — generated backend serves `/v3/api-docs` via springdoc 3.1.1 (verified PASS WITH WARNINGS, uncommitted); Postman and Domain Manifest pending |
+| 15–16 Postman, Domain Manifest | Not started |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
 ## Archived cycles (chronological)

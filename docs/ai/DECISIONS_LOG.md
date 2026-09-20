@@ -1,5 +1,17 @@
 # Decisions Log
 
+## 2026-09-20 — Change archived: Generated project OpenAPI via springdoc (`generated-project-openapi-springdoc`)
+
+`sdd-apply` implemented all 22 tasks (Strict TDD for the Docker-free half; the bash half is proven by recorded gate runs). §37 item 14, part 1: the generated `build.gradle` now declares springdoc and the boot smoke asserts `GET /v3/api-docs`. Status: verified PASS WITH WARNINGS (0 CRITICAL) and archived; the commit is what remains. Evidence: `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/gate-evidence.md`.
+
+- **DD103** `SPRINGDOC_VERSION = "3.1.1"` lives only in `emit/versions.py`; it is the last field of `BuildScriptContext` and `renderer.generate_project_scaffold_sources` forwards it (without that kwarg Jinja raises `UndefinedError` due to `StrictUndefined`).
+- **DD104** template line `implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:{{ springdoc_version }}'` after the Boot starters, before the postgres driver; no `-ui`, no actuator.
+- **DD105** `scripts/boot-smoke.sh` asserts the document after the CRUD proof: `assert_status 200 GET /v3/api-docs` (exit 6 on non-200), then two pure-bash `case` needles `"openapi":` and `"/api/customers"` (new exit 7).
+- **DD106** pytest pins the generated side only (oracle line, positive springdoc test, DD72 scan `\b3\.1\.1\b`, coordinate pin in `test_boot_smoke_contract.py`); the `/v3/api-docs` literal is unreachable from pytest (DD101).
+- **DD107** gate recorded: first run green (exit 0, `GET /v3/api-docs -> 200`); negative check with a bogus needle exited 7 and was reverted. springdoc 3.1.1 (built on Boot 4.1.0) booted green on Boot 4.1.1, and `@RestControllerAdvice` did not break the endpoint; no fix-forward was needed.
+
+Totals: backend 840 (836 + 4), `apps/spring_generator` 325, `apps/generation_runner` 68. Not committed.
+
 ## 2026-09-19 — Decision: generated backend documents its API with springdoc-openapi (§25 vs §22)
 
 Product decision resolved with the user before §37 items 14–16. `product-04-next-django.md` §25 says "OpenAPI nativo de Django Ninja", while §22 fixes the generated stack to Spring Boot with springdoc-openapi and states that the main application's stack and the generated stack are independent (§22, "no deberá sustituir Spring Boot por el framework utilizado internamente por la herramienta principal"). Django Ninja can only describe the Django API of Modelia itself, never the generated Spring backend, so §25 read literally is unimplementable. Decision: §22 wins. The OpenAPI document of the **generated** backend comes from springdoc-openapi (Postman collection and Domain Manifest derive from it); Django Ninja's native OpenAPI stays as the spec for **Modelia's own** API (`TECH_STACK.md`). Consequence for the next change: adding springdoc to `build.gradle.j2` needs its version single-sourced in `emit/versions.py` and a check that the springdoc release supports Spring Boot 4.1.1 (to confirm at explore).

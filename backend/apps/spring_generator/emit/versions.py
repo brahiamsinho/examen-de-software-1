@@ -10,6 +10,12 @@ from typing import Final
 SPRING_BOOT_VERSION: Final[str] = "4.1.1"
 """Spring Boot Gradle plugin and BOM version (spike oracle: BUILD SUCCESSFUL)."""
 
+SPRINGDOC_VERSION: Final[str] = "3.1.1"
+"""springdoc-openapi starter version. The Boot BOM does not manage it, so it is
+pinned here. 3.1.1 is built on Boot 4.1.0 while the generated project runs on
+the version above: that gap is closed by observation, not by the FAQ (see
+`openspec/changes/generated-project-openapi-springdoc/gate-evidence.md`)."""
+
 JAVA_VERSION: Final[int] = 21
 """Java toolchain language version. `int`, not `str`, because the template
 renders it into `JavaLanguageVersion.of({{ java_version }})`, which takes an

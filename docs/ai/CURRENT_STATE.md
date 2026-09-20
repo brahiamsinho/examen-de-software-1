@@ -7,6 +7,18 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
+**Update 2026-09-20 (change verified PASS WITH WARNINGS and archived at
+`openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`; uncommitted):** 
+`generated-project-openapi-springdoc` (§37 item 14, part 1). The generated `build.gradle` now declares
+`org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1` (single-sourced in
+`emit/versions.py`, DD103-DD104) and `scripts/boot-smoke.sh` asserts
+`GET /v3/api-docs` -> 200 with `"openapi":` and `"/api/customers"` in the body
+(exit 7 on content mismatch, DD105). Gate `bash scripts/verify-generated-project.sh`
+green (exit 0); negative check exit 7, reverted. springdoc 3.1.1 (built on Boot
+4.1.0) boots green on Boot 4.1.1. Tests: backend 840, `apps/spring_generator`
+325, `apps/generation_runner` 68. Postman and Domain Manifest (items 15-16) are
+still pending. Evidence: `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/gate-evidence.md`.
+
 **Update 2026-09-19 (change verified PASS WITH WARNINGS and archived at
 `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`; §37 item 13
 is complete, 3 of 3; the commit is what remains):**
@@ -93,10 +105,11 @@ snapshot `test_inheritance_backward_compatibility.py` is unmodified and passing.
 `openspec/changes/archive/2026-09-19-spring-generator-inheritance-subclass-naming/` with delta spec
 merged into main spec. The previous "Still missing: ... the inheritance-naming bugfix" no longer applies.
 
-What does **not** exist: compilation of any generated Java in the automated suite (§37 item 13 slice 3, boot smoke; slice 2 only has the manual gate above),
-inheritance DTO/service/controller/API behavior, filtering/search, the generated
-`config/` layer, OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
-the assistant, voice, XMI and image → UML. Undo/Redo and Presence (§37 items
+What does **not** exist: inheritance DTO/service/controller/API behavior, filtering/search, the generated
+`config/` layer, static OpenAPI export, Postman collection, the Domain Manifest, a generated frontend/mobile,
+the assistant, voice, XMI and image → UML. The generated backend now serves an OpenAPI document
+at runtime via `/v3/api-docs` (springdoc 3.1.1), but a static `openapi.json` export, operationId/tag tuning,
+and ProblemDetail documentation remain future work. Undo/Redo and Presence (§37 items
 7 and 10) have no dedicated archived cycle and are not verified as
 implemented. See `HANDOFF_LATEST.md` for the stage summary and
 `NEXT_STEPS.md` for what comes next.

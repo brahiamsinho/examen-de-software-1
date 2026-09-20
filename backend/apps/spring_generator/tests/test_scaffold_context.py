@@ -17,6 +17,7 @@ from apps.spring_generator.emit.versions import (
     JAVA_VERSION,
     PROJECT_VERSION,
     SPRING_BOOT_VERSION,
+    SPRINGDOC_VERSION,
 )
 
 
@@ -25,6 +26,7 @@ def test_pinned_versions_have_the_spike_verified_values():
     assert JAVA_VERSION == 21
     assert PROJECT_VERSION == "0.0.1-SNAPSHOT"
     assert GRADLE_VERSION == "9.7.1"
+    assert SPRINGDOC_VERSION == "3.1.1"
 
 
 def test_java_version_is_an_int_not_a_str():
@@ -40,6 +42,7 @@ def test_build_script_context_carries_group_and_the_pinned_versions():
         version=PROJECT_VERSION,
         spring_boot_version=SPRING_BOOT_VERSION,
         java_version=JAVA_VERSION,
+        springdoc_version=SPRINGDOC_VERSION,
     )
 
 
@@ -49,6 +52,7 @@ def test_build_script_context_group_follows_a_different_base_package():
     assert context.group == "org.example.app"
     assert context.spring_boot_version == "4.1.1"
     assert context.java_version == 21
+    assert context.springdoc_version == "3.1.1"
 
 
 def test_application_class_context_uses_the_root_package_and_class_name():

@@ -6,6 +6,13 @@ environment names of application.yml. This test fails offline the day the
 generator drifts from any of them. It proves nothing about compose wiring, the
 JVM or the real HTTP responses: those are proven only by the recorded gate run
 (`bash scripts/verify-generated-project.sh`, see gate-evidence.md).
+
+Exit codes of the smoke script, one code per stage (DD105): 6 is transport or
+HTTP status (including a non-200 `/v3/api-docs`), 7 is document content (the
+OpenAPI body lacks the `"openapi":` field or the `"/api/customers"` path). The
+`/v3/api-docs` literal itself is unreachable from pytest (`scripts/` is not
+mounted, DD101); this file only pins that the springdoc starter making that
+endpoint exist is declared in the generated `build.gradle` (DD106).
 """
 import re
 
@@ -42,6 +49,12 @@ def _annotated_method(source: str, annotation: str) -> str:
 
 def test_controller_is_mounted_on_api_customers():
     assert '@RequestMapping("/api/customers")' in _controller()
+
+
+def test_build_gradle_declares_the_springdoc_starter_behind_v3_api_docs():
+    build_gradle = _files()["build.gradle"]
+
+    assert "org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1'" in build_gradle
 
 
 def test_count_endpoint_exists_for_the_readiness_probe():

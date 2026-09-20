@@ -12,7 +12,9 @@
 #
 # Exit codes: 0 pass | 2 build/libs missing | 3 zero or several boot jars
 #             4 JVM exited before ready | 5 readiness timeout
-#             6 HTTP status mismatch, or id absent/malformed
+#             6 HTTP status mismatch (incl. non-200 /v3/api-docs),
+#               or id absent/malformed
+#             7 /v3/api-docs body lacks the openapi field or /api/customers
 set -euo pipefail
 
 BASE_URL=${SMOKE_BASE_URL:-http://127.0.0.1:${SERVER_PORT:-8080}}
@@ -120,5 +122,13 @@ log "created id=[$CUSTOMER_ID]"
 assert_status 200 GET "/api/customers/$CUSTOMER_ID"
 assert_status 204 DELETE "/api/customers/$CUSTOMER_ID"
 assert_status 404 GET "/api/customers/$CUSTOMER_ID"
+
+# 9. OpenAPI document (springdoc). Pure bash, no jq (DD100/DD105). Runs after
+# the CRUD proof so a springdoc regression is reported with CRUD already green.
+assert_status 200 GET /v3/api-docs
+DOC=$(<"$BODY")
+DOC=${DOC//[[:space:]]/}
+case $DOC in *'"openapi":'*) ;; *) die 7 "/v3/api-docs carries no openapi field" ;; esac
+case $DOC in *'"/api/customers"'*) ;; *) die 7 "/v3/api-docs does not document /api/customers" ;; esac
 
 log "PASS"

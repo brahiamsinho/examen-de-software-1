@@ -18,6 +18,7 @@ from apps.spring_generator.emit.versions import (
     JAVA_VERSION,
     PROJECT_VERSION,
     SPRING_BOOT_VERSION,
+    SPRINGDOC_VERSION,
 )
 
 _EMIT_DIR = Path(__file__).resolve().parent.parent / "emit"
@@ -47,6 +48,7 @@ dependencies {{
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:{springdoc_version}'
     runtimeOnly 'org.postgresql:postgresql'
 }}
 """
@@ -74,6 +76,7 @@ def _expected_build_gradle(group: str) -> str:
         group=group,
         version=PROJECT_VERSION,
         java_version=JAVA_VERSION,
+        springdoc_version=SPRINGDOC_VERSION,
     )
 
 
@@ -162,7 +165,8 @@ def test_application_package_equals_build_group():
         "gradlew",
         "gradle/wrapper",
         "Dockerfile",
-        "springdoc",
+        "springdoc-openapi-starter-webmvc-ui",
+        "spring-boot-starter-actuator",
         "io.spring.dependency-management",
         "build.gradle.kts",
     ],
@@ -172,6 +176,18 @@ def test_excluded_artifacts_are_absent_from_paths_and_contents(excluded):
 
     assert not any(excluded in generated_file.path for generated_file in sources.files)
     assert not any(excluded in generated_file.contents for generated_file in sources.files)
+
+
+def test_build_gradle_declares_the_springdoc_starter_at_the_pinned_version():
+    contents = _by_path(_scaffold())["build.gradle"]
+    starter = f"    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:{SPRINGDOC_VERSION}'\n"
+
+    assert starter in contents
+    assert SPRINGDOC_VERSION == "3.1.1"
+    # springdoc sits after the Boot starters and before the runtime driver (DD104).
+    assert contents.index("spring-boot-starter-validation") < contents.index(starter)
+    assert contents.index(starter) < contents.index("runtimeOnly 'org.postgresql:postgresql'")
+    assert contents.count("springdoc-openapi") == 1
 
 
 # ---- LF and Jinja safety ---------------------------------------------------------------
@@ -241,8 +257,8 @@ def test_version_scan_covers_python_modules_and_every_template():
 
 @pytest.mark.parametrize(
     "literal_pattern",
-    [r"\b4\.1\.1\b", r"\b9\.7\.1\b", r"\b21\b"],
-    ids=["spring-boot-version", "gradle-version", "toolchain-version"],
+    [r"\b4\.1\.1\b", r"\b9\.7\.1\b", r"\b21\b", r"\b3\.1\.1\b"],
+    ids=["spring-boot-version", "gradle-version", "toolchain-version", "springdoc-version"],
 )
 def test_no_pinned_version_literal_is_restated_outside_the_versions_module(literal_pattern):
     offenders = [

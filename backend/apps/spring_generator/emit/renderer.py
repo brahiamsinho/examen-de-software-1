@@ -259,6 +259,7 @@ def generate_project_scaffold_sources(*, base_package: str = "com.modelia.genera
         version=build_script_context.version,
         spring_boot_version=build_script_context.spring_boot_version,
         java_version=build_script_context.java_version,
+        springdoc_version=build_script_context.springdoc_version,
     )
     settings_source = _ENVIRONMENT.get_template("settings.gradle.j2").render()
     application_source = _ENVIRONMENT.get_template("Application.java.j2").render(

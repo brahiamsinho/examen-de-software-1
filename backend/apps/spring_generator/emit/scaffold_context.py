@@ -11,6 +11,7 @@ from apps.spring_generator.emit.versions import (
     JAVA_VERSION,
     PROJECT_VERSION,
     SPRING_BOOT_VERSION,
+    SPRINGDOC_VERSION,
 )
 
 APPLICATION_CLASS_NAME = "Application"
@@ -22,6 +23,7 @@ class BuildScriptContext:
     version: str  # PROJECT_VERSION
     spring_boot_version: str  # SPRING_BOOT_VERSION
     java_version: int  # JAVA_VERSION
+    springdoc_version: str  # SPRINGDOC_VERSION
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ def build_build_script_context(*, base_package: str) -> BuildScriptContext:
         version=PROJECT_VERSION,
         spring_boot_version=SPRING_BOOT_VERSION,
         java_version=JAVA_VERSION,
+        springdoc_version=SPRINGDOC_VERSION,
     )
 
 
