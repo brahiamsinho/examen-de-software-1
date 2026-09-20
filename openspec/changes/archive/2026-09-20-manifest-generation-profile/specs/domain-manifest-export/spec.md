@@ -1,38 +1,15 @@
-# Domain Manifest Export Specification
+# Domain Manifest Export Delta: Declared Generation Profile Emission
 
-## Purpose
-
-Defines the Domain Manifest (spec section 28): a pure, deterministic JSON document derived from the `RelationalModel` (the same model the Spring generator consumes) that declares entities, attributes, relationships, enums and the CRUD operations actually generated. Lives in the Django app `apps.domain_manifest`, driven by a plain CLI. springdoc remains the sole OpenAPI producer; the manifest is not the API contract. The declared section 33 generation profile (`auditable`, `readOnly`, `crud`, `defaultSort` per entity; `searchable`, `sortable`, `readOnly` per attribute) is emitted under `profile` only when the model declares it. Out of scope: `aliases`, `entity` and the raw `generation_metadata` object (never emitted), filtering/search API, frontend/mobile generation, assistant/AssistantCommand, auth, embedding the manifest in the Spring source tree, deriving it from OpenAPI, real-project CLI input.
+Delta against `openspec/specs/domain-manifest-export/spec.md`. Requirements not listed here (Manifest Derivation and Purity, Manifest Envelope and Schema Version, CRUD Operations, Enums, Deterministic Ordering and Serialization, Endpoint Drift Guard, CLI Contract, App Registration and Decoupling) are unchanged. Profile vocabulary, value objects and parse rules are specified in `generation-profile`; carry-through into `Column.profile` / `Table.profile` is specified in `relational-mapping`. Design decisions: DD142-DD150 (`design.md`).
 
 Verification key: **[pytest]** = automated in the default suite (Docker-free, offline); **[manual]** = verified by a recorded gate run.
 
-## Requirements
+## RENAMED Requirements
 
-### Requirement: Manifest Derivation and Purity
+### Requirement: Declared-Facts-Only Exclusion → Declared-Facts-Only Emission
+(Reason: the requirement no longer excludes the section 33 profile facts; it now emits the declared ones and forbids only `aliases`, `entity` and `generation_metadata`.)
 
-The builder MUST be a pure function of a `RelationalModel` (model in, `dict` out). It MUST NOT import Django, models or migrations, MUST NOT read the clock, environment or filesystem, and MUST NOT emit timestamps or generated ids. Names, table names, columns and resource paths MUST come from `spring_generator.emit.naming`, so they cannot drift from the generator. **[pytest]**
-
-#### Scenario: Same model, equal output
-
-- GIVEN the sample model built twice
-- WHEN the builder runs on each
-- THEN both results are equal and contain no timestamp or id-like volatile key
-
-#### Scenario: Names follow the generator
-
-- GIVEN a table and column in the sample model
-- WHEN the builder emits them
-- THEN the entity name equals `pascal_case(table.name)`, the attribute name equals `camel_case(column.name)` and the resource path equals `/api/` + `resource_path_segment(table.name)`
-
-### Requirement: Manifest Envelope and Schema Version
-
-The top-level document MUST contain `schemaVersion` equal to integer `1`, `entities` and `enums`. The schema MUST evolve additively only: a later change MAY add keys but MUST NOT rename, remove or retype an existing key without a new `schemaVersion`. **[pytest]**
-
-#### Scenario: Version and top-level keys
-
-- GIVEN the sample manifest
-- WHEN its top-level keys are inspected
-- THEN `schemaVersion == 1` and `entities` and `enums` are lists
+## MODIFIED Requirements
 
 ### Requirement: Entity Content
 
@@ -69,32 +46,6 @@ In addition, an `entities[]` item MAY contain an optional `profile` object and a
 - GIVEN a column `total` whose `profile` is `ColumnProfile(searchable=True, sortable=True, read_only=False)`
 - WHEN its `attributes[]` item is built
 - THEN it contains the existing keys unchanged plus `"profile": {"readOnly": false, "searchable": true, "sortable": true}` and no other new key **[pytest]**
-
-### Requirement: CRUD Operations
-
-For every entity that has a generated controller, `operations[]` MUST contain exactly these six items in this order, each with `name`, `method`, `path` and `successStatus` (DD125): `create` POST (201) `/api/<segment>`; `findById` GET `/api/<segment>/{id}`; `update` PUT `/api/<segment>/{id}`; `delete` DELETE `/api/<segment>/{id}`; `list` GET `/api/<segment>`; `count` GET `/api/<segment>/count`. For inheritance roots and subclasses, for which no controller is generated, `operations[]` MUST be empty. **[pytest]**
-
-#### Scenario: Six ordered operations
-
-- GIVEN the `Customer` entity of the sample model
-- WHEN its `operations[]` is read
-- THEN it has the six operations above, in that order, with the stated methods and paths
-
-#### Scenario: Inheritance entities have no operations
-
-- GIVEN the inheritance root entity of the sample hierarchy (subclasses share its table and are not separate entities, DD125/DD126)
-- WHEN its `operations[]` and `resourcePath` are read
-- THEN `operations[]` is an empty list and `resourcePath` is `null`
-
-### Requirement: Enums
-
-`enums[]` MUST list every enum type of the model as `{name, values}` where each value is `{value, label}` (`value` is the wire constant, `label` the model label; DD125), preserving the model's value order. **[pytest]**
-
-#### Scenario: Sample enum
-
-- GIVEN the sample model with one enum
-- WHEN the manifest is built
-- THEN `enums[]` contains that enum with its ordered values, and the attribute using it references it by name in `enum`
 
 ### Requirement: Declared-Facts-Only Emission
 
@@ -171,87 +122,8 @@ Boolean values MUST be passed through untouched (a declared `false` is emitted a
 - WHEN its top-level keys are inspected
 - THEN `schemaVersion == 1`, and `entities` and `enums` are lists **[pytest]**
 
-### Requirement: Deterministic Ordering and Serialization
+## ADDED Requirements
 
-Entities MUST be ordered by entity name (DD125), attributes by column order in the model, operations in the fixed order above, enums by name. The file MUST be produced by `json.dumps` with `indent=2`, `sort_keys=True`, `ensure_ascii=False`, followed by one trailing newline, and written with `newline="\n"`. Two runs MUST yield byte-identical files. **[pytest]**
-
-#### Scenario: Byte-identical runs
-
-- GIVEN the sample model
-- WHEN the manifest is serialized and written twice
-- THEN both files are byte-identical
-
-#### Scenario: Serialization format
-
-- GIVEN a written manifest file
-- WHEN its bytes are inspected
-- THEN it is UTF-8, contains no `\r`, ends with exactly one `\n`, and re-serializing the parsed content with the same options reproduces the bytes
-
-### Requirement: Endpoint Drift Guard
-
-A Docker-free test MUST assert that the set of resource paths and operation paths derived from the sample model equals the set of API paths in the committed fixture `backend/apps/postman_export/tests/fixtures/api-docs.json`, which the test MUST use read-only. **[pytest]**
-
-#### Scenario: Paths match springdoc fixture
-
-- GIVEN the sample manifest and the committed springdoc fixture
-- WHEN both path sets are compared
-- THEN they are equal
-
-#### Scenario: Drift caught
-
-- GIVEN a generator or manifest change that renames a resource path
-- WHEN `pytest -q` runs offline
-- THEN the drift-guard test fails
-
-### Requirement: CLI Contract
-
-`python -m apps.domain_manifest.cli --out-dir <dir>` MUST create `<dir>` if missing and write the fixed file name `domain-manifest.json` there, from the sample model only, without calling `django.setup()` and without requiring `POSTGRES_*` variables. It MUST exit 0 on success, 1 with a message on stderr when writing fails, and 2 on invalid arguments (argparse). No other output file name MUST be written. **[pytest]** via subprocess; **[manual]** inside the container.
-
-#### Scenario: Success
-
-- GIVEN a non-existent output directory
-- WHEN the CLI runs with `--out-dir`
-- THEN the exit code is 0 and `domain-manifest.json` exists in that directory
-
-#### Scenario: Write failure
-
-- GIVEN `--out-dir` pointing at an existing regular file
-- WHEN the CLI runs
-- THEN the exit code is 1 and stderr carries a message
-
-#### Scenario: Missing argument
-
-- GIVEN no `--out-dir`
-- WHEN the CLI runs
-- THEN the exit code is 2
-
-#### Scenario: No Django bootstrap
-
-- GIVEN the CLI module is run
-- WHEN it completes
-- THEN `django.setup` was never called
-
-### Requirement: App Registration and Decoupling
-
-`apps.domain_manifest` MUST be registered in `INSTALLED_APPS` immediately after `apps.postman_export`, with no models and no migrations. Its modules MUST NOT import Django or `apps.*` other than `spring_generator.emit.naming`; the CLI glue MAY additionally import `generation_runner.samples.sample_model`. No other app MAY import `domain_manifest`. springdoc MUST remain the only OpenAPI producer. **[pytest]**
-
-#### Scenario: Import guard
-
-- GIVEN every module in `apps.domain_manifest`
-- WHEN a guard test scans their imports
-- THEN the only cross-app imports are `spring_generator.emit.naming` and, in the CLI glue, `generation_runner.samples.sample_model`, and no Django import exists outside `apps.py`
-
-#### Scenario: Nothing imports the manifest app
-
-- GIVEN every module of every other app
-- WHEN a guard test scans their imports
-- THEN none imports `apps.domain_manifest`
-
-#### Scenario: Registration
-
-- GIVEN the Django settings
-- WHEN `INSTALLED_APPS` is read
-- THEN `apps.domain_manifest` follows `apps.postman_export` and the app has no models or migrations
 ### Requirement: Default Sort Attribute Resolution
 
 `defaultSort.attribute` MUST be the manifest attribute name of the column whose `source_element_id` equals the declared `attribute_id`, resolved in `entities.py` over the entity's own table columns and computed through the single shared `attributes.attribute_name(column)` (`camel_case(column.name)`), so that it equals the emitted `attributes[].name` by construction (DD144). The discriminator column MUST be excluded from the search, because the attributes builder does not emit it. In a Single Table hierarchy, an `attribute_id` belonging to a subclass-owned attribute MUST resolve on the root entity. When the id matches no column, matches a synthetic column (`id`, `class_type`, foreign keys, all with `source_element_id is None`) or belongs to another table, the builder MUST raise `ManifestError` with exactly the message `table '<table.name>' declares defaultSort on unknown attribute id '<attribute_id>'` (built with `!r` on both values, e.g. `table 'vehicle' declares defaultSort on unknown attribute id 'attr-x'`) during `build_entity`, so `build_manifest` fails before returning a partial document. The resolver MUST be invoked only when `default_sort` is declared. **[pytest]**

@@ -1,7 +1,9 @@
 """Table -> entity assembly and the fixed CRUD operations (design.md DD125, DD126)."""
 from apps.spring_generator.emit.naming import pascal_case, resource_path_segment
 
-from .attributes import build_attributes
+from .attributes import attribute_name, build_attributes
+from .errors import ManifestError
+from .profile import build_table_profile
 from .relationships import build_relationships
 
 # The controller's own declaration order (Controller.java.j2): name, method, path suffix, success status.
@@ -33,10 +35,26 @@ def _operations(resource_path: str | None) -> list[dict]:
     ]
 
 
+def _resolver(table):
+    """Map a declared attribute id to the emitted attribute name of this table (DD144).
+
+    The discriminator column is skipped because the attributes builder does not emit it;
+    synthetic columns (`source_element_id is None`) never match a declared id.
+    """
+
+    def resolve_attribute(attribute_id) -> str:
+        for column in table.columns:
+            if column.name != table.discriminator_column and column.source_element_id == attribute_id:
+                return attribute_name(column)
+        raise ManifestError(f"table {table.name!r} declares defaultSort on unknown attribute id {attribute_id!r}")
+
+    return resolve_attribute
+
+
 def build_entity(table) -> dict:
     # Inheritance tables render as entity + repository only: no controller, so no resource path (DD126).
     resource_path = None if _has_inheritance(table) else "/api/" + resource_path_segment(table.name)
-    return {
+    entity = {
         "name": pascal_case(table.name),
         "table": table.name,
         "resourcePath": resource_path,
@@ -50,3 +68,7 @@ def build_entity(table) -> dict:
             for unique in sorted(table.unique_constraints, key=lambda unique: unique.name)
         ],
     }
+    profile = build_table_profile(table.profile, _resolver(table))
+    if profile is not None:
+        entity["profile"] = profile
+    return entity

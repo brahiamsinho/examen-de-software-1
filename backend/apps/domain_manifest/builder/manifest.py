@@ -1,7 +1,7 @@
-"""Top level of the manifest: envelope, enums, ordering (design.md DD125, DD131).
+"""Top level of the manifest: envelope, enums, ordering (design.md DD125, DD143).
 
-Only declared or generated facts are emitted: no searchable/sortable/defaultSort/
-auditable/readOnly/aliases and no `generation_metadata` (DD131).
+Only declared or generated facts are emitted; `aliases`, `entity` and
+`generation_metadata` are never emitted (DD138, DD139, DD148).
 """
 from apps.spring_generator.emit.naming import (
     InvalidJavaIdentifierError,
@@ -11,12 +11,9 @@ from apps.spring_generator.emit.naming import (
 )
 
 from .entities import build_entity
+from .errors import ManifestError
 
 SCHEMA_VERSION = 1
-
-
-class ManifestError(ValueError):
-    """The model holds a name the generator itself would reject."""
 
 
 def _enum(enum_type) -> dict:

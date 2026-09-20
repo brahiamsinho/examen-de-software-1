@@ -2,8 +2,10 @@
 from types import SimpleNamespace
 
 import pytest
-from apps.domain_manifest.builder.attributes import build_attributes, neutral_type
+from apps.domain_manifest.builder.attributes import attribute_name, build_attributes, neutral_type
 from apps.generation_runner.samples.sample_model import build_sample_relational_model
+from apps.relational_mapping.domain.profile import ColumnProfile
+from apps.relational_mapping.domain.schema import Column, PrimaryKey, Table
 from apps.relational_mapping.domain.types import ColumnType
 
 TYPE_MAP = {
@@ -77,3 +79,36 @@ def test_sample_attribute(table, expected):
 )
 def test_attributes_keep_column_order_and_skip_the_discriminator(table, names):
     assert [attribute["name"] for attribute in build_attributes(_table(table))] == names
+
+
+# ---- column profile (spec: Entity Content, Declared-Facts-Only Emission; DD144, DD145) ----
+def _profiled(profile):
+    table = Table(
+        name="customer",
+        columns=(Column("id", ColumnType.UUID), Column("full_name", ColumnType.VARCHAR, length=255, profile=profile)),
+        primary_key=PrimaryKey(("id",)),
+    )
+    return {attribute["name"]: attribute for attribute in build_attributes(table)}["fullName"]
+
+
+def test_attribute_name_is_the_camel_cased_column_name():
+    assert attribute_name(Column("full_name", ColumnType.VARCHAR)) == "fullName"
+
+
+def test_a_declared_column_profile_is_added_and_the_fixed_keys_are_unchanged():
+    profiled = _profiled(ColumnProfile(searchable=True, sortable=True, read_only=False))
+
+    assert profiled["profile"] == {"searchable": True, "sortable": True, "readOnly": False}
+    assert {key: value for key, value in profiled.items() if key != "profile"} == _attribute(
+        "fullName", "full_name", "string", max_length=255
+    )
+    assert list(profiled)[-1] == "profile"
+
+
+def test_a_declared_false_is_still_emitted():
+    assert _profiled(ColumnProfile(searchable=False))["profile"] == {"searchable": False}
+
+
+@pytest.mark.parametrize("profile", [None, ColumnProfile()])
+def test_an_absent_or_empty_column_profile_adds_no_key(profile):
+    assert "profile" not in _profiled(profile)

@@ -6,6 +6,8 @@ module). An unknown member raises `ValueError` rather than guessing a type.
 """
 from apps.spring_generator.emit.naming import camel_case, pascal_case
 
+from .profile import build_column_profile
+
 _NEUTRAL_TYPES = {
     "UUID": "uuid",
     "VARCHAR": "string",
@@ -35,9 +37,14 @@ def _subtype(table, column) -> str | None:
     return pascal_case(owner) if owner else None
 
 
+def attribute_name(column) -> str:
+    """The manifest name of a column; shared with `entities.py` so `defaultSort` cannot drift (DD144)."""
+    return camel_case(column.name)
+
+
 def _attribute(table, column) -> dict:
-    return {
-        "name": camel_case(column.name),
+    attribute = {
+        "name": attribute_name(column),
         "column": column.name,
         "type": neutral_type(column.type),
         "required": not column.nullable,
@@ -46,6 +53,10 @@ def _attribute(table, column) -> dict:
         "enum": pascal_case(column.enum_type_name) if column.enum_type_name else None,
         "subtype": _subtype(table, column),
     }
+    profile = build_column_profile(column.profile)
+    if profile is not None:
+        attribute["profile"] = profile
+    return attribute
 
 
 def build_attributes(table) -> list[dict]:

@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import pytest
 from apps.domain_manifest.builder import ManifestError, build_manifest
 from apps.domain_manifest.builder.entities import build_entity
+from apps.domain_manifest.serialize import to_json_text
 from apps.generation_runner.samples.sample_model import build_sample_relational_model
+from apps.relational_mapping.domain.profile import ColumnProfile, CrudOperation, DefaultSort, SortDirection, TableProfile
 from apps.relational_mapping.domain.schema import Column, EnumType, PrimaryKey, RelationalModel, Table
 from apps.relational_mapping.domain.types import ColumnType
 
@@ -68,7 +70,7 @@ def test_customer_scenario():
 
 # ---- top level: envelope, enums, ordering, exclusions, rejections (spec: Envelope, Enums, Exclusion) ----
 FIXTURE = Path(__file__).resolve().parents[2] / "postman_export" / "tests" / "fixtures" / "api-docs.json"
-EXCLUDED_KEYS = ["searchable", "sortable", "defaultSort", "auditable", "readOnly", "aliases", "generation_metadata"]
+EXCLUDED_KEYS = ["aliases", "entity", "generation_metadata"]  # DD148: the five section 33 keys are emitted iff declared
 
 
 def _all_keys(node):
@@ -140,6 +142,13 @@ def test_a_model_the_generator_cannot_name_or_type_is_rejected(table):
     assert issubclass(ManifestError, ValueError)
 
 
+def test_manifest_error_lives_in_errors_and_is_re_exported():
+    from apps.domain_manifest.builder import errors
+
+    assert errors.ManifestError is ManifestError
+    assert issubclass(errors.ManifestError, ValueError)
+
+
 # ---- drift guard (spec: Endpoint Drift Guard, DD129): the springdoc fixture is read-only ----
 def test_computed_paths_equal_the_paths_springdoc_served():
     served = set(json.loads(FIXTURE.read_text(encoding="utf-8"))["paths"])
@@ -150,3 +159,150 @@ def test_computed_paths_equal_the_paths_springdoc_served():
     assert len(served) == 15 and not any("vehicles" in path for path in served)
     assert computed == served
     assert resources <= computed and len(resources) == 5
+
+
+# ---- entity profile and defaultSort (spec: Declared-Facts-Only Emission, Default Sort Attribute Resolution) ----
+def _profiled_table(profile, *columns, name="purchase", **table_kwargs):
+    return Table(
+        name=name,
+        columns=(Column("id", ColumnType.UUID), *columns),
+        primary_key=PrimaryKey(("id",)),
+        profile=profile,
+        **table_kwargs,
+    )
+
+
+def _sort_on(attribute_id, direction=SortDirection.DESC):
+    return TableProfile(default_sort=DefaultSort(attribute_id=attribute_id, direction=direction))
+
+
+def _vehicle_table(attribute_id):
+    return _profiled_table(
+        _sort_on(attribute_id),
+        # The discriminator carries an element id too, yet the attributes builder skips it: it must not resolve.
+        Column("class_type", ColumnType.VARCHAR, source_element_id="a-class-type"),
+        Column("plate", ColumnType.VARCHAR, source_element_id="a-plate", owning_class_id="c-vehicle"),
+        Column("doors", ColumnType.INTEGER, nullable=True, source_element_id="a-doors", owning_class_id="c-car"),
+        name="vehicle",
+        source_class_ids=("c-vehicle", "c-car"),
+        discriminator_column="class_type",
+        discriminator_values={"c-vehicle": "Vehicle", "c-car": "Car"},
+    )
+
+
+def test_the_entity_profile_is_emitted_last_with_every_declared_key():
+    profile = TableProfile(
+        auditable=True,
+        read_only=False,
+        crud=(CrudOperation.CREATE, CrudOperation.READ),
+        default_sort=DefaultSort(attribute_id="a-total", direction=SortDirection.DESC),
+    )
+
+    entity = build_entity(_profiled_table(profile, Column("total", ColumnType.NUMERIC, source_element_id="a-total")))
+
+    assert entity["profile"] == {
+        "auditable": True,
+        "readOnly": False,
+        "crud": ["create", "read"],
+        "defaultSort": {"attribute": "total", "direction": "desc"},
+    }
+    assert list(entity)[-1] == "profile"
+
+
+def test_default_sort_resolves_to_the_emitted_camel_case_attribute_name():
+    entity = build_entity(_profiled_table(_sort_on("a-1"), Column("full_name", ColumnType.VARCHAR, source_element_id="a-1")))
+
+    assert entity["profile"]["defaultSort"]["attribute"] == "fullName"
+    assert entity["profile"]["defaultSort"]["attribute"] in [attribute["name"] for attribute in entity["attributes"]]
+
+
+def test_default_sort_on_a_subtype_owned_attribute_resolves_on_the_root_entity():
+    entity = build_entity(_vehicle_table("a-doors"))
+
+    assert entity["profile"]["defaultSort"]["attribute"] == "doors"
+    assert [a["subtype"] for a in entity["attributes"] if a["name"] == "doors"] == ["Car"]
+
+
+@pytest.mark.parametrize(
+    "attribute_id",
+    ["attr-x", "a-other-table", "a-class-type"],  # unknown, foreign, discriminator
+)
+def test_an_unresolvable_default_sort_id_raises_the_exact_error(attribute_id):
+    table = _vehicle_table(attribute_id)
+    message = f"table 'vehicle' declares defaultSort on unknown attribute id {attribute_id!r}"
+
+    with pytest.raises(ManifestError) as raised:
+        build_entity(table)
+    assert str(raised.value) == message
+    with pytest.raises(ManifestError, match="unknown attribute id"):
+        build_manifest(RelationalModel(tables=(table,)))
+
+
+def test_a_synthetic_column_id_is_unknown():
+    table = _profiled_table(_sort_on("id"), Column("total", ColumnType.NUMERIC, source_element_id="a-total"))
+
+    with pytest.raises(ManifestError, match=r"table 'purchase' declares defaultSort on unknown attribute id 'id'"):
+        build_entity(table)
+
+
+def test_the_entity_flag_is_never_emitted_even_when_declared():
+    table = _profiled_table(TableProfile(auditable=True, entity=True))
+
+    manifest = build_manifest(RelationalModel(tables=(table,)))
+
+    assert manifest["entities"][0]["profile"] == {"auditable": True}
+    assert "entity" not in list(_all_keys(manifest))
+
+
+def test_the_serialized_profile_is_alphabetical_whatever_the_insertion_order():
+    profile = TableProfile(
+        auditable=True,
+        read_only=False,
+        crud=(CrudOperation.CREATE,),
+        default_sort=DefaultSort(attribute_id="a-total", direction=SortDirection.ASC),
+    )
+    table = _profiled_table(profile, Column("total", ColumnType.NUMERIC, source_element_id="a-total"))
+
+    text = to_json_text(build_manifest(RelationalModel(tables=(table,))))
+    entity_profile = json.loads(text)["entities"][0]["profile"]
+
+    assert list(entity_profile) == ["auditable", "crud", "defaultSort", "readOnly"]
+    assert to_json_text(json.loads(text)) == text
+
+
+def test_the_schema_version_stays_one_when_profiles_are_declared():
+    table = _profiled_table(TableProfile(auditable=True))
+
+    manifest = build_manifest(RelationalModel(tables=(table,)))
+
+    assert manifest["schemaVersion"] == 1 and type(manifest["schemaVersion"]) is int
+    assert isinstance(manifest["entities"], list) and isinstance(manifest["enums"], list)
+
+
+def test_declaring_crud_does_not_filter_the_operations():
+    table = _profiled_table(TableProfile(crud=(CrudOperation.READ,)), Column("total", ColumnType.NUMERIC))
+
+    entity = build_entity(table)
+
+    assert entity["profile"]["crud"] == ["read"]
+    assert [(op["name"], op["method"], op["path"], op["successStatus"]) for op in entity["operations"]] == [
+        (name, method, "/api/purchases" + suffix, status) for name, method, suffix, status in OPERATIONS
+    ]
+
+
+def test_a_profile_carrying_model_serializes_to_identical_bytes_without_an_id_key():
+    def build():
+        table = _profiled_table(
+            TableProfile(
+                auditable=True,
+                crud=(CrudOperation.CREATE, CrudOperation.READ),
+                default_sort=DefaultSort(attribute_id="a-total", direction=SortDirection.DESC),
+            ),
+            Column("total", ColumnType.NUMERIC, source_element_id="a-total", profile=ColumnProfile(sortable=True)),
+        )
+        return to_json_text(build_manifest(RelationalModel(tables=(table,))))
+
+    first, second = build(), build()
+
+    assert first == second
+    assert "id" not in _all_keys(json.loads(first))

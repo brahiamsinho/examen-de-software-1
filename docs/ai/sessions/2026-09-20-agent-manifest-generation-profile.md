@@ -1,0 +1,8 @@
+# Session 2026-09-20 - manifest-generation-profile (apply, verify, archive)
+
+- Phase: `sdd-apply`, Strict TDD, Docker-only tests. 23/24 tasks done in code; task 11.4 (main spec heading rename) was archive-time. Status: verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted; 24/24 tasks after archive closed 11.4, archived to `openspec/changes/archive/2026-09-20-manifest-generation-profile/`, main spec `domain-manifest-export` now 15 requirements. ~419 authored lines, no `size:exception` needed. Accepted warnings: M3 equivalent mutant (redundant `profile is None` guard); task 11.4 closed at archive; `EXCLUDED_KEYS` equality not asserted explicitly; 'foreign id' scenario covered by an id matching no column.
+- Delivered: `builder/profile.py` (`build_column_profile`, `build_table_profile`), `builder/errors.py` (`ManifestError` moved and re-exported), `attributes.attribute_name`, `entities._resolver` with `defaultSort` resolution, entity/attribute `profile` emitted only when declared. Decisions DD142-DD150 in `DECISIONS_LOG.md` (DD131 superseded, DD147 tech debt: `crud` does not filter `operations[]`).
+- Tests: `apps/domain_manifest` 88 -> 125 passed; backend 1070 -> 1107 passed; `apps/relational_mapping` + `apps/generation_runner` 208 passed. Sample tripwires and `test_builder_decoupling.py` unedited and green.
+- Mutation checks M1-M10 run and reverted; all caught except M3 (equivalent mutant: `getattr(None, field, None)` already returns `None`).
+- Untouched (git diff empty): `apps/relational_mapping`, `apps/spring_generator`, `docker-compose.yml`, `scripts/`.
+- Next: commit (never `.pi/`).

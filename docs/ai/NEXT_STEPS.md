@@ -6,9 +6,11 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
-**Update 2026-09-20 (newest):** `relational-generation-metadata` is verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted (34/34 tasks, Strict TDD, backend 1070 passed, `apps/relational_mapping` 138, `apps/domain_manifest` 88; ~960 authored lines accepted as `size:exception`; delta specs `generation-profile` (new) and `relational-mapping` (modified) merged). **Next: commit (never `.pi/`).** After that, real candidates: (1) the Domain Manifest gains `searchable` / `sortable` / `defaultSort` / `auditable` / `readOnly` / `crud` from the profile (resolving `defaultSort.attribute` to a column); (2) Spring filtering/search using the profile; (3) an authoring path for the profile in commands/UI; (4) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (5) Flutter frontend (§37 item 17). `required` / `unique` keys and `entity: false` semantics stay deferred.
+**Update 2026-09-20 (newest):** `manifest-generation-profile` is verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted (24/24 tasks, Strict TDD, `apps/domain_manifest` 125 passed (88 before), backend 1107 passed (1070 before), ~419 authored lines, no `size:exception` needed; delta merged into `openspec/specs/domain-manifest-export/spec.md`, now 15 requirements, archived to `openspec/changes/archive/2026-09-20-manifest-generation-profile/`). Accepted warnings: M3 equivalent mutant (redundant `profile is None` guard); task 11.4 closed at archive; `EXCLUDED_KEYS` equality not asserted explicitly; the 'foreign id' scenario is covered by an id matching no column. **Next: commit (never `.pi/`).** After that, real candidates: (1) filtering/search in the generated Spring API using `searchable` / `sortable` / `defaultSort`; (2) an authoring path for the profile in commands/UI; (3) make `crud` restrict `operations[]` in the manifest and the generator (DD147 tech debt); (4) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (5) Flutter frontend (§37 item 17).
 
-**Update 2026-09-20 (previous):** `generated-project-domain-manifest` is verified (PASS WITH WARNINGS, 0 critical) and archived (31/31 tasks, Strict TDD, gate green with a fourth step, negative check exit 1 reverted, backend 987 tests) and uncommitted. `size:exception` accepted for its 811-line slice 1; the split-vs-exception question is asked again at commit time. **Next: commit (never `.pi/`).** After that, real candidates: (1) carry `generation_metadata` through the UML -> RelationalModel mapper so the manifest can gain searchable/sortable/defaultSort/auditable/readOnly/aliases (DD131), and filtering/search in the generated API; (2) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (3) generated frontend (§37 item 17, Flutter plan) driven by the manifest; (4) optional: import `postman_collection.json` into the Postman app.
+**Update 2026-09-20 (previous):** `relational-generation-metadata` is verified (PASS WITH WARNINGS, 0 critical) and archived, committed as `284881e` (34/34 tasks, Strict TDD, backend 1070 passed, `apps/relational_mapping` 138, `apps/domain_manifest` 88; ~960 authored lines accepted as `size:exception`; delta specs `generation-profile` (new) and `relational-mapping` (modified) merged). Its follow-up (the Domain Manifest gaining the profile keys, with `defaultSort.attribute` resolved to a column) is done by `manifest-generation-profile` above; the remaining candidates are listed there. `required` / `unique` keys and `entity: false` semantics stay deferred.
+
+**Update 2026-09-20 (previous):** `generated-project-domain-manifest` is verified (PASS WITH WARNINGS, 0 critical) and archived (31/31 tasks, Strict TDD, gate green with a fourth step, negative check exit 1 reverted, backend 987 tests) and committed as `d2069a5`. `size:exception` was accepted for its 811-line slice 1. Its follow-ups (mapper carrying `generation_metadata`, manifest emitting the profile) are done by the two changes above; the remaining candidates are listed in the newest update. Optional: import `postman_collection.json` into the Postman app.
 
 **Update 2026-09-20 (later):** `generated-project-postman-collection` is verified PASS WITH WARNINGS, archived and committed as `8bb9fd0` (31/31 tasks, Strict TDD, gate green, backend 900 tests); delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged. Optional: import `postman_collection.json` into the Postman application (not done yet).
 
@@ -57,8 +59,9 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
 3. **Relationship navigation and bidirectional generation design** — the now-archived whole-model orchestrator unlocks future bidirectional `@OneToMany` and
    relation-navigation sub-endpoints, but those behaviors remain unimplemented
    and need their own SDD cycle.
-4. **Filtering/search** — blocked until the relational schema carries §33
-   generation metadata (`searchable`, `sortable`, `crud`, `readOnly`, …).
+4. **Filtering/search** — unblocked: the relational schema carries the §33
+   generation profile (`relational-generation-metadata`) and the Domain Manifest
+   emits it (`manifest-generation-profile`); the generated Spring API does not use it yet.
 5. **§37 item 13, generated backend compilable — slice 2 of 3 verified and archived
    (uncommitted).** Slice 1 (`2026-09-19-spring-boot-project-scaffold`,
    archived) added the pure scaffold text. Slice 2 `generated-project-compile-check`
@@ -82,7 +85,7 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
    springdoc-openapi (§22 wins over §25); Django Ninja's OpenAPI stays for Modelia's
    own API. Springdoc is in the scaffold (`emit/versions.py`, Boot 4.1.1 confirmed) and the
    Postman collection is committed (`generated-project-postman-collection`); the Domain
-   Manifest is archived (`generated-project-domain-manifest`, PASS WITH WARNINGS, uncommitted).
+   Manifest is archived (`generated-project-domain-manifest`, PASS WITH WARNINGS, committed as `d2069a5`).
 
 ## Explicitly deferred by the user
 
