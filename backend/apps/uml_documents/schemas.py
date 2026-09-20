@@ -91,6 +91,12 @@ class RemoveRelationshipIn(Schema):
     relationship_id: str
 
 
+class SetGenerationProfileIn(Schema):
+    type: Literal["SetGenerationProfile"]
+    element_id: str
+    profile: dict | None = None  # absent, null, and {} all mean "clear"
+
+
 CommandIn = Annotated[
     Union[
         AddClassIn,
@@ -102,6 +108,7 @@ CommandIn = Annotated[
         RemoveOperationIn,
         AddRelationshipIn,
         RemoveRelationshipIn,
+        SetGenerationProfileIn,
     ],
     Field(discriminator="type"),
 ]

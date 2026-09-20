@@ -2,16 +2,33 @@
 
 Updated 2026-09-20. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD150; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
+DD1–DD159; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
 subclass-naming fix, DD103–DD107 the archived springdoc-openapi cycle, DD108–DD120 the archived
-Postman-collection change, DD121–DD131 the archived Domain Manifest change, DD132–DD141 the archived relational-generation-metadata change, DD142–DD150 the archived manifest-generation-profile change). Older per-cycle detail lives
+Postman-collection change, DD121–DD131 the archived Domain Manifest change, DD132–DD141 the archived relational-generation-metadata change, DD142–DD150 the archived manifest-generation-profile change, DD151–DD159 the applied uml-generation-profile-authoring change). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 `openspec/specs/` (25 merged capability specs, including new domain-manifest-export and generation-profile).
 
 ## Snapshot
 
-- **Newest work (2026-09-20, verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted):** change `manifest-generation-profile`
-  (DD142-DD150, newest entry of `DECISIONS_LOG.md`), 24/24 tasks (11.4 closed at archive), Strict TDD. The Domain Manifest now emits
+- **Newest work (2026-09-20, applied, verify pending, uncommitted):** change `uml-generation-profile-authoring`
+  (DD151-DD159, newest entry of `DECISIONS_LOG.md`), 31/31 tasks, Strict TDD, backend slice 1 of 2. The generation profile is
+  authorable through the command API. New command `SetGenerationProfile(element_id, profile | None)` (tenth command type;
+  `commands.py`, `schemas.py` `SetGenerationProfileIn`, `dispatcher.py` last `_HANDLERS` entry) and handler
+  `uml_commands/handlers/generation_profile.py` (`set_generation_profile`, `prune_generation_metadata`; owns only the `"profile"` key,
+  prunes empties; `handlers/classes.py` and `handlers/attributes.py` cascade the prune, DD158 incl. a foreign root `defaultSort`).
+  `uml_documents/services.py` validates inside the row lock (level inferred from the model, unknown id 422 even on clear,
+  parser messages verbatim, `defaultSort` resolved per DD157). **Guard exception (DD154, the first in this codebase):**
+  `uml_documents` may import exactly `apps.relational_mapping.mapping.profile_parser` (exact-match allowance in
+  `test_import_boundary.py`; other `apps.relational_mapping.*` targets fail); `uml_commands` guard untouched. Spec requirements were
+  rescoped (persisted-layout scenario now means codec round trip plus `map_to_relational`). Results: backend 1107 -> 1184 passed,
+  `apps/uml_commands` 86, `apps/uml_documents` 134; mutants M1-M10, S1-S3 killed and reverted. ~1208 authored lines, `size:exception` accepted.
+  Accepted warnings: M8 "outside the lock" is an equivalent mutant single-threaded (only "after apply" is testable); tests 2.9, 3.1, 3.2
+  are characterization tests proven by mutation. `frontend/`, `uml_modeling`, `relational_mapping`, `spring_generator`, `domain_manifest`,
+  `docker-compose.yml`, `scripts/` untouched. Next: `sdd-verify`, archive (merge both MODIFIED requirements and rescoped scenarios), commit (never `.pi/`),
+  then frontend change `uml-generation-profile-panel` ('Perfil de generación' Card in the sidebar, tri-state controls prefilled from `generation_metadata`).
+
+- **Previous work (2026-09-20, verified (PASS WITH WARNINGS, 0 critical) and archived, committed as `cdae44c`):** change `manifest-generation-profile`
+  (DD142-DD150), 24/24 tasks (11.4 closed at archive), Strict TDD. The Domain Manifest now emits
   the declared generation profile: entity `profile` (`auditable`, `readOnly`, `crud`, `defaultSort`) and
   attribute `profile` (`searchable`, `sortable`, `readOnly`), each present only when declared (omitted, never
   `null`). `schemaVersion` stays 1; `entity`, `aliases`, `generation_metadata` are never emitted. Supersedes DD131.
@@ -24,7 +41,7 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   ~419 authored lines, no `size:exception` needed. Accepted warnings: M3 equivalent mutant (redundant `profile is None` guard); task 11.4 closed at archive;
   `EXCLUDED_KEYS` equality not asserted explicitly; the 'foreign id' scenario is covered by an id matching no column.
   Delta merged into `openspec/specs/domain-manifest-export/spec.md` (now 15 requirements; `Declared-Facts-Only Exclusion` replaced by `Declared-Facts-Only Emission`);
-  archived to `openspec/changes/archive/2026-09-20-manifest-generation-profile/`. Next: commit (never `.pi/`).
+  archived to `openspec/changes/archive/2026-09-20-manifest-generation-profile/`.
 
 - **Previous work (2026-09-20, verified (PASS WITH WARNINGS, 0 critical) and archived, committed as `284881e`):** change
   `relational-generation-metadata` (DD132-DD141), 34/34 tasks.
@@ -84,9 +101,8 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   `apps/generation_runner` 67. Deferred: Gradle
   wrapper, Postman/Domain Manifest, frontend/mobile
   generation, actuator/Flyway, names-with-spaces limitation.
-- Code state: the last commit is `284881e` (`feat(relational-mapping): carry generation profile through the mapper`).
-  **Uncommitted work in the tree**: the `manifest-generation-profile` change (verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted;
-  `apps/domain_manifest` builder and tests, main spec, archive folder and `docs/ai`). The untracked `.pi/`
+- Code state: the last commit is `cdae44c` (`feat(domain-manifest): emit declared generation profile`).
+  **Uncommitted work in the tree**: the `uml-generation-profile-authoring` change (applied, verify pending; `apps/uml_commands`, `apps/uml_documents`, its openspec change folder and `docs/ai`). The untracked `.pi/`
   folder is deliberately never committed; run `git status` to check.
 - Last archived OpenSpec change: `manifest-generation-profile`
   (24/24 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
@@ -134,7 +150,7 @@ implementation order. Status against it:
 | 13 Generated backend compilable | **Done** — all 3 slices archived (scaffold text, compile check, boot-smoke; manual gate evidence `BUILD SUCCESSFUL`) |
 | 14 OpenAPI | **Done (part 1)** — generated backend serves `/v3/api-docs` via springdoc 3.1.1 (verified, committed `a834ca2`) |
 | 15 Postman | **Done** — `apps.postman_export` + third gate step (DD108-DD120); verified and committed `8bb9fd0` |
-| 16 Domain Manifest | **Done (verified and archived; core committed as `d2069a5`)** — `apps.domain_manifest` + fourth gate step (DD121-DD131); the mapper carries the generation profile (`relational-generation-metadata`, DD132-DD141, committed as `284881e`) and the manifest emits it (`manifest-generation-profile`, DD142-DD150, verified and archived, uncommitted) |
+| 16 Domain Manifest | **Done (verified and archived; core committed as `d2069a5`)** — `apps.domain_manifest` + fourth gate step (DD121-DD131); the mapper carries the generation profile (`relational-generation-metadata`, DD132-DD141, committed as `284881e`) and the manifest emits it (`manifest-generation-profile`, DD142-DD150, verified and archived, committed as `cdae44c`) |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
 ## Archived cycles (chronological)

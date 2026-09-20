@@ -5,6 +5,7 @@ domain value objects (DD3) rather than flattened constructor fields.
 `UmlCommand` is a closed `Union` type alias, mirroring the project's own
 closed-union convention (`domain/types.py::AttributeType`).
 """
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from apps.uml_modeling.domain.elements import Relationship, UmlAttribute, UmlOperation
@@ -62,6 +63,12 @@ class RemoveRelationship:
     relationship_id: ElementId
 
 
+@dataclass(frozen=True)
+class SetGenerationProfile:
+    element_id: ElementId
+    profile: Mapping[str, object] | None = None
+
+
 UmlCommand = (
     AddClass
     | RemoveClass
@@ -72,4 +79,5 @@ UmlCommand = (
     | RemoveOperation
     | AddRelationship
     | RemoveRelationship
+    | SetGenerationProfile
 )

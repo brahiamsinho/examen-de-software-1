@@ -1,6 +1,6 @@
-"""Unit tests for the 9 `UmlCommand` dataclasses: each constructs with its
+"""Unit tests for the 10 `UmlCommand` dataclasses: each constructs with its
 documented fields, each is frozen, and the `UmlCommand` union covers
-exactly the 9 types.
+exactly the 10 types.
 """
 import dataclasses
 import typing
@@ -27,6 +27,7 @@ from apps.uml_commands.commands import (
     RemoveOperation,
     RemoveRelationship,
     RenameClass,
+    SetGenerationProfile,
     UmlCommand,
 )
 
@@ -193,7 +194,7 @@ def test_remove_relationship_is_frozen():
         command.relationship_id = new_id()
 
 
-def test_uml_command_union_covers_exactly_the_nine_types():
+def test_uml_command_union_covers_exactly_the_ten_types():
     members = set(typing.get_args(UmlCommand))
 
     assert members == {
@@ -206,4 +207,28 @@ def test_uml_command_union_covers_exactly_the_nine_types():
         RemoveOperation,
         AddRelationship,
         RemoveRelationship,
+        SetGenerationProfile,
     }
+
+
+def test_set_generation_profile_constructs_with_element_id_and_profile():
+    element_id = new_id()
+    profile = {"entity": True, "crud": ["create", "read"]}
+
+    command = SetGenerationProfile(element_id=element_id, profile=profile)
+
+    assert command.element_id == element_id
+    assert command.profile == profile
+
+
+def test_set_generation_profile_profile_defaults_to_none():
+    command = SetGenerationProfile(element_id=new_id())
+
+    assert command.profile is None
+
+
+def test_set_generation_profile_is_frozen():
+    command = SetGenerationProfile(element_id=new_id())
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        command.profile = {"entity": True}

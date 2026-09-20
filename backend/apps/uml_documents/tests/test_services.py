@@ -5,6 +5,7 @@ Document Read, Command Submission requirements).
 import datetime
 import threading
 import time
+import types
 from unittest import mock
 
 import pytest
@@ -15,6 +16,7 @@ from django.http import Http404
 from apps.organizations.tests.factories import make_org_with_roles
 from apps.uml_commands import commands
 from apps.uml_documents import schemas, services
+from apps.relational_mapping.mapping.errors import InvalidGenerationProfileError
 from apps.uml_documents.errors import InvalidCommandPayloadError
 from apps.uml_modeling.domain.elements import (
     Relationship,
@@ -228,6 +230,19 @@ def test_command_from_payload():
         schemas.RemoveRelationshipIn(type="RemoveRelationship", relationship_id=relationship_id)
     )
     assert remove_relationship == commands.RemoveRelationship(relationship_id=relationship_id)
+
+
+@pytest.mark.parametrize("profile", [{"entity": True, "crud": ["read"]}, {}, None])
+def test_command_from_payload_maps_set_generation_profile(profile):
+    element_id = new_id()
+
+    command = services.command_from_payload(
+        schemas.SetGenerationProfileIn(
+            type="SetGenerationProfile", element_id=element_id, profile=profile
+        )
+    )
+
+    assert command == commands.SetGenerationProfile(element_id=element_id, profile=profile)
 
 
 @pytest.mark.django_db
@@ -645,3 +660,194 @@ def test_save_layout_position_broadcasts_exactly_once_after_commit(django_captur
             )
 
     mock_broadcast.assert_called_once_with(document=updated)
+
+
+# --- DD153-DD157: write-time generation-profile validation ------------------
+
+
+def _authoring_document():
+    """root <- child (GENERALIZATION), plus an unrelated class; one attribute each."""
+    organization, owner, *_rest = make_org_with_roles()
+    document = services.create_document(
+        organization=organization, owner_id=str(owner.id), name="Profiles", now=_NOW
+    )
+    ids = types.SimpleNamespace(
+        doc_id=document.id,
+        root=new_id(),
+        child=new_id(),
+        other=new_id(),
+        root_attr=new_id(),
+        child_attr=new_id(),
+        other_attr=new_id(),
+    )
+
+    def attribute(attribute_id, name):
+        return UmlAttribute(id=attribute_id, name=name, type=PrimitiveType.STRING)
+
+    generalization = Relationship(
+        id=new_id(),
+        kind=RelationshipKind.GENERALIZATION,
+        source=RelationshipEnd(class_id=ids.child, multiplicity=Multiplicity(1, 1)),
+        target=RelationshipEnd(class_id=ids.root, multiplicity=Multiplicity(1, 1)),
+    )
+    for command in (
+        commands.AddClass(class_id=ids.root, name="Vehicle"),
+        commands.AddClass(class_id=ids.child, name="Car"),
+        commands.AddClass(class_id=ids.other, name="Person"),
+        commands.AddAttribute(class_id=ids.root, attribute=attribute(ids.root_attr, "code")),
+        commands.AddAttribute(class_id=ids.child, attribute=attribute(ids.child_attr, "doors")),
+        commands.AddAttribute(class_id=ids.other, attribute=attribute(ids.other_attr, "name")),
+        commands.AddRelationship(relationship=generalization),
+    ):
+        services.submit_command(
+            organization=organization, doc_id=ids.doc_id, command=command, now=_NOW
+        )
+    return organization, ids
+
+
+def _set_profile(organization, ids, element_id, profile):
+    return services.submit_command(
+        organization=organization,
+        doc_id=ids.doc_id,
+        command=commands.SetGenerationProfile(element_id=element_id, profile=profile),
+        now=_LATER,
+    )
+
+
+def _sort_body(attribute_id):
+    return {"defaultSort": {"attribute": attribute_id, "direction": "asc"}}
+
+
+def _assert_no_row_written(organization, ids, revision_before):
+    persisted = services.get_document(organization=organization, doc_id=ids.doc_id)
+    assert persisted.revision == revision_before
+    assert persisted.model.generation_metadata == {}
+
+
+@pytest.mark.django_db
+def test_set_generation_profile_persists_a_valid_table_and_column_profile():
+    organization, ids = _authoring_document()
+
+    _set_profile(organization, ids, ids.root, {"entity": True, "crud": ["read", "create"]})
+    result = _set_profile(organization, ids, ids.root_attr, {"searchable": True})
+
+    persisted = services.get_document(organization=organization, doc_id=ids.doc_id)
+    assert persisted.revision == result.document.revision
+    assert persisted.model.generation_metadata == {
+        ids.root: {"profile": {"entity": True, "crud": ["read", "create"]}},
+        ids.root_attr: {"profile": {"searchable": True}},
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("profile", [{"entity": True}, None, {}])
+def test_unknown_element_id_is_rejected_even_when_clearing(profile):
+    organization, ids = _authoring_document()
+    revision = services.get_document(organization=organization, doc_id=ids.doc_id).revision
+    unknown = new_id()
+
+    with pytest.raises(InvalidCommandPayloadError) as excinfo:
+        _set_profile(organization, ids, unknown, profile)
+
+    assert str(excinfo.value) == (
+        f"Unknown element id {unknown!r}: not a class or attribute of this document"
+    )
+    _assert_no_row_written(organization, ids, revision)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("target", "body", "reason", "key"),
+    [
+        ("root", {"bogus": True}, "unknown table-level profile key", "bogus"),
+        ("root", {"entity": "yes"}, "expected a boolean", "entity"),
+        ("root", {"crud": ["create", "fly"]}, "unknown CRUD operation 'fly'", "crud"),
+        ("root", {"crud": ["read", "read"]}, "duplicate CRUD operation 'read'", "crud"),
+        (
+            "root",
+            {"defaultSort": {"attribute": "x", "direction": "up"}},
+            "expected 'asc' or 'desc'",
+            "defaultSort.direction",
+        ),
+        ("root_attr", {"bogus": True}, "unknown column-level profile key", "bogus"),
+        ("root", {"searchable": True}, "unknown table-level profile key", "searchable"),
+        ("root_attr", {"entity": True}, "unknown column-level profile key", "entity"),
+    ],
+)
+def test_parser_rejections_surface_with_the_parser_message_verbatim(target, body, reason, key):
+    organization, ids = _authoring_document()
+    revision = services.get_document(organization=organization, doc_id=ids.doc_id).revision
+    element_id = getattr(ids, target)
+
+    with pytest.raises(InvalidCommandPayloadError) as excinfo:
+        _set_profile(organization, ids, element_id, body)
+
+    assert str(excinfo.value) == str(InvalidGenerationProfileError(element_id, reason, key=key))
+    _assert_no_row_written(organization, ids, revision)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("target", "sort_attribute"),
+    [
+        ("root", "root_attr"),  # own attribute
+        ("root", "child_attr"),  # inheritance root -> descendant attribute (DD157)
+        ("child", "child_attr"),  # non-root -> own attribute
+        ("other", "other_attr"),  # root without descendants -> own attribute
+    ],
+)
+def test_default_sort_resolves_against_own_and_root_descendant_attributes(target, sort_attribute):
+    organization, ids = _authoring_document()
+
+    _set_profile(organization, ids, getattr(ids, target), _sort_body(getattr(ids, sort_attribute)))
+
+    persisted = services.get_document(organization=organization, doc_id=ids.doc_id)
+    stored = persisted.model.generation_metadata[getattr(ids, target)]["profile"]
+    assert stored == _sort_body(getattr(ids, sort_attribute))
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("target", "sort_attribute", "scope"),
+    [
+        ("child", "root_attr", "this class"),  # non-root cannot sort by its parent's attribute
+        ("other", "root_attr", "this class"),  # root with no descendants, unrelated attribute
+        ("root", "other_attr", "this class or its descendants"),  # root with descendants
+    ],
+)
+def test_default_sort_rejects_attributes_outside_the_allowed_set(target, sort_attribute, scope):
+    organization, ids = _authoring_document()
+    revision = services.get_document(organization=organization, doc_id=ids.doc_id).revision
+    element_id = getattr(ids, target)
+    attribute_id = getattr(ids, sort_attribute)
+
+    with pytest.raises(InvalidCommandPayloadError) as excinfo:
+        _set_profile(organization, ids, element_id, _sort_body(attribute_id))
+
+    assert str(excinfo.value) == (
+        f"Invalid generation profile for element {element_id!r}, "
+        f"key 'defaultSort.attribute': {attribute_id!r} is not an attribute of {scope}"
+    )
+    _assert_no_row_written(organization, ids, revision)
+
+
+@pytest.mark.django_db
+def test_clearing_a_known_element_needs_no_parse_and_succeeds():
+    organization, ids = _authoring_document()
+    _set_profile(organization, ids, ids.root, {"entity": True})
+
+    _set_profile(organization, ids, ids.root, None)
+
+    persisted = services.get_document(organization=organization, doc_id=ids.doc_id)
+    assert persisted.model.generation_metadata == {}
+
+
+@pytest.mark.django_db
+def test_a_rejected_profile_is_validated_before_apply_runs():
+    organization, ids = _authoring_document()
+
+    with mock.patch.object(services, "apply", wraps=services.apply) as spy:
+        with pytest.raises(InvalidCommandPayloadError):
+            _set_profile(organization, ids, ids.root, {"bogus": True})
+
+    spy.assert_not_called()

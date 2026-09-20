@@ -21,6 +21,7 @@ from apps.uml_commands.commands import (
     RemoveClass,
     RemoveOperation,
     RemoveRelationship,
+    SetGenerationProfile,
 )
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_modeling.domain.elements import UmlOperation
@@ -97,8 +98,23 @@ def test_apply_always_populates_validation_result(monkeypatch):
     assert result.validation_result == validate(result.document.model, rules=RULES)
 
 
-def test_handlers_registry_has_exactly_nine_entries():
-    assert len(dispatcher._HANDLERS) == 9
+def test_handlers_registry_has_exactly_ten_entries():
+    assert len(dispatcher._HANDLERS) == 10
+
+
+def test_apply_set_generation_profile_through_the_real_dispatcher():
+    target = a_class(name="Order")
+    document = a_document(model=CanonicalUmlModel(classes=(target,)))
+    profile = {"entity": True}
+
+    result = apply(
+        document, SetGenerationProfile(element_id=target.id, profile=profile), now=_NOW
+    )
+
+    assert result.document.model.generation_metadata == {target.id: {"profile": profile}}
+    assert result.document.revision == document.revision + 1
+    assert result.validation_result == validate(result.document.model, rules=RULES)
+    assert document.model.generation_metadata == {}
 
 
 def test_apply_never_raises_and_surfaces_invalid_endpoint_diagnostics():

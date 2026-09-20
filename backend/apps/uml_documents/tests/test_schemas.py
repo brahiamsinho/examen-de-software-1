@@ -58,13 +58,52 @@ _command_in_adapter = TypeAdapter(schemas.CommandIn)
             {"type": "RemoveRelationship", "relationship_id": "r1"},
             schemas.RemoveRelationshipIn,
         ),
+        (
+            {"type": "SetGenerationProfile", "element_id": "c1", "profile": {"entity": True}},
+            schemas.SetGenerationProfileIn,
+        ),
     ],
 )
-def test_command_in_discriminates_each_of_the_nine_shapes(payload, expected_type):
+def test_command_in_discriminates_each_of_the_ten_shapes(payload, expected_type):
     parsed = _command_in_adapter.validate_python(payload)
 
     assert isinstance(parsed, expected_type)
     assert parsed.type == payload["type"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"type": "SetGenerationProfile", "element_id": "c1"},
+        {"type": "SetGenerationProfile", "element_id": "c1", "profile": None},
+    ],
+)
+def test_set_generation_profile_in_profile_omitted_or_null_parses_to_none(payload):
+    parsed = _command_in_adapter.validate_python(payload)
+
+    assert parsed.profile is None
+
+
+def test_set_generation_profile_in_empty_profile_stays_an_empty_dict():
+    parsed = _command_in_adapter.validate_python(
+        {"type": "SetGenerationProfile", "element_id": "c1", "profile": {}}
+    )
+
+    assert parsed.profile == {}
+
+
+def test_set_generation_profile_in_keeps_nested_json_intact():
+    profile = {
+        "entity": True,
+        "crud": ["create", "read"],
+        "defaultSort": {"attribute": "a1", "direction": "asc"},
+    }
+
+    parsed = _command_in_adapter.validate_python(
+        {"type": "SetGenerationProfile", "element_id": "c1", "profile": profile}
+    )
+
+    assert parsed.profile == profile
 
 
 def test_uml_operation_in_return_type_accepts_null():

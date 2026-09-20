@@ -18,6 +18,11 @@ from django.http import Http404
 from apps.organizations.models import Organization
 from apps.uml_commands import commands
 from apps.uml_commands.commands import UmlCommand
+from apps.relational_mapping.mapping.profile_parser import (
+    InvalidGenerationProfileError,
+    parse_column_profile,
+    parse_table_profile,
+)
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_documents import codec, schemas
 from apps.uml_documents.errors import InvalidCommandPayloadError
@@ -28,6 +33,7 @@ from apps.uml_modeling.domain.elements import (
     RelationshipEnd,
     RelationshipKind,
     UmlAttribute,
+    UmlClass,
     UmlOperation,
     Visibility,
 )
@@ -140,10 +146,88 @@ def submit_command(
     """
     row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
     document = _to_project_document(row)
+    if isinstance(command, commands.SetGenerationProfile):
+        _validate_generation_profile(document.model, command)
     result = apply(document, command, now=now)
     _save(row, result.document)
     transaction.on_commit(lambda: broadcast_document(document=result.document))
     return result
+
+
+def _attribute_owner(model: CanonicalUmlModel, element_id: ElementId) -> UmlClass | None:
+    """The class holding the attribute with this id, if any."""
+    for uml_class in model.classes:
+        if any(attribute.id == element_id for attribute in uml_class.attributes):
+            return uml_class
+    return None
+
+
+def _descendant_class_ids(model: CanonicalUmlModel, class_id: ElementId) -> frozenset[ElementId]:
+    """Transitive descendants: GENERALIZATION `source` is the child, `target` the parent."""
+    descendants: set[ElementId] = set()
+    frontier = [class_id]
+    while frontier:
+        current = frontier.pop()
+        for relationship in model.relationships:
+            if (
+                relationship.kind is RelationshipKind.GENERALIZATION
+                and relationship.target.class_id == current
+                and relationship.source.class_id not in descendants
+            ):
+                descendants.add(relationship.source.class_id)
+                frontier.append(relationship.source.class_id)
+    return frozenset(descendants)
+
+
+def _is_inheritance_root(model: CanonicalUmlModel, class_id: ElementId) -> bool:
+    return not any(
+        relationship.kind is RelationshipKind.GENERALIZATION
+        and relationship.source.class_id == class_id
+        for relationship in model.relationships
+    )
+
+
+def _validate_generation_profile(
+    model: CanonicalUmlModel, command: commands.SetGenerationProfile
+) -> None:
+    """Write-time gate for `SetGenerationProfile` (DD153-DD157). Runs inside
+    `submit_command`'s row lock; the handler itself stays structural (DD6).
+    """
+    owner = _attribute_owner(model, command.element_id)
+    target = model.class_by_id(command.element_id)
+    if target is None and owner is None:
+        raise InvalidCommandPayloadError(
+            f"Unknown element id {command.element_id!r}: not a class or attribute of this document"
+        )
+    if not command.profile:
+        return
+
+    entry = {"profile": dict(command.profile)}
+    try:
+        if target is None:
+            parse_column_profile(command.element_id, entry)
+            return
+        parsed = parse_table_profile(command.element_id, entry)
+    except InvalidGenerationProfileError as exc:
+        raise InvalidCommandPayloadError(str(exc)) from exc
+
+    if parsed is None or parsed.default_sort is None:
+        return
+    allowed = {attribute.id for attribute in target.attributes}
+    descendants = (
+        _descendant_class_ids(model, target.id)
+        if _is_inheritance_root(model, target.id)
+        else frozenset()
+    )
+    for class_id in descendants:
+        allowed |= {attribute.id for attribute in model.class_by_id(class_id).attributes}
+    attribute_id = parsed.default_sort.attribute_id
+    if attribute_id not in allowed:
+        scope = "this class or its descendants" if descendants else "this class"
+        raise InvalidCommandPayloadError(
+            f"Invalid generation profile for element {command.element_id!r}, "
+            f"key 'defaultSort.attribute': {attribute_id!r} is not an attribute of {scope}"
+        )
 
 
 @transaction.atomic
@@ -230,6 +314,10 @@ def _command_from_payload(payload: "schemas.CommandIn") -> UmlCommand:
         return commands.AddRelationship(relationship=_relationship_from_schema(payload.relationship))
     if isinstance(payload, schemas.RemoveRelationshipIn):
         return commands.RemoveRelationship(relationship_id=ElementId(payload.relationship_id))
+    if isinstance(payload, schemas.SetGenerationProfileIn):
+        return commands.SetGenerationProfile(
+            element_id=ElementId(payload.element_id), profile=payload.profile
+        )
     raise ValueError(f"Unknown command payload type: {payload!r}")
 
 

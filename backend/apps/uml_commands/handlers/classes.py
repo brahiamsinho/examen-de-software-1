@@ -9,6 +9,7 @@ import dataclasses
 from apps.uml_modeling.domain.elements import UmlClass
 from apps.uml_modeling.domain.model import CanonicalUmlModel
 from apps.uml_commands.commands import AddClass, RemoveClass, RenameClass
+from apps.uml_commands.handlers.generation_profile import prune_generation_metadata
 
 
 def add_class(model: CanonicalUmlModel, command: AddClass) -> CanonicalUmlModel:
@@ -17,7 +18,8 @@ def add_class(model: CanonicalUmlModel, command: AddClass) -> CanonicalUmlModel:
 
 
 def remove_class(model: CanonicalUmlModel, command: RemoveClass) -> CanonicalUmlModel:
-    if model.class_by_id(command.class_id) is None:
+    target = model.class_by_id(command.class_id)
+    if target is None:
         return model
 
     classes = tuple(uml_class for uml_class in model.classes if uml_class.id != command.class_id)
@@ -27,7 +29,11 @@ def remove_class(model: CanonicalUmlModel, command: RemoveClass) -> CanonicalUml
         if relationship.source.class_id != command.class_id
         and relationship.target.class_id != command.class_id
     )
-    return dataclasses.replace(model, classes=classes, relationships=relationships)
+    removed = frozenset({command.class_id, *(attribute.id for attribute in target.attributes)})
+    metadata = prune_generation_metadata(model.generation_metadata, removed)
+    return dataclasses.replace(
+        model, classes=classes, relationships=relationships, generation_metadata=metadata
+    )
 
 
 def rename_class(model: CanonicalUmlModel, command: RenameClass) -> CanonicalUmlModel:

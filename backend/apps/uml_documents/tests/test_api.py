@@ -1,6 +1,8 @@
 """HTTP integration tests for `/api/orgs/{org_slug}/documents` (spec's
 Document Creation, Document Read, Command Submission requirements).
 """
+from unittest import mock
+
 import pytest
 
 from apps.organizations.tests.factories import make_org_with_roles
@@ -324,3 +326,120 @@ class TestSubmitCommand:
         assert response.json()["code"] == "invalid_command_payload"
         document = UmlDocument.all_objects.get(id=doc_id)
         assert document.revision == 3
+
+
+@pytest.mark.django_db
+class TestSetGenerationProfile:
+    def _seed(self, auth_client, actor, organization):
+        """A document holding class `c1` with attribute `a1`; returns the commands URL."""
+        auth_client.force_login(actor)
+        doc_id = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "My Diagram"},
+            content_type="application/json",
+        ).json()["id"]
+        url = f"/api/orgs/{organization.slug}/documents/{doc_id}/commands"
+        auth_client.post(
+            url,
+            data={"type": "AddClass", "class_id": "c1", "name": "Order"},
+            content_type="application/json",
+        )
+        auth_client.post(
+            url,
+            data={
+                "type": "AddAttribute",
+                "class_id": "c1",
+                "attribute": {"id": "a1", "name": "reference", "type": "String"},
+            },
+            content_type="application/json",
+        )
+        return doc_id, url
+
+    def _profile(self, auth_client, url, element_id, profile):
+        return auth_client.post(
+            url,
+            data={"type": "SetGenerationProfile", "element_id": element_id, "profile": profile},
+            content_type="application/json",
+        )
+
+    @pytest.mark.parametrize("role", ["owner", "editor"])
+    def test_owner_and_editor_set_a_profile(self, auth_client, role):
+        organization, owner, editor, _viewer, _outsider = make_org_with_roles()
+        actor = {"owner": owner, "editor": editor}[role]
+        doc_id, url = self._seed(auth_client, actor, organization)
+
+        response = self._profile(auth_client, url, "c1", {"entity": True})
+
+        assert response.status_code == 200
+        assert response.json()["revision"] == 4
+        stored = UmlDocument.all_objects.get(id=doc_id).data["model"]["generation_metadata"]
+        assert stored == {"c1": {"profile": {"entity": True}}}
+
+    def test_viewer_is_denied(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        doc_id, url = self._seed(auth_client, owner, organization)
+        auth_client.force_login(viewer)
+
+        response = self._profile(auth_client, url, "c1", {"entity": True})
+
+        assert response.status_code == 403
+        assert UmlDocument.all_objects.get(id=doc_id).revision == 3
+
+    def test_invalid_profile_returns_422_with_the_parser_message_and_writes_nothing(
+        self, auth_client
+    ):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id, url = self._seed(auth_client, editor, organization)
+
+        response = self._profile(auth_client, url, "c1", {"bogus": True})
+
+        assert response.status_code == 422
+        assert response.json() == {
+            "detail": (
+                "Invalid generation profile for element 'c1', key 'bogus': "
+                "unknown table-level profile key"
+            ),
+            "code": "invalid_command_payload",
+        }
+        assert UmlDocument.all_objects.get(id=doc_id).revision == 3
+
+    def test_unknown_element_id_returns_422(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        _doc_id, url = self._seed(auth_client, editor, organization)
+
+        response = self._profile(auth_client, url, "ghost", None)
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_command_payload"
+
+    def test_cross_organization_member_gets_404(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        other_organization, other_owner, *_rest = make_org_with_roles()
+        doc_id, _url = self._seed(auth_client, owner, organization)
+        auth_client.force_login(other_owner)
+
+        response = self._profile(
+            auth_client,
+            f"/api/orgs/{other_organization.slug}/documents/{doc_id}/commands",
+            "c1",
+            {"entity": True},
+        )
+
+        assert response.status_code == 404
+        assert UmlDocument.all_objects.get(id=doc_id).revision == 3
+
+    def test_clear_removes_the_profile_and_broadcasts_once(
+        self, auth_client, django_capture_on_commit_callbacks
+    ):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id, url = self._seed(auth_client, editor, organization)
+        self._profile(auth_client, url, "c1", {"entity": True})
+
+        with mock.patch("apps.uml_documents.services.broadcast_document") as broadcast:
+            with django_capture_on_commit_callbacks(execute=True):
+                response = self._profile(auth_client, url, "c1", None)
+
+        assert response.status_code == 200
+        assert response.json()["revision"] == 5
+        assert UmlDocument.all_objects.get(id=doc_id).data["model"]["generation_metadata"] == {}
+        assert broadcast.call_count == 1

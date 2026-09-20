@@ -7,6 +7,7 @@ import dataclasses
 
 from apps.uml_modeling.domain.model import CanonicalUmlModel
 from apps.uml_commands.commands import AddAttribute, RemoveAttribute
+from apps.uml_commands.handlers.generation_profile import prune_generation_metadata
 
 
 def add_attribute(model: CanonicalUmlModel, command: AddAttribute) -> CanonicalUmlModel:
@@ -31,4 +32,7 @@ def remove_attribute(model: CanonicalUmlModel, command: RemoveAttribute) -> Cano
     )
     updated = dataclasses.replace(target, attributes=remaining)
     classes = tuple(updated if uml_class.id == command.class_id else uml_class for uml_class in model.classes)
-    return dataclasses.replace(model, classes=classes)
+    metadata = prune_generation_metadata(
+        model.generation_metadata, frozenset({command.attribute_id})
+    )
+    return dataclasses.replace(model, classes=classes, generation_metadata=metadata)
