@@ -1,8 +1,12 @@
 # Decisions Log
 
+## 2026-09-19 — Decision: generated backend documents its API with springdoc-openapi (§25 vs §22)
+
+Product decision resolved with the user before §37 items 14–16. `product-04-next-django.md` §25 says "OpenAPI nativo de Django Ninja", while §22 fixes the generated stack to Spring Boot with springdoc-openapi and states that the main application's stack and the generated stack are independent (§22, "no deberá sustituir Spring Boot por el framework utilizado internamente por la herramienta principal"). Django Ninja can only describe the Django API of Modelia itself, never the generated Spring backend, so §25 read literally is unimplementable. Decision: §22 wins. The OpenAPI document of the **generated** backend comes from springdoc-openapi (Postman collection and Domain Manifest derive from it); Django Ninja's native OpenAPI stays as the spec for **Modelia's own** API (`TECH_STACK.md`). Consequence for the next change: adding springdoc to `build.gradle.j2` needs its version single-sourced in `emit/versions.py` and a check that the springdoc release supports Spring Boot 4.1.1 (to confirm at explore).
+
 ## 2026-09-19 — Change applied: Generated project boot smoke (`generated-project-boot-smoke`)
 
-`sdd-apply` implemented all 21 tasks (Strict TDD for the one pytest-reachable piece; the compose/bash half is proven by recorded gate runs). Slice 3 of 3 of spec §37 item 13. Not yet verified, archived or committed. The gate `bash scripts/verify-generated-project.sh` now also boots the compiled jar against a throwaway Postgres and runs one CRUD round-trip (201/200/204/404). Evidence: `openspec/changes/generated-project-boot-smoke/gate-evidence.md`.
+`sdd-apply` implemented all 18 tasks (Strict TDD for the one pytest-reachable piece; the compose/bash half is proven by recorded gate runs). Slice 3 of 3 of spec §37 item 13. Verified (PASS WITH WARNINGS) and archived at `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`. The gate `bash scripts/verify-generated-project.sh` now also boots the compiled jar against a throwaway Postgres and runs one CRUD round-trip (201/200/204/404). Evidence: `openspec/changes/generated-project-boot-smoke/gate-evidence.md`.
 
 Decisions (DD92-DD102, full rationale in the change `design.md`):
 

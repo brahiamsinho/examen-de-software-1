@@ -68,8 +68,10 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
    - Also deferred: Gradle wrapper (binary jar, `GeneratedFile.contents` is `str`),
      `.gitignore`, Dockerfile.
 6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.
-   Resolve first with the user: §25 says "OpenAPI nativo de Django Ninja" but
-   §22 mandates springdoc-openapi in the generated stack.
+   Resolved with the user (see `DECISIONS_LOG.md`): the generated Spring backend uses
+   springdoc-openapi (§22 wins over §25); Django Ninja's OpenAPI stays for Modelia's
+   own API. Next change: springdoc in the scaffold (single-source its version in
+   `emit/versions.py`, confirm Boot 4.1.1 support), then Postman and Domain Manifest.
 
 ## Explicitly deferred by the user
 
