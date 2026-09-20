@@ -12,6 +12,7 @@ import inspect
 import pytest
 
 from apps.relational_mapping.domain import schema, types
+from apps.relational_mapping.domain.profile import ColumnProfile, TableProfile
 from apps.relational_mapping.domain.schema import (
     Column,
     EnumType,
@@ -56,6 +57,16 @@ def test_column_defaults():
     assert column.enum_type_name is None
     assert column.source_element_id is None
     assert column.owning_class_id is None
+    assert column.profile is None
+
+
+def test_column_with_profile_is_structurally_equal_and_hashable():
+    first = Column(name="total", type=ColumnType.NUMERIC, profile=ColumnProfile(searchable=True))
+    second = Column(name="total", type=ColumnType.NUMERIC, profile=ColumnProfile(searchable=True))
+
+    assert first == second
+    assert hash(first) == hash(second)
+    assert first != Column(name="total", type=ColumnType.NUMERIC)
 
 
 def test_column_is_frozen():
@@ -104,6 +115,27 @@ def test_table_defaults():
     assert table.source_class_ids == ()
     assert table.discriminator_column is None
     assert dict(table.discriminator_values) == {}
+    assert table.profile is None
+
+
+def _table_with_profile(profile: TableProfile | None) -> Table:
+    return Table(
+        name="order",
+        columns=(Column(name="id", type=ColumnType.UUID),),
+        primary_key=PrimaryKey(column_names=("id",), name="pk_order"),
+        profile=profile,
+    )
+
+
+def test_table_with_profile_is_structurally_equal():
+    # `Table` itself is not hashable (`discriminator_values` is a
+    # `MappingProxyType`, pre-existing), so the profile it carries is hashed.
+    first = _table_with_profile(TableProfile(auditable=True))
+    second = _table_with_profile(TableProfile(auditable=True))
+
+    assert first == second
+    assert hash(first.profile) == hash(second.profile)
+    assert first != _table_with_profile(None)
 
 
 def test_table_is_frozen():

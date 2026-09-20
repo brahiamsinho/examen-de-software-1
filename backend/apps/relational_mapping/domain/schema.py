@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from apps.relational_mapping.domain.profile import ColumnProfile, TableProfile
 from apps.relational_mapping.domain.types import ColumnType, ReferentialAction
 from apps.uml_modeling.domain.ids import ElementId
 
@@ -25,6 +26,7 @@ class Column:
     enum_type_name: str | None = None
     source_element_id: ElementId | None = None
     owning_class_id: ElementId | None = None
+    profile: ColumnProfile | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,7 @@ class Table:
     source_class_ids: tuple[ElementId, ...] = ()
     discriminator_column: str | None = None
     discriminator_values: Mapping[ElementId, str] = EMPTY
+    profile: TableProfile | None = None
 
     def column_by_name(self, name: str) -> Column | None:
         for column in self.columns:

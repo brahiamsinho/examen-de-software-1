@@ -2,13 +2,25 @@
 
 Updated 2026-09-20. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD131; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
+DD1–DD141; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
 subclass-naming fix, DD103–DD107 the archived springdoc-openapi cycle, DD108–DD120 the archived
-Postman-collection change, DD121–DD131 the archived Domain Manifest change). Older per-cycle detail lives
+Postman-collection change, DD121–DD131 the archived Domain Manifest change, DD132–DD141 the archived relational-generation-metadata change). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
-`openspec/specs/` (24 merged capability specs, including new domain-manifest-export).
+`openspec/specs/` (25 merged capability specs, including new domain-manifest-export and generation-profile).
 
 ## Snapshot
+
+- **Newest work (2026-09-20, verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted):** change
+  `relational-generation-metadata` (DD132-DD141, newest entry of `DECISIONS_LOG.md`), 34/34 tasks.
+  Files: new `relational_mapping/domain/profile.py`, `mapping/profile_parser.py`; modified
+  `domain/schema.py` (`Column.profile`, `Table.profile`), `mapping/errors.py`, `mapping/mapper.py`
+  (`_collect_profiles` + wiring); new tests `test_profile.py`, `test_profile_parser.py`,
+  `test_map_profiles.py`, plus edits to `test_schema.py` / `test_determinism.py`, and two
+  output-neutrality tests (`generation_runner/tests/`, `domain_manifest/tests/`).
+  Results: `apps/relational_mapping` 138 passed, `apps/domain_manifest` 88 passed, full backend 1070 passed (was 987), 41-file
+  oracle, inheritance sha256 goldens and manifest tests unchanged. Seven mutation checks each
+  turned tests red and were reverted. Deferred: `required`/`unique`, `entity: false` semantics,
+  `defaultSort` resolution, and the authoring path. Authored size ~960 lines accepted as `size:exception`. Accepted warnings: `Table`/`RelationalModel` already unhashable (spec amended); manifest half of the neutrality test lives in `apps/domain_manifest/tests`; `InvalidGenerationProfileError` not imported in `mapper.py` (design wiring table lists it, not needed); three tests pass by construction (protected by mutation checks). Delta specs `generation-profile` (new) and `relational-mapping` (modified) merged into main specs; archived to `openspec/changes/archive/2026-09-20-relational-generation-metadata/`. Next: commit (never `.pi/`), then manifest emission of the profile.
 
 - **Latest work (2026-09-20, archived; 31/31 tasks, verified PASS WITH WARNINGS; §37 item 16):**
   change `generated-project-domain-manifest` (DD121-DD131). Touched: new app
@@ -56,15 +68,15 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   `apps/generation_runner` 67. Deferred: Gradle
   wrapper, Postman/Domain Manifest, frontend/mobile
   generation, actuator/Flyway, names-with-spaces limitation.
-- Code state: the last commit is `8bb9fd0` (`feat(postman-export): generate Postman collection from generated project OpenAPI`).
+- Code state: the last commit is `d2069a5` (`feat(domain-manifest): generate domain manifest from relational model`).
   **Uncommitted work in the tree**: the
-  `generated-project-domain-manifest` change (verified PASS WITH WARNINGS and archived, not yet committed). The untracked `.pi/`
+  `generated-project-domain-manifest` and `relational-generation-metadata` changes (both verified PASS WITH WARNINGS, 0 critical, and archived, not yet committed). The untracked `.pi/`
   folder is deliberately never committed; run `git status` to check.
-- Last archived OpenSpec change: `generated-project-domain-manifest`
-  (31/31 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
-  `openspec/changes/archive/2026-09-20-generated-project-domain-manifest/`).
-  31 cycles are archived; the last one is
-  `2026-09-20-generated-project-domain-manifest`.
+- Last archived OpenSpec change: `relational-generation-metadata`
+  (34/34 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
+  `openspec/changes/archive/2026-09-20-relational-generation-metadata/`).
+  32 cycles are archived; the last one is
+  `2026-09-20-relational-generation-metadata`.
 - Subclass-naming fix (DD87-DD91): `emit/inheritance_context.py:169` now uses
   `pascal_case(table.discriminator_values[class_id])`; fixtures use class-name
   discriminator values; `samples/sample_model.py` uses frozen uuid4-hex class ids.
@@ -106,7 +118,7 @@ implementation order. Status against it:
 | 13 Generated backend compilable | **Done** — all 3 slices archived (scaffold text, compile check, boot-smoke; manual gate evidence `BUILD SUCCESSFUL`) |
 | 14 OpenAPI | **Done (part 1)** — generated backend serves `/v3/api-docs` via springdoc 3.1.1 (verified, committed `a834ca2`) |
 | 15 Postman | **Done** — `apps.postman_export` + third gate step (DD108-DD120); verified and committed `8bb9fd0` |
-| 16 Domain Manifest | **Done (verified and archived; uncommitted)** — `apps.domain_manifest` + fourth gate step (DD121-DD131) |
+| 16 Domain Manifest | **Done (verified and archived; uncommitted)** — `apps.domain_manifest` + fourth gate step (DD121-DD131); the mapper now carries the generation profile (`relational-generation-metadata`, DD132-DD141, verified and archived, uncommitted), and emitting it in the manifest is the next candidate |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
 ## Archived cycles (chronological)

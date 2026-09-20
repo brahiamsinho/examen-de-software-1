@@ -15,6 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
+from apps.relational_mapping.domain.profile import ColumnProfile, TableProfile
 from apps.relational_mapping.domain.schema import (
     Column,
     EnumType,
@@ -33,6 +34,10 @@ from apps.relational_mapping.mapping.errors import (
     UnknownEnumerationError,
 )
 from apps.relational_mapping.mapping.naming import snake_case, unique_name
+from apps.relational_mapping.mapping.profile_parser import (
+    parse_column_profile,
+    parse_table_profile,
+)
 from apps.uml_modeling.domain.elements import (
     Relationship,
     RelationshipEnd,
@@ -75,6 +80,30 @@ class _TableDraft:
     source_class_ids: tuple[ElementId, ...] = ()
     discriminator_column: str | None = None
     discriminator_values: dict[ElementId, str] = field(default_factory=dict)
+    profile: TableProfile | None = None
+
+
+def _collect_profiles(
+    model: CanonicalUmlModel,
+    class_by_id: dict[ElementId, UmlClass],
+    attribute_owner_by_id: dict[ElementId, ElementId],
+) -> tuple[dict[ElementId, TableProfile], dict[ElementId, ColumnProfile]]:
+    """DD141: parse every declared profile up front, in `generation_metadata`
+    order, so the first malformed entry aborts the mapping deterministically.
+    Ids matching neither a class nor an attribute are skipped unvalidated.
+    """
+    table_profile_by_id: dict[ElementId, TableProfile] = {}
+    column_profile_by_id: dict[ElementId, ColumnProfile] = {}
+    for element_id, entry in model.generation_metadata.items():
+        if element_id in class_by_id:
+            table_profile = parse_table_profile(element_id, entry)
+            if table_profile is not None:
+                table_profile_by_id[element_id] = table_profile
+        elif element_id in attribute_owner_by_id:
+            column_profile = parse_column_profile(element_id, entry)
+            if column_profile is not None:
+                column_profile_by_id[element_id] = column_profile
+    return table_profile_by_id, column_profile_by_id
 
 
 def _check_dangling_endpoints(model: CanonicalUmlModel) -> None:
@@ -210,6 +239,7 @@ def _map_attribute_column(
     owning_class_id: ElementId,
     enum_type_name_by_id: dict[ElementId, str],
     taken_names: set[str],
+    profile: ColumnProfile | None = None,
 ) -> Column:
     """Attribute -> Column (DD8 naming; type mapping table)."""
     name = unique_name(taken_names, snake_case(attribute.name), owner_class_name)
@@ -225,6 +255,7 @@ def _map_attribute_column(
             enum_type_name=enum_type_name,
             source_element_id=attribute.id,
             owning_class_id=owning_class_id,
+            profile=profile,
         )
 
     column_type, extra = _PRIMITIVE_TYPE_MAP[attribute.type]
@@ -234,6 +265,7 @@ def _map_attribute_column(
         nullable=nullable,
         source_element_id=attribute.id,
         owning_class_id=owning_class_id,
+        profile=profile,
         **extra,
     )
 
@@ -245,6 +277,8 @@ def _map_table_for_root(
     class_by_id: dict[ElementId, UmlClass],
     enum_type_name_by_id: dict[ElementId, str],
     taken_table_names: set[str],
+    table_profile_by_id: dict[ElementId, TableProfile],
+    column_profile_by_id: dict[ElementId, ColumnProfile],
 ) -> _TableDraft:
     """Stage 3: class(es) -> one `_TableDraft` per generalization root.
 
@@ -261,6 +295,8 @@ def _map_table_for_root(
     taken_table_names.add(table_name)
 
     draft = _TableDraft(name=table_name, source_class_ids=tree_class_ids)
+    # STI: only the root class's profile becomes the table profile.
+    draft.profile = table_profile_by_id.get(root_id)
 
     id_column = Column(name="id", type=ColumnType.UUID, nullable=False)
     draft.columns.append(id_column)
@@ -285,6 +321,7 @@ def _map_table_for_root(
                 owning_class_id=class_id,
                 enum_type_name_by_id=enum_type_name_by_id,
                 taken_names=draft.column_names,
+                profile=column_profile_by_id.get(attribute.id),
             )
             draft.columns.append(column)
             draft.column_names.add(column.name)
@@ -514,6 +551,7 @@ def _freeze_table(draft: _TableDraft) -> Table:
         source_class_ids=tuple(draft.source_class_ids),
         discriminator_column=draft.discriminator_column,
         discriminator_values=MappingProxyType(dict(draft.discriminator_values)),
+        profile=draft.profile,
     )
 
 
@@ -527,6 +565,14 @@ def map_to_relational(model: CanonicalUmlModel) -> RelationalModel:
     _check_dangling_endpoints(model)
     roots, descendants_of, parent_of = _build_hierarchy(model)
     class_by_id = {uml_class.id: uml_class for uml_class in model.classes}
+    attribute_owner_by_id = {
+        attribute.id: uml_class.id
+        for uml_class in model.classes
+        for attribute in uml_class.attributes
+    }
+    table_profile_by_id, column_profile_by_id = _collect_profiles(
+        model, class_by_id, attribute_owner_by_id
+    )
 
     enum_types, enum_type_name_by_id = _map_enumerations(model)
 
@@ -540,6 +586,8 @@ def map_to_relational(model: CanonicalUmlModel) -> RelationalModel:
             class_by_id=class_by_id,
             enum_type_name_by_id=enum_type_name_by_id,
             taken_table_names=taken_table_names,
+            table_profile_by_id=table_profile_by_id,
+            column_profile_by_id=column_profile_by_id,
         )
         drafts[root_id] = draft
         table_name_by_root[root_id] = draft.name

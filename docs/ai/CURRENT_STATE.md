@@ -7,6 +7,8 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
+**Update 2026-09-20 (newest; change `relational-generation-metadata` verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted; delta specs `generation-profile` (new) and `relational-mapping` (modified) merged into main specs):** the relational mapper now carries generation profile metadata. `Column.profile` / `Table.profile` (default `None`) are filled from the reserved `"profile"` key of `generation_metadata` by a strict pure parser (`mapping/profile_parser.py`, rules 1-12, `InvalidGenerationProfileError`, DD132-DD141). No consumer reads them: the 41-file Spring oracle and the Domain Manifest are byte-identical (output-neutrality tests added in `generation_runner` and `domain_manifest`). Backend suite 987 -> 1070 passed (`apps/relational_mapping` 138, `apps/domain_manifest` 88), 34/34 tasks, ~960 authored lines accepted as `size:exception`. `apps/domain_manifest` and `apps/spring_generator` sources untouched. Accepted warnings: `Table`/`RelationalModel` already unhashable (spec amended); manifest half of the neutrality test lives in `apps/domain_manifest/tests`; `InvalidGenerationProfileError` not imported in `mapper.py` (design wiring table lists it, not needed); three tests pass by construction (protected by mutation checks).
+
 **Update 2026-09-20 (latest; change `generated-project-domain-manifest` archived, verified PASS WITH WARNINGS; uncommitted; delta specs `domain-manifest-export` (new) and `generated-project-verification` (modified) merged into main specs):** §37 item 16.
 The new offline Django app `apps.domain_manifest` (pure `builder/`, `serialize.py`, plain `__main__`
 `cli.py`, DD121-DD127) derives `domain-manifest.json` (schema v1, deterministic: 6 entities,
@@ -18,8 +20,8 @@ sample `RelationalModel`, and a drift guard cross-checks it against the committe
 facts are emitted (DD131): searchable/sortable/defaultSort/auditable/readOnly/aliases wait for the
 mapper to carry `generation_metadata`. Tests: backend 987 (900 + 87 new in `apps/domain_manifest`).
 Slice 1 is 811 authored lines (259 non-test): `size:exception` accepted. Archived to
-`openspec/changes/archive/2026-09-20-generated-project-domain-manifest/`. The Postman change is
-committed as `8bb9fd0`. Evidence: `openspec/changes/generated-project-domain-manifest/gate-evidence.md`.
+`openspec/changes/archive/2026-09-20-generated-project-domain-manifest/` and committed as `d2069a5`
+(the Postman change is `8bb9fd0`). Evidence: `openspec/changes/archive/2026-09-20-generated-project-domain-manifest/gate-evidence.md`.
 
 **Update 2026-09-20 (change `generated-project-postman-collection` verified PASS WITH WARNINGS and archived; committed as `8bb9fd0`; delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged at archive):** §37 item 15.
 `scripts/boot-smoke.sh` now exports the real `/v3/api-docs` body to

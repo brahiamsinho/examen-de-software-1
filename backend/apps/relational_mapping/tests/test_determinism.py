@@ -1,6 +1,8 @@
 """RED: mapper stage 4-5 incomplete. Property tests for the §21
 determinism criterion (design.md Testing Strategy, Property row).
 """
+import dataclasses
+
 from hypothesis import given, strategies as st
 
 from apps.relational_mapping.domain.types import ColumnType
@@ -79,3 +81,30 @@ def test_every_table_has_exactly_one_single_column_uuid_pk(model):
         pk_column = table.column_by_name(table.primary_key.column_names[0])
         assert pk_column is not None
         assert pk_column.type is ColumnType.UUID
+
+
+def test_profile_carrying_model_maps_equal_with_equal_hashes():
+    # Characterization test (passes by construction): profile values are
+    # immutable scalars/tuples, so equal input yields equal, equally hashed
+    # profiles. `Table` itself is unhashable (pre-existing MappingProxyType
+    # field), so hashes are compared on columns and table profiles.
+    total = an_attribute(name="total")
+    order = a_class(name="Order", attributes=(total,))
+    model = dataclasses.replace(
+        a_model(classes=(order,)),
+        generation_metadata={
+            order.id: {"profile": {"crud": ["read", "create"], "auditable": True}},
+            total.id: {"profile": {"searchable": True}},
+        },
+    )
+
+    first, second = map_to_relational(model), map_to_relational(model)
+
+    assert first == second
+    table = first.table_by_name("order")
+    assert table.profile is not None
+    assert table.column_by_name("total").profile is not None
+    assert hash(table.profile) == hash(second.table_by_name("order").profile)
+    assert [hash(column) for column in table.columns] == [
+        hash(column) for column in second.table_by_name("order").columns
+    ]

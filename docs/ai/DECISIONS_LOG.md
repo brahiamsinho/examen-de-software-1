@@ -1,5 +1,24 @@
 # Decisions Log
 
+## 2026-09-20 — Change archived: Relational generation metadata (DD132-DD141) (`relational-generation-metadata`)
+
+Status: verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted; archived to `openspec/changes/archive/2026-09-20-relational-generation-metadata/`. Delta specs `generation-profile` (new, 9 requirements) and `relational-mapping` (4 modified, 3 added; now 17 requirements) are merged into main specs. Final numbers: backend suite 1070 passed (987 before), `apps/relational_mapping` 138 passed, `apps/domain_manifest` 88 passed, 34/34 tasks; authored size ~960 lines accepted as `size:exception`. Accepted warnings: `Table`/`RelationalModel` are already unhashable (spec amended); the manifest half of the neutrality test lives in `apps/domain_manifest/tests`; `InvalidGenerationProfileError` is not imported in `mapper.py` (the design wiring table lists it, it is not needed); three tests pass by construction (protected by mutation checks).
+
+`sdd-apply` implemented all 34 tasks in Strict TDD. `apps.relational_mapping` now parses the reserved `"profile"` key of `CanonicalUmlModel.generation_metadata` and carries it on `Table.profile` / `Column.profile`. No consumer reads it (Domain Manifest and Spring output byte-identical). Unblocks the DD131 emission slice.
+
+- **DD132** profile value objects live in their own module `domain/profile.py` (`SortDirection`, `CrudOperation`, `DefaultSort`, `ColumnProfile`, `TableProfile`), not in `schema.py`.
+- **DD133** every profile field is tri-state (`X | None`, `None` = undeclared); a `"profile"` yielding zero declared keys canonicalizes to `None`.
+- **DD134** hashable by construction; `crud` is a `tuple` in canonical order `create, read, update, delete`, never a set/list.
+- **DD135** `mapping/profile_parser.py` is a pure, model-free parser (`parse_table_profile` / `parse_column_profile`, one raw entry each), pinned by an AST import-guard test.
+- **DD136** `InvalidGenerationProfileError` subclasses `UnmappableModelError` in `mapping/errors.py` (one catch for every mapper failure).
+- **DD137** table-level keys `entity, auditable, readOnly, crud, defaultSort`; column-level `searchable, sortable, readOnly`; levels disjoint except `readOnly`, a misplaced key raises.
+- **DD138** `aliases`, `required`, `unique`, `source`, `confidence` and every key outside `"profile"` are out: ignored, never validated.
+- **DD139** `entity` is parsed and carried, no mapper behaviour branches on it.
+- **DD140** `defaultSort.attribute` is stored as an unresolved `ElementId`; resolution to a column is deferred.
+- **DD141** profiles are collected up front by `_collect_profiles` (in `generation_metadata` order) before any table work, so the first malformed entry aborts deterministically. STI: only the root class's profile becomes the `Table.profile`; synthetic columns (`id`, `class_type`, FK, join table) never carry one.
+
+Apply notes: within one entry, rules are applied in numeric order 1..12 (first failing rule raises; pinned by a two-fault test). `Table` is not hashable (pre-existing `MappingProxyType` field), so hash assertions target `Table.profile` and `Column`. The manifest half of the output-neutrality test lives in `domain_manifest/tests/` because a guard forbids any other app importing `apps.domain_manifest`.
+
 ## 2026-09-20 — Change archived: Generated project Domain Manifest (`generated-project-domain-manifest`)
 
 `sdd-apply` implemented all 31 tasks in Strict TDD (slice 1: pure builder, serializer, CLI, 87 tests) plus a proven gate step (slice 2). §37 item 16: a deterministic `docs/domain-manifest.json` (schema v1) describing the generated backend (entities, attributes, relationships, enums, CRUD operations, subtypes), derived offline from the `RelationalModel`. Status: archived (PASS WITH WARNINGS, 0 CRITICAL), uncommitted. Evidence: `openspec/changes/archive/2026-09-20-generated-project-domain-manifest/gate-evidence.md` and archive-report.md.
