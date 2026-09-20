@@ -2,7 +2,8 @@
 
 Updated 2026-09-19. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD86; DD75–DD86 are the now-archived compile-check cycle). Older per-cycle detail lives
+DD1–DD91; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
+subclass-naming fix). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 `openspec/specs/` (22 merged capability specs).
 
@@ -15,9 +16,19 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   in `backend/config/settings.py`, one line in `.gitignore`, and
   `openspec/changes/generated-project-compile-check/`). The untracked `.pi/`
   folder is deliberately never committed; run `git status` to check.
-- Active OpenSpec change: `generated-project-compile-check` (apply done, 42/42
-  tasks; **verified PASS WITH WARNINGS, archived; uncommitted**). 26 cycles are archived; the last
-  one is `2026-09-19-generated-project-compile-check`.
+- Last archived OpenSpec change: `spring-generator-inheritance-subclass-naming`
+  (26/26 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived, **not yet committed**).
+  Its edits (source, tests, sample model) are uncommitted in the tree next to the
+  still-uncommitted compile-check work. 27 cycles are archived; the last one is
+  `2026-09-19-spring-generator-inheritance-subclass-naming`.
+- Subclass-naming fix (DD87-DD91): `emit/inheritance_context.py:169` now uses
+  `pascal_case(table.discriminator_values[class_id])`; fixtures use class-name
+  discriminator values; `samples/sample_model.py` uses frozen uuid4-hex class ids.
+  Gate evidence (re-run on the uuid sample): `bash scripts/verify-generated-project.sh`
+  gave `BUILD SUCCESSFUL in 41s`, exit 0, image `gradle:9.7.1-jdk21`; the first run
+  failed with a transient Maven Central TLS handshake error (exit 1) and the
+  immediate rerun passed. Evidence file:
+  `openspec/changes/spring-generator-inheritance-subclass-naming/gate-evidence.md`.
 - Compile gate (manual, compose-based, NOT in pytest, DD85): from the repo root in
   Git Bash run `bash scripts/verify-generated-project.sh`. It generates the sample
   project into the named volume `generated_project` and runs `gradle build` in
@@ -25,7 +36,7 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   `BUILD SUCCESSFUL in 50s`, exit 0, 41 files; evidence file
   `openspec/changes/archive/2026-09-19-generated-project-compile-check/gate-evidence.md`. It leaves
   one stopped `generate-project` container and the named volume by design.
-- Tests: backend 822 (`docker compose exec -T backend pytest -q`; 764 before the compile-check change, +58 in `apps/generation_runner`), Spring generator 317 (`docker compose exec -T backend pytest apps/spring_generator/tests -q`; unchanged), frontend
+- Tests: backend 828 (`docker compose exec -T backend pytest -q`; 822 before the subclass-naming change), Spring generator 322 (`docker compose exec -T backend pytest apps/spring_generator -q`; 317 + 5), `apps/generation_runner` 59 (58 - 2 + 3), frontend
   335 (`cd frontend && npm test`, last run during the config-layer verify; the
   orchestrator and scaffold slices changed no frontend code).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
@@ -108,7 +119,8 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
     `@JoinColumn` on the entity but flat `UUID` fields on the DTOs. For
     supported discriminator-backed Single Table tables, the same entry point
     emits only root/subclass domain entities plus the root repository in
-    hierarchy order; subclass Java names use `pascal_case(class_id)`, the
+    hierarchy order; subclass Java names use
+    `pascal_case(discriminator_values[class_id])` (the UML class name), the
     root remains concrete, and the discriminator is metadata only.
   - `generate_enum_source(enum_type, *, base_package)` → standalone Java enum.
   - `generate_shared_error_sources(*, base_package)` → `errors/
@@ -139,8 +151,8 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
   (`write_sources(sources, target_dir)`, pure, never imports `spring_generator`,
   enforced by `tests/test_writer_decoupling.py`), `domain/` (typed errors, Protocols),
   `cli.py` (`python -m apps.generation_runner.cli --target <dir>`, no
-  `django.setup()`), `runner_image.py`, `samples/sample_model.py` (readable ids,
-  documents the `inheritance_context.py:169` workaround). The compile gate that
+  `django.setup()`), `runner_image.py`, `samples/sample_model.py` (frozen
+  uuid4-hex class ids since the subclass-naming fix; DD81's readable-id workaround is superseded by DD90). The compile gate that
   uses it is `scripts/verify-generated-project.sh` plus the profile-gated
   `generate-project` / `jvm-verify` compose services (see Snapshot). Slice 3
   (boot smoke) is not started.
@@ -169,10 +181,11 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 - Pinned toolchain versions live only in `emit/versions.py`; a test scans
   `emit/**/*.py` and `emit/templates/*.j2` for restated `4.1.1`, `9.7.1` or a
   bare `21`. Do not write them anywhere else.
-- Known defect, own small change (see `NEXT_STEPS.md`):
-  `emit/inheritance_context.py:169` uses `pascal_case(class_id)` for subclass
-  names instead of `discriminator_values[class_id]`, so uuid-based class ids
-  raise `InvalidJavaIdentifierError`.
+- Subclass Java class names come from the UML class name (`discriminator_values`),
+  never from the element id; a discriminator value that is not a legal Java
+  identifier (e.g. `"Sports Car"`) is rejected with `InvalidJavaIdentifierError`
+  (pinned limitation, out of scope to sanitize). Never edit
+  `test_inheritance_backward_compatibility.py` (SHA-256 snapshot).
 - Triple closed-union touch point for any new UML command: `UmlCommand`
   (Python), `CommandIn` (Pydantic), `UmlCommandIn` (TypeScript).
 - The validation registry (`uml_modeling/validation/engine.py` `RULES`,

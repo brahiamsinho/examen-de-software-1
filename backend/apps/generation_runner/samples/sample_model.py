@@ -4,13 +4,12 @@ Mirrors the slice-0 spike: it covers scalar types, an enumeration, a
 many-to-one association, a Single Table hierarchy and an N:M join table, and
 it goes through the real pipeline (`CanonicalUmlModel` -> `map_to_relational`).
 
-Element ids are READABLE strings ("customer", "vehicle", ...) on purpose.
-Known defect, queued as a separate change:
-`apps/spring_generator/emit/inheritance_context.py:169` renders
-`pascal_case(class_id)` as the Java class name of every hierarchy subclass
-where it must read `discriminator_values[class_id]`, so a uuid4 hex id yields
-an invalid Java identifier. Once that line is fixed, switch these ids back to
-`new_id()` and drop this workaround.
+Class ids are frozen uuid4-hex literals, the shape the editor produces via
+`new_id()`. They are literals, not live `new_id()` calls, so the sample stays
+byte-for-byte deterministic across processes (DD90). The hierarchy classes
+(vehicle, car, truck) start with a digit on purpose: such an id is never a
+legal Java identifier, so the compile gate proves that generated class names
+come from the UML class names and never from the element ids.
 
 Glue code: this module may import the generator's inputs; nothing in the
 pure `writer/` and `domain/` packages imports it (DD75).
@@ -29,6 +28,15 @@ from apps.uml_modeling.domain.elements import (
 from apps.uml_modeling.domain.ids import ElementId
 from apps.uml_modeling.domain.model import CanonicalUmlModel
 from apps.uml_modeling.domain.types import EnumerationRef, Multiplicity, PrimitiveType
+
+
+_CUSTOMER_ID = "a3bb189e8bf94b3f9ab1c8f1d2e64a50"
+_PURCHASE_ID = "c9bf9e5745154f4aa8a3b1f6d2e0c7d8"
+_VEHICLE_ID = "1b4e28ba2fa14b2f8d5e6c1a9f3d7e01"
+_CAR_ID = "7c9e6679742540de944be27a4a4b2c11"
+_TRUCK_ID = "0f8fad5bd9cb469fa16570867728950e"
+_PRODUCT_ID = "9d7e1c5a3b2f4e6d8a0b1c2d3e4f5a6b"
+_TAG_ID = "f81d4fae7dec41d0a76500a0c91e6bf6"
 
 
 def _attribute(name: str, attribute_type) -> UmlAttribute:
@@ -61,9 +69,9 @@ def build_sample_model() -> CanonicalUmlModel:
     )
 
     classes = (
-        _class("customer", "Customer", _attribute("fullName", PrimitiveType.STRING)),
+        _class(_CUSTOMER_ID, "Customer", _attribute("fullName", PrimitiveType.STRING)),
         _class(
-            "purchase",
+            _PURCHASE_ID,
             "Purchase",
             _attribute("total", PrimitiveType.DECIMAL),
             _attribute("status", EnumerationRef(status.id)),
@@ -72,11 +80,11 @@ def build_sample_model() -> CanonicalUmlModel:
             _attribute("itemCount", PrimitiveType.INTEGER),
             _attribute("notes", PrimitiveType.TEXT),
         ),
-        _class("vehicle", "Vehicle", _attribute("plate", PrimitiveType.STRING)),
-        _class("car", "Car", _attribute("doors", PrimitiveType.INTEGER)),
-        _class("truck", "Truck", _attribute("payload", PrimitiveType.DECIMAL)),
-        _class("product", "Product", _attribute("title", PrimitiveType.STRING)),
-        _class("tag", "Tag", _attribute("label", PrimitiveType.STRING)),
+        _class(_VEHICLE_ID, "Vehicle", _attribute("plate", PrimitiveType.STRING)),
+        _class(_CAR_ID, "Car", _attribute("doors", PrimitiveType.INTEGER)),
+        _class(_TRUCK_ID, "Truck", _attribute("payload", PrimitiveType.DECIMAL)),
+        _class(_PRODUCT_ID, "Product", _attribute("title", PrimitiveType.STRING)),
+        _class(_TAG_ID, "Tag", _attribute("label", PrimitiveType.STRING)),
     )
 
     relationships = (
@@ -84,28 +92,28 @@ def build_sample_model() -> CanonicalUmlModel:
         _relationship(
             "customer-purchases",
             RelationshipKind.ASSOCIATION,
-            _end("customer", 1, 1),
-            _end("purchase", 0, None),
+            _end(_CUSTOMER_ID, 1, 1),
+            _end(_PURCHASE_ID, 0, None),
         ),
         # Single Table hierarchy: child (source) generalizes to parent (target).
         _relationship(
             "car-is-vehicle",
             RelationshipKind.GENERALIZATION,
-            _end("car", 1, 1),
-            _end("vehicle", 1, 1),
+            _end(_CAR_ID, 1, 1),
+            _end(_VEHICLE_ID, 1, 1),
         ),
         _relationship(
             "truck-is-vehicle",
             RelationshipKind.GENERALIZATION,
-            _end("truck", 1, 1),
-            _end("vehicle", 1, 1),
+            _end(_TRUCK_ID, 1, 1),
+            _end(_VEHICLE_ID, 1, 1),
         ),
         # N:M: both ends many -> join table.
         _relationship(
             "product-tags",
             RelationshipKind.ASSOCIATION,
-            _end("product", 0, None),
-            _end("tag", 0, None),
+            _end(_PRODUCT_ID, 0, None),
+            _end(_TAG_ID, 0, None),
         ),
     )
 

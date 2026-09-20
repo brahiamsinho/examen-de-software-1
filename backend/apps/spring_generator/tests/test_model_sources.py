@@ -45,8 +45,34 @@ def _vehicle_table() -> Table:
         primary_key=PrimaryKey(column_names=("id",), name="pk_vehicle"),
         source_class_ids=("vehicle", "car", "truck"),
         discriminator_column="class_type",
-        discriminator_values={"vehicle": "VEHICLE", "car": "CAR", "truck": "TRUCK"},
+        discriminator_values={"vehicle": "Vehicle", "car": "Car", "truck": "Truck"},
     )
+
+
+def test_uuid_id_hierarchy_emits_subclass_files_named_after_the_uml_class_names():
+    vehicle_id = "1b4e28ba2fa14b2f8d5e6c1a9f3d7e01"
+    car_id = "7c9e6679742540de944be27a4a4b2c11"
+    truck_id = "0f8fad5bd9cb469fa16570867728950e"
+    vehicle = Table(
+        name="vehicle",
+        columns=(
+            Column(name="id", type=ColumnType.UUID, nullable=False),
+            Column(name="class_type", type=ColumnType.VARCHAR, nullable=False),
+            a_column(name="vin", type=ColumnType.VARCHAR, nullable=False, owning_class_id=vehicle_id),
+            a_column(name="door_count", type=ColumnType.INTEGER, nullable=True, owning_class_id=car_id),
+            a_column(name="axle_count", type=ColumnType.INTEGER, nullable=True, owning_class_id=truck_id),
+        ),
+        primary_key=PrimaryKey(column_names=("id",), name="pk_vehicle"),
+        source_class_ids=(vehicle_id, car_id, truck_id),
+        discriminator_column="class_type",
+        discriminator_values={vehicle_id: "Vehicle", car_id: "Car", truck_id: "Truck"},
+    )
+
+    paths = _paths(generate_model_sources(RelationalModel(tables=(vehicle,))))
+
+    assert "src/main/java/com/modelia/generated/domain/Vehicle.java" in paths
+    assert "src/main/java/com/modelia/generated/domain/Car.java" in paths
+    assert "src/main/java/com/modelia/generated/domain/Truck.java" in paths
 
 
 def test_public_api_aggregates_tables_then_enums_then_globals_in_order():

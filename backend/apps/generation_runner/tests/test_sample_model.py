@@ -5,7 +5,6 @@ expected file count is the slice-0 spike oracle (41 files compiled by Gradle).
 """
 import re
 
-from apps.generation_runner.samples import sample_model
 from apps.generation_runner.samples.sample_model import build_sample_model, build_sample_relational_model
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.renderer import generate_project_sources
@@ -83,17 +82,28 @@ def test_relational_model_has_a_single_table_hierarchy_an_enum_and_a_join_table(
     assert len(join_tables) == 1
 
 
-def test_inheritance_class_ids_are_readable_not_uuid_hex():
-    # Workaround for the queued defect: `inheritance_context.py` renders
-    # `pascal_case(class_id)` as a Java class name, which a uuid4 hex id breaks.
+def test_class_ids_are_frozen_uuid_hex_literals():
+    # DD90: the ids look like the ones the editor produces (`new_id()`), but are frozen literals so the
+    # sample stays deterministic across processes.
     model = build_sample_model()
 
     assert model.classes
-    assert all(not UUID_HEX.match(uml_class.id) for uml_class in model.classes)
+    assert all(UUID_HEX.match(uml_class.id) for uml_class in model.classes)
 
 
-def test_module_docstring_names_the_queued_defect_and_the_switch_back():
-    docstring = sample_model.__doc__
+def test_every_hierarchy_class_id_starts_with_a_digit():
+    # A digit-leading id can never be a legal Java identifier, so the compile gate exercises the exact
+    # shape that used to break subclass naming (DD87, DD91).
+    model = build_sample_model()
+    ids_by_name = {uml_class.name: uml_class.id for uml_class in model.classes}
 
-    assert "apps/spring_generator/emit/inheritance_context.py:169" in docstring
-    assert "new_id()" in docstring
+    for hierarchy_class_name in ("Vehicle", "Car", "Truck"):
+        assert ids_by_name[hierarchy_class_name][0].isdigit(), hierarchy_class_name
+
+
+def test_generated_hierarchy_files_are_named_after_the_uml_classes_not_their_ids():
+    paths = [generated_file.path for generated_file in _generate().files]
+    domain = "src/main/java/com/modelia/generated/domain/"
+
+    for class_name in ("Vehicle", "Car", "Truck"):
+        assert domain + class_name + ".java" in paths

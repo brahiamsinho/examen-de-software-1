@@ -1,5 +1,25 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle archived: Inheritance subclass Java class naming (`spring-generator-inheritance-subclass-naming`)
+
+`sdd-archive` composed the delta spec into `openspec/specs/spring-boot-generation/spec.md` (2 MODIFIED requirements + 3 new scenarios, total requirements now 26), moved the change to `openspec/changes/archive/2026-09-19-spring-generator-inheritance-subclass-naming/`, and persisted the archive report to Engram. The verified-state archive confirms all 26 tasks complete, PASS WITH WARNINGS (W1 intentional root-only fixtures, W2 transient TLS flake), 0 CRITICAL, 828 backend tests (6 new), 322 spring_generator tests (5 new), compile gate `BUILD SUCCESSFUL`, inheritance-naming defect fixed, uuid-id sample deterministic. The change is archived but not yet committed.
+
+## 2026-09-19 — Change applied: Inheritance subclass Java class naming (`spring-generator-inheritance-subclass-naming`)
+
+`sdd-apply` implemented all 26 tasks with Strict TDD. The change was later verified and archived (see the entry above); it is not yet committed. It fixes the defect recorded in the compile-check cycle: `emit/inheritance_context.py:169` named every hierarchy subclass `pascal_case(class_id)` (the UML element id), so uuid4-hex ids (10 of 16 start with a digit) raised `InvalidJavaIdentifierError`.
+
+Decisions (DD87-DD91, full rationale in the change `design.md`):
+
+- **DD87** subclass class name is `pascal_case(table.discriminator_values[class_id])`, inline at `:169`; subscript (not `.get`) so a missing value stays a loud `KeyError`; no helper, no schema change. Root naming (`pascal_case(table.name)`) is untouched.
+- **DD88** fixtures adopt verbatim UML class names as discriminator values (`Vehicle/Car/Truck/PickupTruck`), because `mapper.py:275` stores `class_by_id[class_id].name`; screaming-snake values were unreachable fixtures. Emitted file names are unchanged; only `@DiscriminatorValue("CAR")` assertions became `("Car")`.
+- **DD89** discriminating coverage lives in new tests (uuid digit-leading ids, id-independence, `"Sports Car"` rejection pinned), not in the old fixtures, which keep readable ids (with readable ids and class-name values, `pascal_case("car") == pascal_case("Car")`).
+- **DD90** `samples/sample_model.py` uses frozen uuid4-hex class-id literals (vehicle/car/truck digit-leading), not live `new_id()`, to stay deterministic across processes. This supersedes DD81 (readable-id workaround). Only class ids changed.
+- **DD91** the manual compile gate (`bash scripts/verify-generated-project.sh`) is the end-to-end regression evidence over the uuid-id sample.
+
+Evidence: RED (5 new tests failing: 4x `InvalidJavaIdentifierError`, 1x `DID NOT RAISE` for the `"Sports Car"` test) then GREEN after the one-line fix; `test_inheritance_backward_compatibility.py` unmodified and passing. Gate: run 1 exit 1 (transient Maven Central TLS handshake failure), immediate rerun exit 0, `BUILD SUCCESSFUL in 41s`, image `gradle:9.7.1-jdk21`. Totals: backend 828 (822 + 6), `apps/spring_generator` 322 (317 + 5), `apps/generation_runner` 59 (58 - 2 + 3).
+
+Apply-time deviation: `test_rejections.py:59` fixture also needed realigning (found by the tasks phase, listed in task 3.3). Its other root-only `"VEHICLE"` fixtures (lines 146-179) were left as is: they never name a subclass.
+
 ## 2026-09-19 — Cycle archived: Generated project compile check, slice 2 of 3 (`2026-09-19-generated-project-compile-check`)
 
 `sdd-apply` implemented all 42 tasks with Strict TDD for the Python half; the compose/Gradle half is proven by a recorded manual gate run (DD85). `sdd-verify` passed with warnings (0 critical); W2 was fixed in a later commit (CLI now catches `UngeneratableSourceError` and `OSError`; two tests added; final count 822 backend tests, 58 in `apps/generation_runner`). This is §37 item 13 slice 2 of 3: for the first time the generated project is written to disk and compiled. The change is verified and archived but not yet committed. Slice 3 (`generated-project-boot-smoke`) and the `inheritance_context.py:169` bugfix are still queued.

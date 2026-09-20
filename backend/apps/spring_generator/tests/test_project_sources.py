@@ -34,7 +34,29 @@ def _discriminator_table() -> Table:
         primary_key=PrimaryKey(column_names=("id",), name="pk_vehicle"),
         source_class_ids=("vehicle", "car"),
         discriminator_column="class_type",
-        discriminator_values={"vehicle": "VEHICLE", "car": "CAR"},
+        discriminator_values={"vehicle": "Vehicle", "car": "Car"},
+    )
+
+
+def _uuid_hierarchy_table() -> Table:
+    # Digit-leading uuid4-hex element ids, as the editor produces them. Class names must come from
+    # the discriminator values (the UML class names), never from these ids.
+    vehicle_id = "1b4e28ba2fa14b2f8d5e6c1a9f3d7e01"
+    car_id = "7c9e6679742540de944be27a4a4b2c11"
+    truck_id = "0f8fad5bd9cb469fa16570867728950e"
+    return Table(
+        name="vehicle",
+        columns=(
+            Column(name="id", type=ColumnType.UUID, nullable=False),
+            Column(name="class_type", type=ColumnType.VARCHAR, nullable=False),
+            a_column(name="vin", type=ColumnType.VARCHAR, nullable=False, owning_class_id=vehicle_id),
+            a_column(name="door_count", type=ColumnType.INTEGER, nullable=True, owning_class_id=car_id),
+            a_column(name="axle_count", type=ColumnType.INTEGER, nullable=True, owning_class_id=truck_id),
+        ),
+        primary_key=PrimaryKey(column_names=("id",), name="pk_vehicle"),
+        source_class_ids=(vehicle_id, car_id, truck_id),
+        discriminator_column="class_type",
+        discriminator_values={vehicle_id: "Vehicle", car_id: "Car", truck_id: "Truck"},
     )
 
 
@@ -89,6 +111,20 @@ def test_empty_model_yields_errors_then_application_yml_then_the_scaffold():
         "settings.gradle",
         "src/main/java/com/example/generated/Application.java",
     ]
+
+
+def test_uuid_id_hierarchy_emits_subclass_files_named_after_the_uml_class_names():
+    model = RelationalModel(tables=(_uuid_hierarchy_table(),))
+
+    sources = renderer.generate_project_sources(model, base_package=_BASE)
+
+    paths = _paths(sources)
+    root = "src/main/java/com/example/generated/domain/"
+    assert root + "Vehicle.java" in paths
+    assert root + "Car.java" in paths
+    assert root + "Truck.java" in paths
+    assert 'class Car extends Vehicle' in sources.file_by_path(root + "Car.java").contents
+    assert 'class Truck extends Vehicle' in sources.file_by_path(root + "Truck.java").contents
 
 
 def test_scaffold_tail_is_identical_to_the_standalone_scaffold_output():

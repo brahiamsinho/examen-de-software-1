@@ -26,6 +26,14 @@ committed. The relational mapper has the archived
 `relational-column-ownership` prerequisite: attribute-derived columns carry
 `owning_class_id`; non-attribute columns keep `None`.
 
+**Update (verified and archived):** the change
+`spring-generator-inheritance-subclass-naming` is verified (PASS WITH WARNINGS, 0 CRITICAL) and
+archived to `openspec/changes/archive/2026-09-19-spring-generator-inheritance-subclass-naming/`.
+It fixes the former subclass-naming defect (`emit/inheritance_context.py:169` now uses
+`pascal_case(table.discriminator_values[class_id])`), and the compile-check sample
+model uses frozen uuid4-hex class ids. Delta spec is merged into the main
+`openspec/specs/spring-boot-generation/spec.md`. Next: commit (never `.pi/`).
+
 ## Next candidates, in dependency order
 
 1. **Design inheritance API behavior only if requested.** The archived
@@ -60,22 +68,6 @@ committed. The relational mapper has the archived
 6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.
    Resolve first with the user: §25 says "OpenAPI nativo de Django Ninja" but
    §22 mandates springdoc-openapi in the generated stack.
-
-## Known defect, queued as its own small change
-
-`emit/inheritance_context.py:169` names each subclass entity with
-`pascal_case(class_id)` (the UML element id) instead of the UML class name, which
-is available as `discriminator_values[class_id]`. Real class ids are uuid4 hex or
-UUIDs and 10 of 16 start with a digit, so `generate_model_sources` and
-`generate_project_sources` raise `InvalidJavaIdentifierError` on any model whose
-inheritance class ids come from `new_id()`. Every inheritance test passes readable
-ids (`"vehicle"`, `"car"`, `"truck"`), which is why the suite never caught it. It
-also contradicts the archived inheritance spec text. Found in the slice-0 spike
-(worked around there with readable ids). It needs its own small SDD change with a
-uuid-id regression test; it was deliberately **not** fixed in the scaffold change
-nor in `generated-project-compile-check`, whose sample model
-(`apps/generation_runner/samples/sample_model.py`) uses readable ids as a
-documented workaround. When this is fixed, switch that sample to `new_id()`.
 
 ## Explicitly deferred by the user
 

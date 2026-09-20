@@ -56,7 +56,7 @@ def _vehicle_table(
         source_class_ids=("vehicle", "car"),
         discriminator_column="class_type",
         discriminator_values=(
-            {"vehicle": "VEHICLE", "car": "CAR"}
+            {"vehicle": "Vehicle", "car": "Car"}
             if discriminator_values is None
             else discriminator_values
         ),

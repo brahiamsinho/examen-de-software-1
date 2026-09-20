@@ -59,6 +59,24 @@ Still missing: slice 3 boot smoke, the inheritance-naming bugfix. The paragraph 
 generated Java" are superseded only for the manual gate; nothing compiles Java in
 the automated suite.
 
+**Update, same day, inheritance subclass-naming fix VERIFIED and ARCHIVED (not yet committed):**
+change `spring-generator-inheritance-subclass-naming` (26/26 tasks, Strict TDD, verified PASS WITH WARNINGS, 0 CRITICAL). The defect is fixed:
+`emit/inheritance_context.py:169` now names each subclass Java class
+`pascal_case(table.discriminator_values[class_id])` (the UML class name the mapper stores
+verbatim) instead of `pascal_case(class_id)`, so uuid4-hex element ids no longer raise
+`InvalidJavaIdentifierError`; output is id-independent. Fixtures now use class-name discriminator
+values (`Vehicle/Car/Truck/PickupTruck`, `@DiscriminatorValue("Car")`). A discriminator value that is
+not a legal Java identifier (for example `"Sports Car"`) is still rejected with
+`InvalidJavaIdentifierError` (pinned limitation). `apps/generation_runner/samples/sample_model.py` now
+uses frozen uuid4-hex class-id literals (vehicle/car/truck digit-leading) and lost the workaround
+docstring; the manual compile gate re-run over it gave `BUILD SUCCESSFUL in 41s`, exit 0
+(archived to `openspec/changes/archive/2026-09-19-spring-generator-inheritance-subclass-naming/gate-evidence.md`; the first run hit a
+transient Maven Central TLS failure, exit 1, the immediate rerun passed). Tests: backend `828`
+(822 + 6), Spring generator `322` (317 + 5), `apps/generation_runner` `59` (58 - 2 + 3). The SHA-256
+snapshot `test_inheritance_backward_compatibility.py` is unmodified and passing. Archived to
+`openspec/changes/archive/2026-09-19-spring-generator-inheritance-subclass-naming/` with delta spec
+merged into main spec. The previous "Still missing: ... the inheritance-naming bugfix" no longer applies.
+
 What does **not** exist: compilation of any generated Java in the automated suite (§37 item 13 slice 3, boot smoke; slice 2 only has the manual gate above),
 inheritance DTO/service/controller/API behavior, filtering/search, the generated
 `config/` layer, OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,

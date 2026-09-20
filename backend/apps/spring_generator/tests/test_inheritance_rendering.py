@@ -17,7 +17,7 @@ def _vehicle_table(*, discriminator_column: str = "class_type") -> Table:
         primary_key=PrimaryKey(column_names=("id",), name="pk_vehicle"),
         source_class_ids=("vehicle", "car", "truck"),
         discriminator_column=discriminator_column,
-        discriminator_values={"vehicle": "VEHICLE", "car": "CAR", "truck": "TRUCK"},
+        discriminator_values={"vehicle": "Vehicle", "car": "Car", "truck": "Truck"},
     )
 
 
@@ -57,7 +57,7 @@ def test_root_entity_contains_single_table_metadata_and_is_concrete():
     assert '@Table(name = "vehicle")' in vehicle
     assert "@Inheritance(strategy = InheritanceType.SINGLE_TABLE)" in vehicle
     assert '@DiscriminatorColumn(name = "class_type")' in vehicle
-    assert '@DiscriminatorValue("VEHICLE")' in vehicle
+    assert '@DiscriminatorValue("Vehicle")' in vehicle
     assert "public class Vehicle {" in vehicle
     assert "abstract class Vehicle" not in vehicle
 
@@ -79,14 +79,14 @@ def test_subclasses_extend_root_and_partition_fields():
     truck = _contents_by_suffix(sources, "Truck.java")
 
     assert "public class Car extends Vehicle {" in car
-    assert '@DiscriminatorValue("CAR")' in car
+    assert '@DiscriminatorValue("Car")' in car
     assert "private Integer doorCount;" in car
     assert "private UUID id;" not in car
     assert "private String vin;" not in car
     assert "payloadCapacity" not in car
 
     assert "public class Truck extends Vehicle {" in truck
-    assert '@DiscriminatorValue("TRUCK")' in truck
+    assert '@DiscriminatorValue("Truck")' in truck
     assert "private BigDecimal payloadCapacity;" in truck
     assert "doorCount" not in truck
 

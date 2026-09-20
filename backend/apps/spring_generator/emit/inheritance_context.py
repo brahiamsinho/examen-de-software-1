@@ -166,7 +166,7 @@ def build_inheritance_hierarchy_context(table: Table, *, base_package: str) -> I
         subclasses.append(
             InheritanceEntityContext(
                 package="{}.domain".format(base_package),
-                class_name=pascal_case(class_id),
+                class_name=pascal_case(table.discriminator_values[class_id]),
                 table_name=None,
                 extends_class_name=root_class_name,
                 discriminator_column=None,
