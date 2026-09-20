@@ -1,5 +1,32 @@
 # Decisions Log
 
+## 2026-09-19 — Cycle archived: Generated project compile check, slice 2 of 3 (`2026-09-19-generated-project-compile-check`)
+
+`sdd-apply` implemented all 42 tasks with Strict TDD for the Python half; the compose/Gradle half is proven by a recorded manual gate run (DD85). `sdd-verify` passed with warnings (0 critical); W2 was fixed in a later commit (CLI now catches `UngeneratableSourceError` and `OSError`; two tests added; final count 822 backend tests, 58 in `apps/generation_runner`). This is §37 item 13 slice 2 of 3: for the first time the generated project is written to disk and compiled. The change is verified and archived but not yet committed. Slice 3 (`generated-project-boot-smoke`) and the `inheritance_context.py:169` bugfix are still queued.
+
+Decisions (DD75-DD86, full rationale in the change `design.md`):
+
+- **DD75** new app `apps/generation_runner/` splits into a pure part (`domain/`, `writer/`, guarded so it never imports `apps.spring_generator`) and glue (`cli.py`, `runner_image.py`, `samples/`) that may import the generator.
+- **DD76** the writer types its input with `typing.Protocol` (`GeneratedSourcesLike`, `GeneratedFileLike`), not `runtime_checkable`, so there is zero import edge to the generator.
+- **DD77** typed errors: base `GeneratedSourceWriteError` with `InvalidGeneratedPathError`, `DuplicateGeneratedPathError`, `EscapingGeneratedPathError`, `NonEmptyTargetDirectoryError`.
+- **DD78** `write_sources(sources, target_dir)` validates everything before writing, in fixed order: non-empty target, per-file shape, duplicates (exact and case-only), resolved-escape, then write (`newline="\n"`, UTF-8). Atomic pre-write; a mid-write `OSError` is not rolled back (documented).
+- **DD79** CLI `python -m apps.generation_runner.cli --target <dir> [--base-package ...]`, no `django.setup()`, exit 0/1/2, so the one-shot service needs no `backend/.env` or database.
+- **DD80** `runner_image.gradle_runner_image()` builds `gradle:{GRADLE_VERSION}-jdk{JAVA_VERSION}` from `emit/versions.py`; no version literal anywhere else.
+- **DD81** `samples/sample_model.py` uses readable element ids and documents the `inheritance_context.py:169` workaround.
+- **DD82** host script `scripts/verify-generated-project.sh` computes the tag through a one-shot `generate-project` run, exports `GRADLE_IMAGE`, then runs `jvm-verify`.
+- **DD83** two profile-gated compose services (`generate-project`, `jvm-verify`) over named volume `generated_project`; the harness (not the CLI) does `rm -rf /generated/project`, so the writer's non-empty refusal stays a real safety net. Both run as root.
+- **DD84** the container target path lives only in the compose `command`, never in Python.
+- **DD85** Strict TDD covers Python only; the gate is a manual command whose exit code and output are recorded in `openspec/changes/generated-project-compile-check/gate-evidence.md`. No `jvm` pytest marker, no Docker socket.
+- **DD86** `.gitignore` gains `.gradle/` only.
+
+Apply-time deviations from `design.md` (empirical, found by the gate):
+
+1. `${GRADLE_IMAGE:?}` broke every ordinary compose command (`config`, `exec`, `ps`) while the variable was unset, because compose interpolates the whole file. Fallback applied: `image: ${GRADLE_IMAGE:-gradle.invalid/unset:GRADLE_IMAGE-not-set-run-scripts-verify-generated-project.sh}`, which fails at pull time naming `GRADLE_IMAGE`. Negative check 7.2 changed accordingly (pull failure, not an interpolation abort; `generate-project` starts first).
+2. The backend `dev` image ships no source, so `generate-project` failed with `ModuleNotFoundError: No module named 'apps'`. Fix: `generate-project` mounts `./backend:/app:ro`.
+3. Symlink-escape gap: DD78 step 1 refuses any non-empty target, so a pre-existing symlink is unreachable through `write_sources`. Step 4 is tested through the helper directly and an end-to-end test that monkeypatches the `_resolve` seam.
+
+Evidence: gate `bash scripts/verify-generated-project.sh` gave `BUILD SUCCESSFUL in 50s`, exit 0 (orchestrator re-run after archive), image `gradle:9.7.1-jdk21`, 41 files. `docker compose exec -T backend pytest -q` reported 822 passed (764 before + 58 new in `apps/generation_runner`); `apps/spring_generator` still 317 passed. W1 (accepted deviation): compose image uses sentinel default instead of required form (pull-time failure naming GRADLE_IMAGE). W2 (fixed before archive): CLI now catches `(GeneratedSourceWriteError, UngeneratableSourceError, ValueError, OSError)` with two new test cases in `test_cli.py`. No commit or push was performed by verify/archive.
+
 ## 2026-09-19 — Cycle archived: Spring Boot project scaffold, slice 1 of 3 (`2026-09-19-spring-boot-project-scaffold`)
 
 `sdd-apply` implemented all 20 tasks with Strict TDD, single PR (`size:exception`, the user's standing choice; it was applied by the orchestrator from that standing choice, not asked again). `sdd-verify` passed with warnings (no critical); the two code warnings were fixed before archive, so the suite ended at 764 backend tests (685 before the change). This is slice 1 of §37 item 13 ("generated backend compilable"): pure scaffold text only. Nothing writes, compiles or runs; slice 2 (`generated-project-compile-check`) will compile it and slice 3 (`generated-project-boot-smoke`) will boot it against a fresh PostgreSQL. The slice-0 spike proved the shape for real: `gradle build --no-daemon` gave BUILD SUCCESSFUL in 49 s, and the app booted against PostgreSQL 16.

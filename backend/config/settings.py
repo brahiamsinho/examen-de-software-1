@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "apps.uml_modeling",
     "apps.relational_mapping",
     "apps.spring_generator",
+    "apps.generation_runner",
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.users",

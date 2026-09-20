@@ -2,20 +2,30 @@
 
 Updated 2026-09-19. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD74 for the last four generator cycles). Older per-cycle detail lives
+DD1–DD86; DD75–DD86 are the now-archived compile-check cycle). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
-`openspec/specs/` (21 merged capability specs).
+`openspec/specs/` (22 merged capability specs).
 
 ## Snapshot
 
-- Code state: everything up to `c876f79` is committed. The
-  `2026-09-19-spring-boot-project-scaffold` change is verified and archived, and
-  its commit is the one that follows `c876f79` on `main` (check `git log`). The
-  untracked `.pi/` folder is deliberately never committed; run `git status` to
-  check.
-- Active OpenSpec change: none. 25 cycles are archived; the last one is
-  `2026-09-19-spring-boot-project-scaffold`.
-- Tests: backend 764 (`docker compose exec -T backend pytest -q`; it was 685 before the scaffold change), Spring generator 317 (`docker compose exec -T backend pytest apps/spring_generator/tests -q`; it was 238 before), frontend
+- Code state: the last commit is `48456ae` (`feat(spring-generator): generate
+  Gradle project scaffold`). **Uncommitted work in the tree**: the
+  `generated-project-compile-check` change (`backend/apps/generation_runner/`,
+  `scripts/verify-generated-project.sh`, `docker-compose.yml` additions, one line
+  in `backend/config/settings.py`, one line in `.gitignore`, and
+  `openspec/changes/generated-project-compile-check/`). The untracked `.pi/`
+  folder is deliberately never committed; run `git status` to check.
+- Active OpenSpec change: `generated-project-compile-check` (apply done, 42/42
+  tasks; **verified PASS WITH WARNINGS, archived; uncommitted**). 26 cycles are archived; the last
+  one is `2026-09-19-generated-project-compile-check`.
+- Compile gate (manual, compose-based, NOT in pytest, DD85): from the repo root in
+  Git Bash run `bash scripts/verify-generated-project.sh`. It generates the sample
+  project into the named volume `generated_project` and runs `gradle build` in
+  `gradle:9.7.1-jdk21` (tag derived from `emit/versions.py`). Recorded result:
+  `BUILD SUCCESSFUL in 50s`, exit 0, 41 files; evidence file
+  `openspec/changes/archive/2026-09-19-generated-project-compile-check/gate-evidence.md`. It leaves
+  one stopped `generate-project` container and the named volume by design.
+- Tests: backend 822 (`docker compose exec -T backend pytest -q`; 764 before the compile-check change, +58 in `apps/generation_runner`), Spring generator 317 (`docker compose exec -T backend pytest apps/spring_generator/tests -q`; unchanged), frontend
   335 (`cd frontend && npm test`, last run during the config-layer verify; the
   orchestrator and scaffold slices changed no frontend code).
 - If Docker is down on Windows: start Docker Desktop and poll `docker info`
@@ -38,7 +48,7 @@ implementation order. Status against it:
 | 10 Presence | No dedicated archived cycle; not verified as implemented |
 | 11 UML → RelationalModel | Done |
 | 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for non-inheritance tables and domain + root repository for discriminator-backed Single Table tables; see below |
-| 13 Generated backend compilable | **Slice 1 of 3 done** (pure scaffold text: `build.gradle`, `settings.gradle`, `Application.java`); slice 2 compile-check and slice 3 boot-smoke not started, nothing compiles Java yet |
+| 13 Generated backend compilable | **Slice 1 of 3 archived; slice 2 (compile check) verified PASS WITH WARNINGS and archived, uncommitted** (writer + sample model + manual compose Gradle gate, `BUILD SUCCESSFUL`); slice 3 boot-smoke not started |
 | 14 OpenAPI, 15 Postman, 16 Domain Manifest | Not started |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
@@ -57,7 +67,8 @@ spring-boot-generator-application-api-layer, relational-column-ownership,
 2026-09-19-spring-boot-generator-inheritance,
 2026-09-19-spring-boot-generator-config-layer,
 2026-09-19-spring-boot-whole-model-orchestrator,
-2026-09-19-spring-boot-project-scaffold.
+2026-09-19-spring-boot-project-scaffold,
+2026-09-19-generated-project-compile-check.
 
 Fixes done outside an SDD cycle (each logged in `DECISIONS_LOG.md`):
 - `f605592` client-side lock self-expiry (a lock whose release message was
@@ -123,14 +134,23 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
     `generate_model_sources` output followed by those three files, with one
     duplicate-path check over the combined tuple. Both are pure and take the same
     validated `base_package`. The scaffold reproduces a slice-0 spike that
-    compiled (`gradle build`, BUILD SUCCESSFUL) and booted for real, but nothing
-    in the repo compiles it yet (slices 2-3).
+    compiled (`gradle build`, BUILD SUCCESSFUL) and booted for real.
+- `backend/apps/generation_runner/` (new, uncommitted, slice 2): `writer/`
+  (`write_sources(sources, target_dir)`, pure, never imports `spring_generator`,
+  enforced by `tests/test_writer_decoupling.py`), `domain/` (typed errors, Protocols),
+  `cli.py` (`python -m apps.generation_runner.cli --target <dir>`, no
+  `django.setup()`), `runner_image.py`, `samples/sample_model.py` (readable ids,
+  documents the `inheritance_context.py:169` workaround). The compile gate that
+  uses it is `scripts/verify-generated-project.sh` plus the profile-gated
+  `generate-project` / `jvm-verify` compose services (see Snapshot). Slice 3
+  (boot smoke) is not started.
   - Rejected with typed errors (`UngeneratableSourceError` family): non-UUID
     or composite PK, composite FK, malformed/unsupported discriminator-backed
     inheritance metadata, enum column without a type name, illegal identifiers/
     resource paths.
-- Everything is validated as **text only**. No JVM, no Gradle, no
-  compilation anywhere in the repo.
+- The generator itself stays **text only**. Compilation happens only in the
+  manual compose gate (an ephemeral `gradle:9.7.1-jdk21` container); the backend
+  image has no JVM and nothing compiles Java inside `pytest`.
 
 ## Conventions you must not break
 

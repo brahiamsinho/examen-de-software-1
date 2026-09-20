@@ -85,5 +85,48 @@ services:
     ports:
       - "3000:3000"
 
+  # --- Generated-project compile gate (generated-project-compile-check) -----
+  # Both services below are inert unless `--profile jvm-verify` is given, so
+  # plain `docker compose up` and `docker compose exec backend ...` are
+  # unaffected. Driven by scripts/verify-generated-project.sh, which resolves
+  # GRADLE_IMAGE from apps/spring_generator/emit/versions.py (single source
+  # of truth for the Gradle/JDK versions).
+  generate-project:
+    build:
+      context: ./backend
+      target: dev
+    profiles: [jvm-verify]
+    # Skip entrypoint.sh (it waits for Postgres and migrates); the CLI needs
+    # neither a database nor backend/.env.
+    entrypoint: []
+    # The generated tree is root-owned in the named volume; the Gradle
+    # container below also runs as root so it can write build/ into it.
+    user: root
+    volumes:
+      # The dev image ships no source (the backend service bind-mounts it too);
+      # read-only because the CLI only ever writes under /generated.
+      - ./backend:/app:ro
+      - generated_project:/generated
+    # Literal only: the deleted path is a fixed subdirectory of the volume
+    # mountpoint, never interpolated from a variable (DD83, DD84).
+    command: ["sh", "-c", "rm -rf /generated/project && python -m apps.generation_runner.cli --target /generated/project"]
+
+  jvm-verify:
+    # A required-variable form (`${GRADLE_IMAGE:?}`) would make compose abort
+    # every command in this file (even `exec`/`ps`) while GRADLE_IMAGE is
+    # unset, so the default is a sentinel that can never be pulled and names
+    # the variable in the resulting pull error instead.
+    image: ${GRADLE_IMAGE:-gradle.invalid/unset:GRADLE_IMAGE-not-set-run-scripts-verify-generated-project.sh}
+    profiles: [jvm-verify]
+    user: root
+    working_dir: /generated/project
+    volumes:
+      - generated_project:/generated
+    command: ["gradle", "build", "--no-daemon"]
+    depends_on:
+      generate-project:
+        condition: service_completed_successfully
+
 volumes:
   postgres_data:
+  generated_project:

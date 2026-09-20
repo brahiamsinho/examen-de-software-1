@@ -41,7 +41,25 @@ output for a sample model with `gradle build` in `gradle:9.7.1-jdk21`
 (BUILD SUCCESSFUL, 41 files) and booted an equivalent hand-scaffolded project
 against Postgres 16; that is evidence, not an automated check, until slice 2.
 
-What does **not** exist: compilation of any generated Java (§37 item 13, slices 2-3),
+**Update, same day, compile-check change verified (PASS WITH WARNINGS) and archived
+(not yet committed):** §37 item 13 is now at **slice 2 of 3 archived**. New app
+`backend/apps/generation_runner/` writes `GeneratedSources` to disk
+(`write_sources`, path re-validation, non-empty-target refusal, pre-write
+atomicity), with a CLI and a sample model (readable ids as a documented workaround
+for the `emit/inheritance_context.py:169` defect). A manual, compose-based gate,
+`bash scripts/verify-generated-project.sh`, generates the project into a named
+volume and runs `gradle build` in `gradle:9.7.1-jdk21`; recorded result
+`BUILD SUCCESSFUL in 50s`, exit 0, 41 files (evidence in
+`openspec/changes/archive/2026-09-19-generated-project-compile-check/gate-evidence.md`). The gate is
+NOT part of `pytest` (no Docker socket, no `jvm` marker). Verification findings:
+PASS WITH WARNINGS (W1 accepted deviation: sentinel default for GRADLE_IMAGE instead of required form;
+W2 fixed: CLI now catches `(GeneratedSourceWriteError, UngeneratableSourceError, ValueError, OSError)` with two added tests).
+Tests: backend `822` (764 + 58 new in `apps/generation_runner`), Spring generator `317` unchanged.
+Still missing: slice 3 boot smoke, the inheritance-naming bugfix. The paragraph above and the bullet below about "compilation of any
+generated Java" are superseded only for the manual gate; nothing compiles Java in
+the automated suite.
+
+What does **not** exist: compilation of any generated Java in the automated suite (§37 item 13 slice 3, boot smoke; slice 2 only has the manual gate above),
 inheritance DTO/service/controller/API behavior, filtering/search, the generated
 `config/` layer, OpenAPI, Postman, the Domain Manifest, a generated frontend/mobile,
 the assistant, voice, XMI and image → UML. Undo/Redo and Presence (§37 items

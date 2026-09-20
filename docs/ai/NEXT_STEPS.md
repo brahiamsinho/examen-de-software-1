@@ -20,7 +20,9 @@ including `JPA_DDL_AUTO`, no dialect/platform, no Java `config/` classes), and
 `generate_model_sources(...)` aggregation with exact duplicate-path rejection),
 plus the archived `2026-09-19-spring-boot-project-scaffold` (pure
 `build.gradle`/`settings.gradle`/`Application.java` scaffold and
-`generate_project_sources(...)`, §37 item 13 slice 1 of 3). The relational mapper has the archived
+`generate_project_sources(...)`, §37 item 13 slice 1 of 3). Slice 2
+(`generated-project-compile-check`) is verified (PASS WITH WARNINGS) and archived, not yet
+committed. The relational mapper has the archived
 `relational-column-ownership` prerequisite: attribute-derived columns carry
 `owning_class_id`; non-attribute columns keep `None`.
 
@@ -39,20 +41,20 @@ plus the archived `2026-09-19-spring-boot-project-scaffold` (pure
    and need their own SDD cycle.
 4. **Filtering/search** — blocked until the relational schema carries §33
    generation metadata (`searchable`, `sortable`, `crud`, `readOnly`, …).
-5. **§37 item 13, generated backend compilable — slice 1 of 3 done.**
-   `2026-09-19-spring-boot-project-scaffold` added the pure scaffold text
-   (`generate_project_scaffold_sources`, `generate_project_sources`, versions in
-   `emit/versions.py`); nothing compiles Java yet. Remaining, in order:
-   - **Slice 2 `generated-project-compile-check`**: a writer
-     (`write_sources(sources: GeneratedSources, target_dir)` in its own app, no
-     import from `emit/`, re-validating POSIX-relative paths, `newline="\n"`)
-     plus an ephemeral runner (`gradle:9.7.1-jdk21`, reading `GRADLE_VERSION`
-     and the JDK from `emit/versions.py`) that runs `gradle build` on
-     `generate_project_sources(...)` output. Needs new infrastructure (no JVM
-     service or CI exists).
+5. **§37 item 13, generated backend compilable — slice 2 of 3 verified and archived
+   (uncommitted).** Slice 1 (`2026-09-19-spring-boot-project-scaffold`,
+   archived) added the pure scaffold text. Slice 2 `generated-project-compile-check`
+   is verified (PASS WITH WARNINGS) and archived: `apps/generation_runner/` (pure `write_sources`
+   writer, CLI, sample model, image-tag function) plus the manual compose gate.
+   To re-run the gate from the repo root in Git Bash:
+   `bash scripts/verify-generated-project.sh` (expect `BUILD SUCCESSFUL`, exit 0).
+   It is NOT part of `pytest` (DD85). Immediate next actions, in order:
+   - **Commit slice 2** (nothing is committed yet; never commit `.pi/` or `.pi/*`).
+   - W2 was fixed: CLI now catches `(GeneratedSourceWriteError, UngeneratableSourceError, ValueError, OSError)`
+     with two added test cases in `tests/test_cli.py`; final counts: 822 backend tests (58 in `apps/generation_runner`).
    - **Slice 3 `generated-project-boot-smoke`**: boot the compiled app against a
      fresh PostgreSQL and exercise a CRUD endpoint (the slice-0 spike already
-     proved this by hand).
+     proved this by hand). Not started.
    - Also deferred: Gradle wrapper (binary jar, `GeneratedFile.contents` is `str`),
      `.gitignore`, Dockerfile.
 6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.
@@ -70,7 +72,10 @@ inheritance class ids come from `new_id()`. Every inheritance test passes readab
 ids (`"vehicle"`, `"car"`, `"truck"`), which is why the suite never caught it. It
 also contradicts the archived inheritance spec text. Found in the slice-0 spike
 (worked around there with readable ids). It needs its own small SDD change with a
-uuid-id regression test; it was deliberately **not** fixed in the scaffold change.
+uuid-id regression test; it was deliberately **not** fixed in the scaffold change
+nor in `generated-project-compile-check`, whose sample model
+(`apps/generation_runner/samples/sample_model.py`) uses readable ids as a
+documented workaround. When this is fixed, switch that sample to `new_id()`.
 
 ## Explicitly deferred by the user
 

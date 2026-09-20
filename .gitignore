@@ -12,6 +12,7 @@ staticfiles/
 .dart_tool/
 .flutter-plugins*
 build/
+.gradle/
 *.iml
 .idea/
 .vscode/*
