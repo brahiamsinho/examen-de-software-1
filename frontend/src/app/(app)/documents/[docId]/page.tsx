@@ -15,6 +15,7 @@ import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeCo
 import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
 import { RemoveOperationControl } from "@/components/workspace/RemoveOperationControl";
 import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelationshipControl";
+import { GenerationProfilePanel } from "@/components/workspace/GenerationProfilePanel";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { useDocument } from "@/state/document";
 import { activeOrgSlugAtom } from "@/state/organizations";
@@ -175,6 +176,20 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
         <aside className="flex w-full flex-col gap-6 lg:w-96 lg:shrink-0">
           <ValidationPanel lastValidation={lastValidation} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Perfil de generación</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <GenerationProfilePanel
+                classes={document.model.classes}
+                generationMetadata={document.model.generation_metadata}
+                onSubmit={submitCommand}
+                disabled={isSubmitting}
+              />
+            </CardContent>
+          </Card>
 
           <div className="flex flex-col gap-3">
             <h2 className="font-heading text-sm font-semibold text-foreground">Agregar</h2>

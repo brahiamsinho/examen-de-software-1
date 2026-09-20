@@ -99,6 +99,24 @@ describe("lib/uml_documents", () => {
     expect(result).toEqual(commandResult);
   });
 
+  it("submitCommand forwards SetGenerationProfile verbatim as the JSON body", async () => {
+    const commandResult = { revision: 6, validation: { is_valid: true, violations: [] } };
+    vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);
+
+    const command = {
+      type: "SetGenerationProfile" as const,
+      element_id: "c1",
+      profile: { readOnly: true },
+    };
+    const result = await submitCommand("acme", documentFixture.id, command);
+
+    expect(api.apiFetch).toHaveBeenCalledWith(
+      `/api/orgs/acme/documents/${documentFixture.id}/commands`,
+      expect.objectContaining({ method: "POST", json: command }),
+    );
+    expect(result).toEqual(commandResult);
+  });
+
   it("submitCommand forwards RemoveClass verbatim as the JSON body", async () => {
     const commandResult = { revision: 6, validation: { is_valid: true, violations: [] } };
     vi.mocked(api.apiFetch).mockResolvedValueOnce(commandResult);

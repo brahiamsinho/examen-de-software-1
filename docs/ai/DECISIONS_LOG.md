@@ -1,5 +1,19 @@
 # Decisions Log
 
+## 2026-09-20 — Change archived: UML generation profile panel (frontend slice) (`2026-09-20-uml-generation-profile-panel`)
+
+Status: verified and archived, uncommitted. Archive composed five ADDED requirements into `openspec/specs/web-uml-canvas/spec.md` and moved the active change to `openspec/changes/archive/2026-09-20-2026-09-20-uml-generation-profile-panel/`. Tasks were 14/14 complete with no unchecked implementation markers at the final archive gate. Verification recorded PASS_WITH_WARNINGS with 0 blockers and 0 critical findings; `cd frontend && npm test` passed 55 files / 351 tests, the focused lib + panel run passed 39 tests, `cd frontend && npm run lint` passed, and no backend changes were made. The optional `npx tsc --noEmit` warning about a broad test-helper mock type remains recorded as a non-blocking quality warning. No commit or push was performed, and `.pi/` remains excluded.
+
+Decision: archive accepted the warning because native status admitted archive and verification recorded no blockers or critical findings. The canonical merge was non-destructive because the delta contained ADDED requirements only; no REMOVED or MODIFIED requirement blocks were applied.
+
+## 2026-09-20 — Change applied: UML generation profile panel (frontend slice) (`2026-09-20-uml-generation-profile-panel`)
+
+Status: applied, verify pending, uncommitted. This frontend-only slice exposes the existing backend `SetGenerationProfile` command through the UML document sidebar. `UmlCommandIn` gained the exact `{ type: "SetGenerationProfile"; element_id: string; profile: Record<string, unknown> | null }` variant while `submitCommand` stayed unchanged. `GenerationProfilePanel` is presentational: targets are derived from current `classes`, metadata is guarded as untrusted, tri-state controls distinguish unset from false, `crud` maps to `["create", "read", "update", "delete"]` or `[]`, all-unset submits `profile: null`, and `ApiError.detail` is displayed in Spanish UI flow. The sidebar Card title is `Perfil de generación`.
+
+Decision: keep all helpers local to the panel for now (target derivation, record guard, prefill, payload building). No new dependency or custom UI primitive was added; the existing native `Select` component was enough and remains accessible through `Label htmlFor`. A lint finding against synchronous setState in an effect led to a derived-base-values plus local-edits state model instead of an effect-driven prefill reset.
+
+Evidence: focused RED/GREEN runs over lib + panel tests; final `cd frontend && npm test` passed (55 files / 351 tests), and `cd frontend && npm run lint` passed. Scope boundaries held: no backend, persistence, canvas, WebSocket, Flutter/mobile, generated-code, or `defaultSort` changes. Size exception was accepted by the user.
+
 ## 2026-09-20 — Change applied: UML generation profile authoring (DD151-DD159) (`uml-generation-profile-authoring`)
 
 Status: applied, verify pending (31/31 tasks, Strict TDD, uncommitted; the last commit is `cdae44c feat(domain-manifest): emit declared generation profile`). Backend slice 1 of 2: a generation profile can now be authored through the command API (`POST` command `SetGenerationProfile`); the frontend panel is slice 2 (`uml-generation-profile-panel`). Numbers: backend 1107 -> 1184 passed, `apps/uml_commands` 86, `apps/uml_documents` 134, `relational_mapping` + `domain_manifest` + `spring_generator` 588. Authored size ~1208 lines (source ~221, tests ~987, plus docs): **`size:exception` accepted** (standing user choice; tests were not trimmed, design estimated ~525 and the budget 800). Untouched (git diff empty): `frontend/`, `apps/uml_modeling`, `apps/relational_mapping`, `apps/spring_generator`, `apps/domain_manifest`, `docker-compose.yml`, `scripts/`.

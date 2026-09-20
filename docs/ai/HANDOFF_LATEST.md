@@ -1,5 +1,7 @@
 # Handoff — Latest
 
+- **Newest work (2026-09-20, verified and archived, uncommitted):** change `2026-09-20-uml-generation-profile-panel` completed the frontend slice for generation profile authoring. New files: `frontend/src/components/workspace/GenerationProfilePanel.tsx` and its RTL test. Modified: `frontend/src/lib/uml_documents.ts`, `frontend/src/lib/__tests__/uml_documents.test.ts`, and `frontend/src/app/(app)/documents/[docId]/page.tsx`. The panel uses existing native `Select` controls for tri-state values, reads malformed metadata defensively as unset, sends declared-only `SetGenerationProfile` payloads via `submitCommand`, clears with `profile: null`, and maps `crud` true/false to all operations/empty array. Evidence: `cd frontend && npm test` -> 55 files / 351 tests passed; focused run -> 39 tests passed; `cd frontend && npm run lint` passed. Archive composed 5 ADDED requirements into `openspec/specs/web-uml-canvas/spec.md` and moved the change to `openspec/changes/archive/2026-09-20-2026-09-20-uml-generation-profile-panel/`. No backend, persistence, canvas, WebSocket, Flutter/mobile, or `defaultSort` changes. Do not commit `.pi/`.
+
 Updated 2026-09-20. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
 DD1–DD159; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
@@ -10,8 +12,8 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 
 ## Snapshot
 
-- **Newest work (2026-09-20, applied, verify pending, uncommitted):** change `uml-generation-profile-authoring`
-  (DD151-DD159, newest entry of `DECISIONS_LOG.md`), 31/31 tasks, Strict TDD, backend slice 1 of 2. The generation profile is
+- **Previous dependency work (2026-09-20, applied, verify pending, uncommitted):** change `uml-generation-profile-authoring`
+  (DD151-DD159, entry of `DECISIONS_LOG.md`), 31/31 tasks, Strict TDD, backend slice 1 of 2. The generation profile is
   authorable through the command API. New command `SetGenerationProfile(element_id, profile | None)` (tenth command type;
   `commands.py`, `schemas.py` `SetGenerationProfileIn`, `dispatcher.py` last `_HANDLERS` entry) and handler
   `uml_commands/handlers/generation_profile.py` (`set_generation_profile`, `prune_generation_metadata`; owns only the `"profile"` key,
@@ -23,9 +25,7 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   rescoped (persisted-layout scenario now means codec round trip plus `map_to_relational`). Results: backend 1107 -> 1184 passed,
   `apps/uml_commands` 86, `apps/uml_documents` 134; mutants M1-M10, S1-S3 killed and reverted. ~1208 authored lines, `size:exception` accepted.
   Accepted warnings: M8 "outside the lock" is an equivalent mutant single-threaded (only "after apply" is testable); tests 2.9, 3.1, 3.2
-  are characterization tests proven by mutation. `frontend/`, `uml_modeling`, `relational_mapping`, `spring_generator`, `domain_manifest`,
-  `docker-compose.yml`, `scripts/` untouched. Next: `sdd-verify`, archive (merge both MODIFIED requirements and rescoped scenarios), commit (never `.pi/`),
-  then frontend change `uml-generation-profile-panel` ('Perfil de generación' Card in the sidebar, tri-state controls prefilled from `generation_metadata`).
+  are characterization tests proven by mutation. The follow-up frontend panel change is now verified and archived as `2026-09-20-uml-generation-profile-panel`.
 
 - **Previous work (2026-09-20, verified (PASS WITH WARNINGS, 0 critical) and archived, committed as `cdae44c`):** change `manifest-generation-profile`
   (DD142-DD150), 24/24 tasks (11.4 closed at archive), Strict TDD. The Domain Manifest now emits
