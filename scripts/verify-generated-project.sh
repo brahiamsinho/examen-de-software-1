@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Compile gate for the generated Spring project (generated-project-compile-check).
+# Compile + boot gate for the generated Spring project
+# (generated-project-compile-check, generated-project-boot-smoke).
 #
-# Generates the sample project into the named volume `generated_project`, then
-# runs `gradle build` on it inside the Gradle image whose tag is derived from
-# backend/apps/spring_generator/emit/versions.py (no version literal here).
+# Generates the sample project into the named volume `generated_project`, runs
+# `gradle build` on it inside the Gradle image whose tag is derived from
+# backend/apps/spring_generator/emit/versions.py (no version literal here), then
+# boots the jar against a throwaway Postgres and runs one CRUD round-trip
+# (scripts/boot-smoke.sh).
 #
 # Usage (Git Bash, repo root):  bash scripts/verify-generated-project.sh
-# Exit code is Gradle's: 0 means BUILD SUCCESSFUL.
+# Exit 0 means BUILD SUCCESSFUL and the smoke passed. Negative case:
+#   GEN_DB_PASSWORD=wrong bash scripts/verify-generated-project.sh
 set -euo pipefail
 
 # Git Bash rewrites container-looking paths; keep them untouched. All container
@@ -33,4 +37,15 @@ fi
 echo "verify-generated-project: GRADLE_IMAGE=[$GRADLE_IMAGE]"
 export GRADLE_IMAGE
 
+# `run` never stops its dependencies, so gen-db would outlive the gate. Remove
+# only that service (compose-scoped, literal name), never `down`: that would
+# stop the developer's db/redis/backend (DD95). An EXIT trap keeps $?.
+cleanup() {
+  docker compose --profile jvm-verify rm -sfv gen-db >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Two sequential steps (not depends_on) so a Gradle failure keeps its own output
+# and `set -e` stops the gate before the smoke (DD94).
 docker compose --profile jvm-verify run --rm jvm-verify
+docker compose --profile jvm-verify run --rm jvm-boot-smoke

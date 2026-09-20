@@ -127,6 +127,55 @@ services:
       generate-project:
         condition: service_completed_successfully
 
+  # --- Generated-project boot smoke (generated-project-boot-smoke) ----------
+  # Same profile as the compile gate, so both stay inert under plain `up`.
+  # Neither service publishes a port: the JVM is reached over the loopback of
+  # its own container. GEN_DB_* defaults are throwaway values that live only
+  # here (DD93); override them per run, e.g. `GEN_DB_PASSWORD=wrong bash
+  # scripts/verify-generated-project.sh` for the negative case (DD102): the app
+  # gets the wrong password while gen-db keeps GEN_DB_SERVER_PASSWORD.
+  gen-db:
+    image: postgres:16-alpine
+    profiles: [jvm-verify]
+    environment:
+      POSTGRES_DB: ${GEN_DB_NAME:-gensmoke}
+      POSTGRES_USER: ${GEN_DB_USER:-gensmoke}
+      # Deliberately NOT ${GEN_DB_PASSWORD}: that variable belongs to the app
+      # side below, so `GEN_DB_PASSWORD=wrong` creates a real mismatch (DD102).
+      POSTGRES_PASSWORD: ${GEN_DB_SERVER_PASSWORD:-gensmoke}
+    # Each run starts schemaless, so ddl-auto=create-drop proves the generated DDL.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # No depends_on jvm-verify: the script runs the compile and the smoke as two
+  # sequential `run` steps so a Gradle failure keeps its own output (DD94).
+  jvm-boot-smoke:
+    image: ${GRADLE_IMAGE:-gradle.invalid/unset:GRADLE_IMAGE-not-set-run-scripts-verify-generated-project.sh}
+    profiles: [jvm-verify]
+    user: root
+    working_dir: /generated/project
+    volumes:
+      - generated_project:/generated
+      # Read-only harness; invoked through `bash` so the executable bit is irrelevant (DD96).
+      - ./scripts:/scripts:ro
+    # The six names application.yml interpolates without defaults.
+    environment:
+      SPRING_APPLICATION_NAME: generated-backend-smoke
+      SPRING_DATASOURCE_URL: jdbc:postgresql://gen-db:5432/${GEN_DB_NAME:-gensmoke}
+      SPRING_DATASOURCE_USERNAME: ${GEN_DB_USER:-gensmoke}
+      SPRING_DATASOURCE_PASSWORD: ${GEN_DB_PASSWORD:-gensmoke}
+      JPA_DDL_AUTO: create-drop
+      SERVER_PORT: "8080"
+    depends_on:
+      gen-db:
+        condition: service_healthy
+    command: ["bash", "/scripts/boot-smoke.sh"]
+
 volumes:
   postgres_data:
   generated_project:

@@ -9,6 +9,22 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 
 ## Snapshot
 
+- **Newest work (uncommitted; verified PASS WITH WARNINGS and archived at
+  `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`; §37 item 13
+  complete):** change `generated-project-boot-smoke` (18/18 tasks,
+  `size:exception` accepted). It
+  adds `gen-db` and `jvm-boot-smoke` to `docker-compose.yml` (profile
+  `jvm-verify`, no ports), `scripts/boot-smoke.sh`, a second step plus an EXIT
+  cleanup trap in `scripts/verify-generated-project.sh`, and the Docker-free
+  contract test `backend/apps/generation_runner/tests/test_boot_smoke_contract.py`
+  (DD92-DD102). Gate: `bash scripts/verify-generated-project.sh` -> exit 0
+  (`BUILD SUCCESSFUL`, ready in 4-5s, 201/200/204/404); negative
+  `GEN_DB_PASSWORD=wrong bash ...` -> exit 4. Two harness-design findings were
+  fixed forward (separate `GEN_DB_SERVER_PASSWORD` so the negative case can fail;
+  root-cause lines in the failure dump); no generator defect. Tests: backend 836,
+  `apps/generation_runner` 67. Next: commit (never `.pi/`). Deferred: Gradle
+  wrapper, OpenAPI/Postman/Domain Manifest (§37 items 14-16), frontend/mobile
+  generation, actuator/Flyway, names-with-spaces limitation.
 - Code state: the last commit is `48456ae` (`feat(spring-generator): generate
   Gradle project scaffold`). **Uncommitted work in the tree**: the
   `generated-project-compile-check` change (`backend/apps/generation_runner/`,

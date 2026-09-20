@@ -60,9 +60,11 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
    - **Commit slice 2** (nothing is committed yet; never commit `.pi/` or `.pi/*`).
    - W2 was fixed: CLI now catches `(GeneratedSourceWriteError, UngeneratableSourceError, ValueError, OSError)`
      with two added test cases in `tests/test_cli.py`; final counts: 822 backend tests (58 in `apps/generation_runner`).
-   - **Slice 3 `generated-project-boot-smoke`**: boot the compiled app against a
-     fresh PostgreSQL and exercise a CRUD endpoint (the slice-0 spike already
-     proved this by hand). Not started.
+   - **Slice 3 `generated-project-boot-smoke`**: verified (PASS WITH WARNINGS) and
+     archived 2026-09-19 (18/18 tasks); §37 item 13 is now complete. The gate boots
+     the jar against a throwaway Postgres and runs a CRUD round-trip; see
+     `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/gate-evidence.md`.
+     Next: commit (never `.pi/`).
    - Also deferred: Gradle wrapper (binary jar, `GeneratedFile.contents` is `str`),
      `.gitignore`, Dockerfile.
 6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.

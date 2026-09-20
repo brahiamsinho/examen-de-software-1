@@ -7,6 +7,22 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
+**Update 2026-09-19 (change verified PASS WITH WARNINGS and archived at
+`openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`; §37 item 13
+is complete, 3 of 3; the commit is what remains):**
+`generated-project-boot-smoke` (18/18 tasks) is implemented. The
+manual gate `bash scripts/verify-generated-project.sh` now compiles the sample
+project and then boots the jar against a throwaway `gen-db` Postgres
+(`jvm-verify` profile, tmpfs, no published ports) and runs one CRUD round-trip
+on `/api/customers` (201, 200, 204, 404). The negative case
+`GEN_DB_PASSWORD=wrong bash scripts/verify-generated-project.sh` exits 4. New
+files: `scripts/boot-smoke.sh`, `backend/apps/generation_runner/tests/test_boot_smoke_contract.py`
+(8 Docker-free tests pinning what the script hardcodes about the generated app);
+modified: `docker-compose.yml`, `scripts/verify-generated-project.sh`. Tests:
+backend 836, `apps/generation_runner` 67. Generator sources were not touched. The
+gate is manual, not in pytest (DD85, DD101). Evidence:
+`openspec/changes/archive/2026-09-19-generated-project-boot-smoke/gate-evidence.md`.
+
 **As of 2026-09-19** (25 archived SDD cycles, the latest being
 `2026-09-19-spring-boot-project-scaffold`; no open change; backend 764 tests,
 685 before that change): the UML modeling core

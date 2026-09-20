@@ -1,5 +1,25 @@
 # Decisions Log
 
+## 2026-09-19 — Change applied: Generated project boot smoke (`generated-project-boot-smoke`)
+
+`sdd-apply` implemented all 21 tasks (Strict TDD for the one pytest-reachable piece; the compose/bash half is proven by recorded gate runs). Slice 3 of 3 of spec §37 item 13. Not yet verified, archived or committed. The gate `bash scripts/verify-generated-project.sh` now also boots the compiled jar against a throwaway Postgres and runs one CRUD round-trip (201/200/204/404). Evidence: `openspec/changes/generated-project-boot-smoke/gate-evidence.md`.
+
+Decisions (DD92-DD102, full rationale in the change `design.md`):
+
+- **DD92** two services under the existing `jvm-verify` profile (`gen-db`, `jvm-boot-smoke`), no published ports; the JVM is reached over its own container loopback.
+- **DD93** throwaway credentials come from `${GEN_DB_*:-default}` in compose only; `JPA_DDL_AUTO=create-drop`; Postgres data on `tmpfs`. **Amended at apply:** `gen-db` reads `GEN_DB_SERVER_PASSWORD` while the app reads `GEN_DB_PASSWORD`; with one shared variable the negative run changed both sides and passed with exit 0.
+- **DD94** two sequential `run --rm` steps (`jvm-verify`, then `jvm-boot-smoke`), no `depends_on: jvm-verify`, so a Gradle failure keeps its own output.
+- **DD95** cleanup is an `EXIT` trap running `docker compose --profile jvm-verify rm -sfv gen-db`, never `down`.
+- **DD96** `scripts/boot-smoke.sh` is mounted `:ro` and run as `bash /scripts/boot-smoke.sh` (no dependence on the executable bit).
+- **DD97** jar selection globs `build/libs/*.jar`, skips `-plain`, requires exactly one; no version literal in the script.
+- **DD98** readiness polls `GET /api/customers/count` with `kill -0` fail-fast (exit 4) and a timeout (exit 5). **Refined at apply:** the failure dump lists `FATAL`/`Caused by` lines before the tail, because a stack trace hid the root cause.
+- **DD99** one `_http` curl seam plus `assert_status`; typed exit codes 0/2/3/4/5/6. `curl 8.18.0` is present in `gradle:9.7.1-jdk21`, so no fallback was needed.
+- **DD100** the created id is parsed in pure bash and checked against `^[0-9a-fA-F-]{36}$` before reaching any URL.
+- **DD101** the only pytest addition is `apps/generation_runner/tests/test_boot_smoke_contract.py` (8 tests pinning generated literals); `docker-compose.yml` and `scripts/` are unreachable from the test process.
+- **DD102** the negative case is `GEN_DB_PASSWORD=wrong bash scripts/verify-generated-project.sh`; observed exit 4 with `password authentication failed`, no `gen-db` left, no `wrong` in the dump.
+
+Evidence: contract test characterization (passes immediately; two mutations made 2 of 8 tests red, then reverted); gate green three times, `BUILD SUCCESSFUL in 40s`, ready in 4-5s; negative exit 4. Totals: backend 836 (828 + 8), `apps/generation_runner` 67 (59 + 8). No generator source changed; no Maven Central flake occurred this time.
+
 ## 2026-09-19 — Cycle archived: Inheritance subclass Java class naming (`spring-generator-inheritance-subclass-naming`)
 
 `sdd-archive` composed the delta spec into `openspec/specs/spring-boot-generation/spec.md` (2 MODIFIED requirements + 3 new scenarios, total requirements now 26), moved the change to `openspec/changes/archive/2026-09-19-spring-generator-inheritance-subclass-naming/`, and persisted the archive report to Engram. The verified-state archive confirms all 26 tasks complete, PASS WITH WARNINGS (W1 intentional root-only fixtures, W2 transient TLS flake), 0 CRITICAL, 828 backend tests (6 new), 322 spring_generator tests (5 new), compile gate `BUILD SUCCESSFUL`, inheritance-naming defect fixed, uuid-id sample deterministic. The change is archived but not yet committed.
