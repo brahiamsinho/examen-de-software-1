@@ -55,3 +55,7 @@ docker compose --profile jvm-verify run --rm jvm-boot-smoke
 # volume and generate-postman has no depends_on (DD113); a springdoc shape the
 # converter cannot handle fails the gate here.
 docker compose --profile jvm-verify run --rm generate-postman
+# Fourth step: write the Domain Manifest next to the export. It runs last and
+# has no depends_on (DD128); its exit code (1 or 2) is forwarded by set -e, no
+# new exit code is introduced here.
+docker compose --profile jvm-verify run --rm generate-manifest

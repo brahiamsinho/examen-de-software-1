@@ -1,16 +1,18 @@
 # Next Steps
 
-Updated 2026-09-19. For the full picture read `HANDOFF_LATEST.md` first. Spec
+Updated 2026-09-20. For the full picture read `HANDOFF_LATEST.md` first. Spec
 section 37 (`product-04-next-django.md`) fixes the implementation order; items
-1–6, 8, 9 and 11 are done and archived, item 12 is partial.
+1–6, 8, 9, 11, 13, 14 and 15 are done and archived, item 12 is partial, item 16 is applied (verify pending).
 
 ## Where we are
 
-**Update 2026-09-20 (later):** `generated-project-postman-collection` is verified PASS WITH WARNINGS and archived (31/31 tasks, Strict TDD, gate green, backend 900 tests); delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged. Uncommitted, awaits `size:exception` acceptance before commit (authored size about 1246 lines, tests dominate). **Next: Domain Manifest (§37 item 16)**. Optional: import `postman_collection.json` into the Postman application (not done yet).
+**Update 2026-09-20 (latest):** `generated-project-domain-manifest` is verified (PASS WITH WARNINGS, 0 critical) and archived (31/31 tasks, Strict TDD, gate green with a fourth step, negative check exit 1 reverted, backend 987 tests) and uncommitted. `size:exception` accepted for its 811-line slice 1; the split-vs-exception question is asked again at commit time. **Next: commit (never `.pi/`).** After that, real candidates: (1) carry `generation_metadata` through the UML -> RelationalModel mapper so the manifest can gain searchable/sortable/defaultSort/auditable/readOnly/aliases (DD131), and filtering/search in the generated API; (2) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (3) generated frontend (§37 item 17, Flutter plan) driven by the manifest; (4) optional: import `postman_collection.json` into the Postman app.
+
+**Update 2026-09-20 (later):** `generated-project-postman-collection` is verified PASS WITH WARNINGS, archived and committed as `8bb9fd0` (31/31 tasks, Strict TDD, gate green, backend 900 tests); delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged. Optional: import `postman_collection.json` into the Postman application (not done yet).
 
 **Update 2026-09-20:** `generated-project-openapi-springdoc` is verified PASS WITH WARNINGS
 and archived (committed as `a834ca2`). The `/v3/api-docs` document it serves is what the
-Postman change above consumes; the Domain Manifest (§37 item 16) is next.
+Postman change above consumes.
 
 The Spring Boot generator (§37 item 12) has seven archived generator slices, all
 text-only: `spring-boot-generator-core` (entity + repository),
@@ -45,7 +47,7 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
 1. **Design inheritance API behavior only if requested.** The archived
    inheritance slice intentionally stops at JPA Single Table domain entities
    plus the root repository. DTOs, services, controllers, subclass repositories,
-   Java compilation and the Domain Manifest remain future work (OpenAPI and Postman exist at the project level).
+   Java compilation and generation_metadata-based manifest fields remain future work (OpenAPI, Postman and the Domain Manifest exist at the project level).
 2. **Broader generated backend configuration remains deferred.** The bounded
    `application.yml` singleton now exists with six required no-default
    placeholders only; Java `config/` classes, profiles, Docker/runtime
@@ -73,12 +75,12 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
      (committed.)
    - Also deferred: Gradle wrapper (binary jar, `GeneratedFile.contents` is `str`),
      `.gitignore`, Dockerfile.
-6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest.
+6. **§37 items 14–16** — OpenAPI, Postman collection, Domain Manifest (all done; 14, 15 and 16 archived).
    Resolved with the user (see `DECISIONS_LOG.md`): the generated Spring backend uses
    springdoc-openapi (§22 wins over §25); Django Ninja's OpenAPI stays for Modelia's
    own API. Springdoc is in the scaffold (`emit/versions.py`, Boot 4.1.1 confirmed) and the
-   Postman collection is applied (`generated-project-postman-collection`); the Domain
-   Manifest remains.
+   Postman collection is committed (`generated-project-postman-collection`); the Domain
+   Manifest is archived (`generated-project-domain-manifest`, PASS WITH WARNINGS, uncommitted).
 
 ## Explicitly deferred by the user
 

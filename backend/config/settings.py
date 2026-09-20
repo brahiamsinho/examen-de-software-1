@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.spring_generator",
     "apps.generation_runner",
     "apps.postman_export",
+    "apps.domain_manifest",
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.users",

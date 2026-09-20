@@ -194,6 +194,23 @@ services:
     # Literal only, no shell (DD83, DD84, DD113).
     command: ["python", "-m", "apps.postman_export.cli", "--openapi", "/generated/project/docs/openapi.json", "--out-dir", "/generated/project/docs"]
 
+  # Writes docs/domain-manifest.json next to the OpenAPI export and the Postman
+  # files (generated-project-domain-manifest). Same shape as generate-postman:
+  # NO depends_on and NO rm -rf, so it never re-runs the generator or wipes the
+  # volume (DD128). verify-generated-project.sh runs it as the fourth step.
+  generate-manifest:
+    build:
+      context: ./backend
+      target: dev
+    profiles: [jvm-verify]
+    entrypoint: []
+    user: root
+    volumes:
+      - ./backend:/app:ro
+      - generated_project:/generated
+    # Literal only, no shell (DD83, DD84, DD128).
+    command: ["python", "-m", "apps.domain_manifest.cli", "--out-dir", "/generated/project/docs"]
+
 volumes:
   postgres_data:
   generated_project:

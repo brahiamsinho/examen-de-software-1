@@ -7,7 +7,21 @@ claim more progress than actually exists.
 
 ## Where the project actually is
 
-**Update 2026-09-20 (change `generated-project-postman-collection` verified PASS WITH WARNINGS and archived; uncommitted; delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged at archive):** §37 item 15.
+**Update 2026-09-20 (latest; change `generated-project-domain-manifest` archived, verified PASS WITH WARNINGS; uncommitted; delta specs `domain-manifest-export` (new) and `generated-project-verification` (modified) merged into main specs):** §37 item 16.
+The new offline Django app `apps.domain_manifest` (pure `builder/`, `serialize.py`, plain `__main__`
+`cli.py`, DD121-DD127) derives `domain-manifest.json` (schema v1, deterministic: 6 entities,
+1 enum, 5 resource paths; `vehicle` has `resourcePath: null` and no operations, DD126) from the
+sample `RelationalModel`, and a drift guard cross-checks it against the committed `api-docs.json`
+(DD129). Compose service `generate-manifest` (no `depends_on`, DD128) is the fourth step of
+`bash scripts/verify-generated-project.sh`. Gate green (exit 0, `docs/domain-manifest.json`
+12496 bytes present); negative check exit 1, reverted with equal sha1. Only declared or generated
+facts are emitted (DD131): searchable/sortable/defaultSort/auditable/readOnly/aliases wait for the
+mapper to carry `generation_metadata`. Tests: backend 987 (900 + 87 new in `apps/domain_manifest`).
+Slice 1 is 811 authored lines (259 non-test): `size:exception` accepted. Archived to
+`openspec/changes/archive/2026-09-20-generated-project-domain-manifest/`. The Postman change is
+committed as `8bb9fd0`. Evidence: `openspec/changes/generated-project-domain-manifest/gate-evidence.md`.
+
+**Update 2026-09-20 (change `generated-project-postman-collection` verified PASS WITH WARNINGS and archived; committed as `8bb9fd0`; delta specs `postman-collection-export` (new) and `generated-project-verification` (modified) merged at archive):** §37 item 15.
 `scripts/boot-smoke.sh` now exports the real `/v3/api-docs` body to
 `docs/openapi.json` inside the generated project (last statement before `PASS`, new
 exit 8, DD108). The new offline Django app `apps.postman_export` (pure stdlib
@@ -22,8 +36,8 @@ the committed real capture `backend/apps/postman_export/tests/fixtures/api-docs.
 both files written); negative A exit 8 and negative B exit 1, all reverted
 byte-identically. Tests: backend 900 (840 + 60 new in `apps/postman_export`).
 Importing the collection into the Postman application was NOT run. Authored size is
-about 1246 lines (tests dominate): `size:exception` recommended. Domain Manifest
-(item 16) is still pending. Evidence:
+about 1246 lines (tests dominate): `size:exception` recommended. The Domain Manifest
+(item 16) is applied separately (see the update above). Evidence:
 `openspec/changes/generated-project-postman-collection/gate-evidence.md`.
 
 **Update 2026-09-20 (change verified PASS WITH WARNINGS and archived at
@@ -35,8 +49,8 @@ about 1246 lines (tests dominate): `size:exception` recommended. Domain Manifest
 (exit 7 on content mismatch, DD105). Gate `bash scripts/verify-generated-project.sh`
 green (exit 0); negative check exit 7, reverted. springdoc 3.1.1 (built on Boot
 4.1.0) boots green on Boot 4.1.1. Tests: backend 840, `apps/spring_generator`
-325, `apps/generation_runner` 68. Postman and Domain Manifest (items 15-16) are
-still pending. Evidence: `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/gate-evidence.md`.
+325, `apps/generation_runner` 68. (At that time Postman and Domain Manifest, items 15-16, were
+still pending; both have since been applied.) Evidence: `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/gate-evidence.md`.
 
 **Update 2026-09-19 (change verified PASS WITH WARNINGS and archived at
 `openspec/changes/archive/2026-09-19-generated-project-boot-smoke/`; §37 item 13
@@ -125,7 +139,7 @@ snapshot `test_inheritance_backward_compatibility.py` is unmodified and passing.
 merged into main spec. The previous "Still missing: ... the inheritance-naming bugfix" no longer applies.
 
 What does **not** exist: inheritance DTO/service/controller/API behavior, filtering/search, the generated
-`config/` layer, the Domain Manifest, a generated frontend/mobile,
+`config/` layer, generation_metadata-based manifest fields (the Domain Manifest exists but only with declared facts), a generated frontend/mobile,
 the assistant, voice, XMI and image → UML. The generated backend now serves an OpenAPI document
 at runtime via `/v3/api-docs` (springdoc 3.1.1), and the gate exports that document and a Postman
 collection inside the generated project (`docs/openapi.json`, `postman_collection.json`); operationId/tag tuning, id-chained newman-runnable
@@ -541,7 +555,7 @@ cookie fast path exercised by local dev (proposal's Open Question 1 in design.md
   `sdd-verify`/`sdd-archive` are the remaining steps.
 - `UmlCommand`/Command Bus, the Cytoscape canvas, persistence (Django
   ORM), and realtime collaboration are implemented for the UML domain
-  (see Backend/Frontend sections above). The Domain Manifest, the
+  (see Backend/Frontend sections above). The Domain Manifest now exists (see the latest update above); the
   assistant pipeline, and all AI/voice/image/XMI features are **not
   started**.
 - **SDD Cycle (`2026-09-18-spring-boot-generator-core`) is implemented**

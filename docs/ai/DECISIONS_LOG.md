@@ -1,5 +1,30 @@
 # Decisions Log
 
+## 2026-09-20 — Change archived: Generated project Domain Manifest (`generated-project-domain-manifest`)
+
+`sdd-apply` implemented all 31 tasks in Strict TDD (slice 1: pure builder, serializer, CLI, 87 tests) plus a proven gate step (slice 2). §37 item 16: a deterministic `docs/domain-manifest.json` (schema v1) describing the generated backend (entities, attributes, relationships, enums, CRUD operations, subtypes), derived offline from the `RelationalModel`. Status: archived (PASS WITH WARNINGS, 0 CRITICAL), uncommitted. Evidence: `openspec/changes/archive/2026-09-20-generated-project-domain-manifest/gate-evidence.md` and archive-report.md.
+
+- **DD121** new app `apps.domain_manifest` (no models, no migrations): `builder/` (attributes, relationships, entities, manifest), `serialize.py`, `cli.py`, `apps.py`; registered right after `apps.postman_export`. It is not folded into `postman_export` (that would mix OpenAPI conversion with model derivation).
+- **DD122** source of truth is the `RelationalModel` (`sample_model`), not the captured `docs/openapi.json` and not the generated tree. Endpoints are computed, then cross-checked by the drift guard (DD129).
+- **DD123** `builder/` imports `apps.spring_generator.emit.naming` directly; the decoupling guard allowlists exactly that module and rejects any other `apps.spring_generator.*`, Django, `generation_runner` and `postman_export`. The `oneToOne` rule (FK column set equals a unique constraint) is restated locally, not imported from `emit/context`.
+- **DD124** `serialize.py` is duplicated from `postman_export` instead of shared. `cli.py` is glue: it may import only `apps.generation_runner.samples.sample_model`, never calls `django.setup()`.
+- **DD125** schema v1: fixed key set per object (`null`, never an omitted key), neutral type names from a closed `ColumnType` map, entities/enums/subtypes/unique constraints sorted by name, relationships by `field`, attributes in table-column order, six CRUD operations in the controller order. FK attributes keep the `Id` suffix; the discriminator column is excluded.
+- **DD126** `resourcePath` is `null` iff `operations` is `[]`; this holds exactly for inheritance tables (`vehicle`), which the generator emits as entities + repository only. Real sample: 6 entities, 5 resources, no `/api/vehicles`.
+- **DD127** determinism: `json.dumps(indent=2, sort_keys=True, ensure_ascii=False) + "\n"`, written with `newline="\n"`; no ids, timestamps or set iteration; fixed filename `domain-manifest.json`.
+- **DD128** compose service `generate-manifest` mirrors `generate-postman`: profile `jvm-verify`, `entrypoint: []`, `user: root`, `./backend:/app:ro` + `generated_project:/generated`, no `depends_on`, no `rm -rf`, literal command array; gate step 4 after `generate-postman`, no new exit code (forwards the CLI 1 or 2 under `set -euo pipefail`).
+- **DD129** drift guard: the resource paths and `operations[].path` of the manifest must equal the `paths` keys of the committed `postman_export/tests/fixtures/api-docs.json` in both directions (read-only). Mutation-checked (`/count` renamed: 6 failures, reverted).
+- **DD130** pytest proves builder + CLI only (never reads `scripts/` or `docker-compose.yml`, DD101/DD120); the compose/script half is proven by the gate (exit 0, `domain-manifest.json` 12496 bytes) and one negative check (`--out-dir` under `docs/openapi.json`: CLI `error: [Errno 20]`, exit 1, gate exit 1; reverted with equal sha1).
+- **DD131** only declared or generated facts are emitted: no `searchable`, `sortable`, `defaultSort`, `auditable`, `readOnly`, `aliases`, no `generation_metadata`. Section 33 split note: the UML metamodel (§33 UML side) carries classes/attributes/relationships, whereas those flags belong to the project's own profile (`generation_metadata`), which the mapper does not carry yet. Follow-up: the mapper must carry `generation_metadata` before these fields can exist; emitting them with defaults would be indistinguishable from real intent.
+
+Deviations found during apply (no DD132+ was needed; task 1.2 found no contradiction: the read operation is `findById` in the design and the spec was aligned):
+
+- Naming errors (`InvalidJavaIdentifierError`, `InvalidResourcePathError`) extend `Exception`, not `ValueError`; `builder/manifest.py` imports them through `emit.naming` (allowlisted path) and wraps them in `ManifestError(ValueError)`. The CLI catches `(ValueError, OSError)` and builds the manifest before `mkdir`, so nothing is written on rejection.
+- The type map is keyed on the `ColumnType` member name (string), so the builder imports no `relational_mapping` module.
+- Guard scope rule: the AST guard covers `builder/**` and `serialize.py`; `cli.py` is checked separately (only the sample-model import allowed).
+- Entities are sorted by `name` (so `Customer` first), not by table order.
+
+Totals: backend 987 (900 + 87 in `apps/domain_manifest`). Authored size 811 lines in slice 1 (259 non-test, 552 tests) plus slice 2 (compose 17, script 4, docs, evidence): `size:exception` accepted by the orchestrator decision; split-vs-exception is asked again at commit time.
+
 ## 2026-09-20 — Change archived: Generated project Postman collection (`generated-project-postman-collection`)
 
 `sdd-apply` implemented all 31 tasks in Strict TDD (converter + CLI); the compose/script half is proven by recorded gate runs (DD101). §37 item 15: the smoke exports the real `/v3/api-docs` body and a new offline app `apps.postman_export` turns it into a Postman Collection v2.1.0 plus an environment file, as a third gate step. Status: verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted

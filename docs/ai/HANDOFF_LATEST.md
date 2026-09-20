@@ -2,15 +2,27 @@
 
 Updated 2026-09-20. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD120; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
+DD1–DD131; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
 subclass-naming fix, DD103–DD107 the archived springdoc-openapi cycle, DD108–DD120 the archived
-Postman-collection change). Older per-cycle detail lives
+Postman-collection change, DD121–DD131 the archived Domain Manifest change). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
-`openspec/specs/` (24 merged capability specs).
+`openspec/specs/` (24 merged capability specs, including new domain-manifest-export).
 
 ## Snapshot
 
-- **Newest work (2026-09-20, uncommitted; 31/31 tasks, verified PASS WITH WARNINGS and archived; §37 item 15):**
+- **Latest work (2026-09-20, archived; 31/31 tasks, verified PASS WITH WARNINGS; §37 item 16):**
+  change `generated-project-domain-manifest` (DD121-DD131). Touched: new app
+  `backend/apps/domain_manifest/` (pure `builder/`, `serialize.py`, `cli.py`, 87 tests),
+  `backend/config/settings.py` (INSTALLED_APPS), `docker-compose.yml` (`generate-manifest`),
+  `scripts/verify-generated-project.sh` (fourth step). Gate green (exit 0,
+  `docs/domain-manifest.json` 12496 bytes: 6 entities, 5 resources, `vehicle` resourcePath null);
+  negative check exit 1 reverted (equal sha1); default compose services unchanged. Tests: backend
+  987 (900 + 87). Slice 1 is 811 authored lines: `size:exception` accepted (split-vs-exception is
+  asked again at commit time). Follow-up: the mapper must carry `generation_metadata` before
+  searchable/sortable/defaultSort/auditable/readOnly/aliases can exist (DD131). Delta specs
+  `domain-manifest-export` (new) and `generated-project-verification` (modified) merged into main specs.
+  Archived to `openspec/changes/archive/2026-09-20-generated-project-domain-manifest/`. Next: commit, then mapper (generation_metadata).
+- **Previous work (2026-09-20, committed as `8bb9fd0`; verified PASS WITH WARNINGS and archived; §37 item 15):**
   change `generated-project-postman-collection` (DD108-DD120). Touched:
   `scripts/boot-smoke.sh` (export to `docs/openapi.json`, exit 8),
   `scripts/verify-generated-project.sh` (third step), `docker-compose.yml`
@@ -21,8 +33,7 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   Tests: backend 900 (840 + 60). Postman import into the app was not run. About 1220
   authored lines: `size:exception` recommended. Delta specs
   `postman-collection-export` (new) and `generated-project-verification` (modified)
-  merge at archive. Next: `sdd-verify`, then commit (never `.pi/`), then the Domain
-  Manifest (§37 item 16).
+  merged at archive.
 - **Previous work (2026-09-20, committed as `a834ca2`; verified PASS WITH WARNINGS and archived at
   `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`; §37 item 14
   part 1 complete):** change `generated-project-openapi-springdoc` (DD103-DD107).
@@ -45,15 +56,15 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   `apps/generation_runner` 67. Deferred: Gradle
   wrapper, Postman/Domain Manifest, frontend/mobile
   generation, actuator/Flyway, names-with-spaces limitation.
-- Code state: the last commit is `a834ca2` (`feat(spring-generator): add springdoc OpenAPI to generated project`).
+- Code state: the last commit is `8bb9fd0` (`feat(postman-export): generate Postman collection from generated project OpenAPI`).
   **Uncommitted work in the tree**: the
-  `generated-project-postman-collection` change (applied, not yet verified or archived). The untracked `.pi/`
+  `generated-project-domain-manifest` change (verified PASS WITH WARNINGS and archived, not yet committed). The untracked `.pi/`
   folder is deliberately never committed; run `git status` to check.
-- Last archived OpenSpec change: `generated-project-openapi-springdoc`
-  (22/22 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
-  `openspec/changes/archive/2026-09-20-generated-project-openapi-springdoc/`).
-  28 cycles are archived; the last one is
-  `2026-09-20-generated-project-openapi-springdoc`.
+- Last archived OpenSpec change: `generated-project-domain-manifest`
+  (31/31 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
+  `openspec/changes/archive/2026-09-20-generated-project-domain-manifest/`).
+  31 cycles are archived; the last one is
+  `2026-09-20-generated-project-domain-manifest`.
 - Subclass-naming fix (DD87-DD91): `emit/inheritance_context.py:169` now uses
   `pascal_case(table.discriminator_values[class_id])`; fixtures use class-name
   discriminator values; `samples/sample_model.py` uses frozen uuid4-hex class ids.
@@ -94,8 +105,8 @@ implementation order. Status against it:
 | 12 Spring Boot backend generator | **Partial** — `domain/`, `persistence/`, `application/`, `api/`, `errors/` for non-inheritance tables and domain + root repository for discriminator-backed Single Table tables; see below |
 | 13 Generated backend compilable | **Done** — all 3 slices archived (scaffold text, compile check, boot-smoke; manual gate evidence `BUILD SUCCESSFUL`) |
 | 14 OpenAPI | **Done (part 1)** — generated backend serves `/v3/api-docs` via springdoc 3.1.1 (verified, committed `a834ca2`) |
-| 15 Postman | **Applied, verify pending** — `apps.postman_export` + third gate step (DD108-DD120); uncommitted |
-| 16 Domain Manifest | Not started |
+| 15 Postman | **Done** — `apps.postman_export` + third gate step (DD108-DD120); verified and committed `8bb9fd0` |
+| 16 Domain Manifest | **Done (verified and archived; uncommitted)** — `apps.domain_manifest` + fourth gate step (DD121-DD131) |
 | 17–26 frontend generator, assistant, voice, Android, XMI, image→UML | Not started |
 
 ## Archived cycles (chronological)
@@ -250,7 +261,7 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
 
 1. **Inheritance API behavior remains deferred.** The domain + root repository
    Single Table slice is applied, but inheritance DTOs, services, controllers,
-   subclass repositories and Domain Manifest behavior remain out of scope for future cycles
+   subclass repositories and generation_metadata-based manifest fields remain out of scope for future cycles
    (Java compilation, OpenAPI and Postman exist at the generated-project level).
 2. Filtering/search: waits for §33 generation metadata (`searchable`,
    `sortable`, …), which the schema does not have.
@@ -259,14 +270,14 @@ CanonicalUmlModel --map_to_relational()--> RelationalModel --spring_generator-->
    but these relationship-navigation behaviors still need their own design and
    generation rules.
 4. Broader generated backend config remains deferred: the YAML singleton exists, but Java `config/` classes, profiles, runtime scaffolding, and orchestration do not.
-5. Item 16 (Domain Manifest) remains (items 13, 14 and 15 are done or applied; see the table above).
+5. Item 16 (Domain Manifest) is applied and awaits verify; items 13, 14 and 15 are done (see the table above).
    The §25 vs §22 contradiction was resolved in favor of springdoc-openapi (see
    `DECISIONS_LOG.md`, 2026-09-19).
 
 ## How to resume
 
 1. `docker compose up -d`, then `docker compose exec -T backend pytest -q`
-   should report 900 passed (840 before the Postman change) before you change
+   should report 987 passed (900 before the Domain Manifest change) before you change
    anything.
 2. Work through SDD (hybrid store: `openspec/` + Engram, Strict TDD):
    explore → propose → spec/design → tasks → apply → verify → archive →
