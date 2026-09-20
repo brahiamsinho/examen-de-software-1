@@ -5,10 +5,17 @@ from types import SimpleNamespace
 
 import pytest
 from apps.domain_manifest.builder import ManifestError, build_manifest
-from apps.domain_manifest.builder.entities import build_entity
+from apps.domain_manifest.builder.entities import _OPERATIONS, _operations, build_entity
 from apps.domain_manifest.serialize import to_json_text
 from apps.generation_runner.samples.sample_model import build_sample_relational_model
-from apps.relational_mapping.domain.profile import ColumnProfile, CrudOperation, DefaultSort, SortDirection, TableProfile
+from apps.relational_mapping.domain.profile import (
+    OPERATION_NAMES,
+    ColumnProfile,
+    CrudOperation,
+    DefaultSort,
+    SortDirection,
+    TableProfile,
+)
 from apps.relational_mapping.domain.schema import Column, EnumType, PrimaryKey, RelationalModel, Table
 from apps.relational_mapping.domain.types import ColumnType
 
@@ -279,15 +286,131 @@ def test_the_schema_version_stays_one_when_profiles_are_declared():
     assert isinstance(manifest["entities"], list) and isinstance(manifest["enums"], list)
 
 
-def test_declaring_crud_does_not_filter_the_operations():
+def _operation_rows(entity):
+    return [(op["name"], op["method"], op["path"], op["successStatus"]) for op in entity["operations"]]
+
+
+def _expected_rows(*names):
+    return [
+        (name, method, "/api/purchases" + suffix, status) for name, method, suffix, status in OPERATIONS if name in names
+    ]
+
+
+def test_declaring_crud_restricts_the_operations():
     table = _profiled_table(TableProfile(crud=(CrudOperation.READ,)), Column("total", ColumnType.NUMERIC))
 
     entity = build_entity(table)
 
     assert entity["profile"]["crud"] == ["read"]
-    assert [(op["name"], op["method"], op["path"], op["successStatus"]) for op in entity["operations"]] == [
-        (name, method, "/api/purchases" + suffix, status) for name, method, suffix, status in OPERATIONS
-    ]
+    assert _operation_rows(entity) == _expected_rows("findById", "list", "count")
+
+
+@pytest.mark.parametrize(
+    ("crud", "names"),
+    [
+        ((CrudOperation.CREATE,), ("create",)),
+        ((CrudOperation.UPDATE,), ("update",)),
+        ((CrudOperation.DELETE,), ("delete",)),
+        ((CrudOperation.CREATE, CrudOperation.READ), ("create", "findById", "list", "count")),
+        ((CrudOperation.UPDATE, CrudOperation.DELETE), ("update", "delete")),
+        ((CrudOperation.DELETE, CrudOperation.CREATE, CrudOperation.READ), ("create", "findById", "delete", "list", "count")),
+    ],
+)
+def test_crud_subsets_keep_the_canonical_operation_order(crud, names):
+    entity = build_entity(_profiled_table(TableProfile(crud=crud)))
+
+    assert _operation_rows(entity) == _expected_rows(*names)
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        TableProfile(crud=()),
+        TableProfile(read_only=True, crud=(CrudOperation.CREATE,)),
+    ],
+)
+def test_an_empty_effective_set_drops_the_controller_and_the_resource_path(profile):
+    entity = build_entity(_profiled_table(profile))
+
+    assert entity["operations"] == []
+    assert entity["resourcePath"] is None
+    assert (entity["resourcePath"] is None) == (entity["operations"] == [])
+
+
+def test_declared_crud_and_read_only_are_still_emitted_verbatim_when_nothing_is_left():
+    entity = build_entity(_profiled_table(TableProfile(crud=(), read_only=True)))
+
+    assert entity["profile"] == {"crud": [], "readOnly": True}
+    assert entity["operations"] == []
+    assert entity["resourcePath"] is None
+
+
+@pytest.mark.parametrize("read_only", [None, False])
+def test_a_declared_crud_decides_alone_when_read_only_is_not_true(read_only):
+    profile = TableProfile(read_only=read_only, crud=(CrudOperation.CREATE, CrudOperation.UPDATE))
+
+    assert _operation_rows(build_entity(_profiled_table(profile))) == _expected_rows("create", "update")
+
+
+def test_read_only_keeps_only_the_read_operations():
+    entity = build_entity(_profiled_table(TableProfile(read_only=True)))
+
+    assert _operation_rows(entity) == _expected_rows("findById", "list", "count")
+    assert entity["resourcePath"] == "/api/purchases"
+
+
+def test_read_only_intersects_the_declared_crud():
+    profile = TableProfile(read_only=True, crud=(CrudOperation.CREATE, CrudOperation.READ))
+
+    assert _operation_rows(build_entity(_profiled_table(profile))) == _expected_rows("findById", "list", "count")
+
+
+@pytest.mark.parametrize("read_only", [None, False])
+def test_read_only_false_or_unset_does_not_restrict(read_only):
+    entity = build_entity(_profiled_table(TableProfile(read_only=read_only)))
+
+    assert _operation_rows(entity) == _expected_rows(*(name for name, *_ in OPERATIONS))
+
+
+def test_an_undeclared_crud_still_yields_the_six_ordered_operations():
+    entity = build_entity(_profiled_table(TableProfile(auditable=True)))
+
+    assert _operation_rows(entity) == _expected_rows(*(name for name, *_ in OPERATIONS))
+    assert entity["resourcePath"] == "/api/purchases"
+
+
+@pytest.mark.parametrize("crud", [(), (CrudOperation.READ,)])
+def test_an_invalid_table_name_is_still_rejected_whatever_the_effective_set(crud):
+    table = _profiled_table(TableProfile(crud=crud), name="bad$name")
+
+    with pytest.raises(ManifestError):
+        build_manifest(RelationalModel(tables=(table,)))
+
+
+def test_an_inheritance_table_with_an_empty_effective_set_is_not_newly_validated():
+    # An inheritance table never computes a path segment, so a name the resource path
+    # cannot express ("_order" is a legal Java name, an invalid path) stays accepted.
+    table = _profiled_table(
+        TableProfile(crud=()),
+        name="_order",
+        discriminator_column="class_type",
+        discriminator_values={"c-a": "A", "c-b": "B"},
+        source_class_ids=("c-a", "c-b"),
+    )
+
+    entity = build_entity(table)
+
+    assert entity["operations"] == [] and entity["resourcePath"] is None
+
+
+def test_the_row_filter_orders_by_the_controller_table_whatever_the_caller_passes():
+    rows = _operations("/api/purchases", ("count", "create", "delete"))
+
+    assert [row["name"] for row in rows] == ["create", "delete", "count"]
+
+
+def test_the_manifest_operation_table_mirrors_the_shared_operation_names():
+    assert tuple(name for name, *_ in _OPERATIONS) == OPERATION_NAMES
 
 
 def test_a_profile_carrying_model_serializes_to_identical_bytes_without_an_id_key():

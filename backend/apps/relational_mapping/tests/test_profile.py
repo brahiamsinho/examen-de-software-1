@@ -11,8 +11,10 @@ from apps.relational_mapping.domain.profile import (
     ColumnProfile,
     CrudOperation,
     DefaultSort,
+    OPERATION_NAMES,
     SortDirection,
     TableProfile,
+    effective_operations,
 )
 from apps.relational_mapping.domain import profile as profile_module
 from apps.relational_mapping.mapping import profile_parser
@@ -66,6 +68,53 @@ def test_different_table_profiles_are_not_equal():
 def test_enum_values():
     assert [direction.value for direction in SortDirection] == ["asc", "desc"]
     assert [operation.value for operation in CrudOperation] == ["create", "read", "update", "delete"]
+
+
+ALL_SIX = ("create", "findById", "update", "delete", "list", "count")
+READS = ("findById", "list", "count")
+C, R, U, D = CrudOperation.CREATE, CrudOperation.READ, CrudOperation.UPDATE, CrudOperation.DELETE
+
+
+def test_operation_names_are_the_six_controller_names_in_controller_order():
+    assert OPERATION_NAMES == ALL_SIX
+    assert type(OPERATION_NAMES) is tuple
+
+
+# DD161 truth table: (crud, expected when read_only is None/False, expected when read_only is True).
+_TRUTH_TABLE = [
+    (None, ALL_SIX, READS),
+    ((), (), ()),
+    ((C,), ("create",), ()),
+    ((R,), READS, READS),
+    ((U,), ("update",), ()),
+    ((D,), ("delete",), ()),
+    ((C, R), ("create", "findById", "list", "count"), READS),
+    ((C, U, D), ("create", "update", "delete"), ()),
+    ((C, R, U, D), ALL_SIX, READS),
+]
+
+
+@pytest.mark.parametrize(("crud", "open_expected", "read_only_expected"), _TRUTH_TABLE)
+@pytest.mark.parametrize("read_only", [None, False])
+def test_effective_operations_for_a_writable_or_unspecified_profile(crud, open_expected, read_only_expected, read_only):
+    assert effective_operations(TableProfile(crud=crud, read_only=read_only)) == open_expected
+
+
+@pytest.mark.parametrize(("crud", "open_expected", "read_only_expected"), _TRUTH_TABLE)
+def test_effective_operations_for_a_read_only_profile(crud, open_expected, read_only_expected):
+    assert effective_operations(TableProfile(crud=crud, read_only=True)) == read_only_expected
+
+
+def test_an_absent_profile_and_an_empty_profile_are_identical():
+    assert effective_operations(None) == effective_operations(TableProfile()) == ALL_SIX
+
+
+def test_the_result_is_a_canonical_deterministic_tuple_of_plain_strings():
+    declared = effective_operations(TableProfile(crud=(D, C, R)))
+
+    assert declared == effective_operations(TableProfile(crud=(C, R, D))) == ("create", "findById", "delete", "list", "count")
+    assert declared == effective_operations(TableProfile(crud=(D, C, R)))
+    assert type(declared) is tuple and all(type(name) is str for name in declared)
 
 
 _FORBIDDEN_IMPORT_PREFIXES = ("django", "psycopg", "sqlite3", "MySQLdb", "java", "org.springframework")

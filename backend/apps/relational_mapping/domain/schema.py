@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from apps.relational_mapping.domain.profile import ColumnProfile, TableProfile
+from apps.relational_mapping.domain.profile import ColumnProfile, TableProfile, effective_operations
 from apps.relational_mapping.domain.types import ColumnType, ReferentialAction
 from apps.uml_modeling.domain.ids import ElementId
 
@@ -78,6 +78,10 @@ class Table:
     discriminator_column: str | None = None
     discriminator_values: Mapping[ElementId, str] = EMPTY
     profile: TableProfile | None = None
+
+    @property
+    def effective_operations(self) -> tuple[str, ...]:
+        return effective_operations(self.profile)
 
     def column_by_name(self, name: str) -> Column | None:
         for column in self.columns:

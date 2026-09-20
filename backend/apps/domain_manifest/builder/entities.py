@@ -26,12 +26,13 @@ def _subtypes(table) -> list[dict]:
     return sorted(({"name": pascal_case(value), "discriminatorValue": value} for value in values), key=lambda subtype: subtype["name"])
 
 
-def _operations(resource_path: str | None) -> list[dict]:
+def _operations(resource_path: str | None, names: tuple[str, ...]) -> list[dict]:
     if resource_path is None:
         return []
     return [
         {"name": name, "method": method, "path": resource_path + suffix, "successStatus": status}
         for name, method, suffix, status in _OPERATIONS
+        if name in names
     ]
 
 
@@ -52,15 +53,19 @@ def _resolver(table):
 
 
 def build_entity(table) -> dict:
+    operations = table.effective_operations
     # Inheritance tables render as entity + repository only: no controller, so no resource path (DD126).
+    # An empty effective set has the same shape (DD163); the segment is still computed first so a bad name fails as before.
     resource_path = None if _has_inheritance(table) else "/api/" + resource_path_segment(table.name)
+    if not operations:
+        resource_path = None
     entity = {
         "name": pascal_case(table.name),
         "table": table.name,
         "resourcePath": resource_path,
         "discriminatorColumn": table.discriminator_column,
         "subtypes": _subtypes(table) if _has_inheritance(table) else [],
-        "operations": _operations(resource_path),
+        "operations": _operations(resource_path, operations),
         "attributes": build_attributes(table),
         "relationships": build_relationships(table),
         "uniqueConstraints": [

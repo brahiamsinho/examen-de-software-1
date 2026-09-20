@@ -1,20 +1,22 @@
 # Handoff — Latest
 
-- **Newest work (2026-09-20, applied, verify pending, uncommitted):** change `2026-09-20-generated-spring-api-filtering-search` completed the Spring generator filtering/search slice. The generator now derives searchable filters, sortable allow-lists, and default sort from `Table.profile` / `Column.profile`; emits one `application/<Entity>Specifications.java` for searchable non-inheritance tables; conditionally extends repositories with `JpaSpecificationExecutor`; adds optional Java-field-name controller query params; validates sort with HTTP 400 via generated `IllegalArgumentException` handling; applies default sort only for unsorted `Pageable`; and preserves no-profile / false-unset profile output byte-identically. Evidence: RED focused run failed on missing `build_specification_context`, then focused GREEN `68 passed`; `apps/spring_generator` `354 passed`; Docker backend `1214 passed`; frontend strict command `55 files / 351 tests` passed. Size exception accepted; no commit or push. `.pi/` remains excluded.
+- **Newest work (2026-09-20, verified PASS WITH WARNINGS 0 critical and archived, uncommitted):** change `crud-restricts-operations` (DD160-DD167, 24/24 tasks, 9.1 closed at archive, Strict TDD, ~570 authored lines, no `size:exception`; slice 1 of 2 of the DD147 debt). The declared table `crud` / `readOnly` now restrict `operations[]` in the Domain Manifest. Files: `apps/relational_mapping/domain/profile.py` (`OPERATION_NAMES`, pure `effective_operations(profile)`), `domain/schema.py` (non-field `Table.effective_operations` property), `apps/domain_manifest/builder/entities.py` (filters `_OPERATIONS` in declared order; `resourcePath` is `null` iff the effective set is empty, computed before suppression so bad names still fail) plus tests in `test_profile.py`, `test_schema.py`, `test_manifest.py` (the old `test_declaring_crud_does_not_filter_the_operations` is inverted to `test_declaring_crud_restricts_the_operations`). `tests/test_builder_decoupling.py` and `builder/profile.py` are unchanged. Backend 1214 -> 1267 passed (`apps/relational_mapping` 170, `apps/domain_manifest` 146); mutations M1-M5 killed (M3 needed one extra direct `_operations` order test because it is equivalent through `build_entity`). **Transient divergence (DD166):** until slice 2 `spring-generator-crud-restriction` the generator still serves six endpoints while a restricted model's manifest lists fewer; no committed fixture is affected. Archived to `openspec/changes/archive/2026-09-20-crud-restricts-operations/`. Next: slice 2.
 
-- **Previous work (2026-09-20, verified and archived, uncommitted):** change `2026-09-20-uml-generation-profile-panel` completed the frontend slice for generation profile authoring. New files: `frontend/src/components/workspace/GenerationProfilePanel.tsx` and its RTL test. Modified: `frontend/src/lib/uml_documents.ts`, `frontend/src/lib/__tests__/uml_documents.test.ts`, and `frontend/src/app/(app)/documents/[docId]/page.tsx`. The panel uses existing native `Select` controls for tri-state values, reads malformed metadata defensively as unset, sends declared-only `SetGenerationProfile` payloads via `submitCommand`, clears with `profile: null`, and maps `crud` true/false to all operations/empty array. Evidence: `cd frontend && npm test` -> 55 files / 351 tests passed; focused run -> 39 tests passed; `cd frontend && npm run lint` passed. Archive composed 5 ADDED requirements into `openspec/specs/web-uml-canvas/spec.md` and moved the change to `openspec/changes/archive/2026-09-20-2026-09-20-uml-generation-profile-panel/`. No backend, persistence, canvas, WebSocket, Flutter/mobile, or `defaultSort` changes. Do not commit `.pi/`.
+- **Previous work (2026-09-20, committed as `20bf71c`):** change `2026-09-20-generated-spring-api-filtering-search` completed the Spring generator filtering/search slice. The generator now derives searchable filters, sortable allow-lists, and default sort from `Table.profile` / `Column.profile`; emits one `application/<Entity>Specifications.java` for searchable non-inheritance tables; conditionally extends repositories with `JpaSpecificationExecutor`; adds optional Java-field-name controller query params; validates sort with HTTP 400 via generated `IllegalArgumentException` handling; applies default sort only for unsorted `Pageable`; and preserves no-profile / false-unset profile output byte-identically. Evidence: RED focused run failed on missing `build_specification_context`, then focused GREEN `68 passed`; `apps/spring_generator` `354 passed`; Docker backend `1214 passed`; frontend strict command `55 files / 351 tests` passed. Size exception accepted; no commit or push. `.pi/` remains excluded.
+
+- **Previous work (2026-09-20, verified, archived and committed as `4b923aa`):** change `2026-09-20-uml-generation-profile-panel` completed the frontend slice for generation profile authoring. New files: `frontend/src/components/workspace/GenerationProfilePanel.tsx` and its RTL test. Modified: `frontend/src/lib/uml_documents.ts`, `frontend/src/lib/__tests__/uml_documents.test.ts`, and `frontend/src/app/(app)/documents/[docId]/page.tsx`. The panel uses existing native `Select` controls for tri-state values, reads malformed metadata defensively as unset, sends declared-only `SetGenerationProfile` payloads via `submitCommand`, clears with `profile: null`, and maps `crud` true/false to all operations/empty array. Evidence: `cd frontend && npm test` -> 55 files / 351 tests passed; focused run -> 39 tests passed; `cd frontend && npm run lint` passed. Archive composed 5 ADDED requirements into `openspec/specs/web-uml-canvas/spec.md` and moved the change to `openspec/changes/archive/2026-09-20-2026-09-20-uml-generation-profile-panel/`. No backend, persistence, canvas, WebSocket, Flutter/mobile, or `defaultSort` changes. Do not commit `.pi/`.
 
 Updated 2026-09-20. Read this first, then `CURRENT_STATE.md` (long, per-area
 detail), `NEXT_STEPS.md`, and `DECISIONS_LOG.md` (newest entry at the top,
-DD1–DD159; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
+DD1–DD167; DD160–DD167 are the archived crud-restricts-operations change; DD75–DD86 are the archived compile-check cycle, DD87–DD91 the applied
 subclass-naming fix, DD103–DD107 the archived springdoc-openapi cycle, DD108–DD120 the archived
-Postman-collection change, DD121–DD131 the archived Domain Manifest change, DD132–DD141 the archived relational-generation-metadata change, DD142–DD150 the archived manifest-generation-profile change, DD151–DD159 the applied uml-generation-profile-authoring change). Older per-cycle detail lives
+Postman-collection change, DD121–DD131 the archived Domain Manifest change, DD132–DD141 the archived relational-generation-metadata change, DD142–DD150 the archived manifest-generation-profile change, DD151–DD159 the archived uml-generation-profile-authoring change (committed 07fb611)). Older per-cycle detail lives
 in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
 `openspec/specs/` (25 merged capability specs, including new domain-manifest-export and generation-profile).
 
 ## Snapshot
 
-- **Previous dependency work (2026-09-20, applied, verify pending, uncommitted):** change `uml-generation-profile-authoring`
+- **Previous dependency work (2026-09-20, verified, archived and committed as `07fb611`):** change `uml-generation-profile-authoring`
   (DD151-DD159, entry of `DECISIONS_LOG.md`), 31/31 tasks, Strict TDD, backend slice 1 of 2. The generation profile is
   authorable through the command API. New command `SetGenerationProfile(element_id, profile | None)` (tenth command type;
   `commands.py`, `schemas.py` `SetGenerationProfileIn`, `dispatcher.py` last `_HANDLERS` entry) and handler
@@ -103,14 +105,15 @@ in `openspec/changes/archive/` (proposal, design, tasks, verify-report) and
   `apps/generation_runner` 67. Deferred: Gradle
   wrapper, Postman/Domain Manifest, frontend/mobile
   generation, actuator/Flyway, names-with-spaces limitation.
-- Code state: the last commit is `cdae44c` (`feat(domain-manifest): emit declared generation profile`).
-  **Uncommitted work in the tree**: the `uml-generation-profile-authoring` change (applied, verify pending; `apps/uml_commands`, `apps/uml_documents`, its openspec change folder and `docs/ai`). The untracked `.pi/`
+- Code state: the last commit is `20bf71c` (`feat(spring-generator): add filtering/search, sort validation and defaultSort`); HEAD may have moved since these docs were last edited, so run `git log --oneline -3`.
+  `uml-generation-profile-authoring` (07fb611), `uml-generation-profile-panel` (4b923aa) and `generated-spring-api-filtering-search` (20bf71c) are committed and archived.
+  **Uncommitted work in the tree**: the `crud-restricts-operations` change (verified PASS WITH WARNINGS, 0 critical, and archived; `apps/relational_mapping`, `apps/domain_manifest`, its openspec change folder and `docs/ai`). The untracked `.pi/`
   folder is deliberately never committed; run `git status` to check.
-- Last archived OpenSpec change: `manifest-generation-profile`
+- Last archived OpenSpec change: `crud-restricts-operations`
   (24/24 tasks, verified PASS WITH WARNINGS, 0 CRITICAL, archived at
-  `openspec/changes/archive/2026-09-20-manifest-generation-profile/`).
-  33 cycles are archived; the last one is
-  `2026-09-20-manifest-generation-profile`.
+  `openspec/changes/archive/2026-09-20-crud-restricts-operations/`).
+  34 cycles are archived; the last one is
+  `2026-09-20-crud-restricts-operations`.
 - Subclass-naming fix (DD87-DD91): `emit/inheritance_context.py:169` now uses
   `pascal_case(table.discriminator_values[class_id])`; fixtures use class-name
   discriminator values; `samples/sample_model.py` uses frozen uuid4-hex class ids.

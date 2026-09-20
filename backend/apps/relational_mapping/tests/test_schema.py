@@ -12,7 +12,7 @@ import inspect
 import pytest
 
 from apps.relational_mapping.domain import schema, types
-from apps.relational_mapping.domain.profile import ColumnProfile, TableProfile
+from apps.relational_mapping.domain.profile import OPERATION_NAMES, ColumnProfile, CrudOperation, TableProfile
 from apps.relational_mapping.domain.schema import (
     Column,
     EnumType,
@@ -136,6 +136,26 @@ def test_table_with_profile_is_structurally_equal():
     assert first == second
     assert hash(first.profile) == hash(second.profile)
     assert first != _table_with_profile(None)
+
+
+def test_table_effective_operations_delegates_to_the_profile_derivation():
+    assert _table_with_profile(None).effective_operations == OPERATION_NAMES
+    assert _table_with_profile(TableProfile()).effective_operations == OPERATION_NAMES
+    assert _table_with_profile(TableProfile(crud=(CrudOperation.READ,))).effective_operations == (
+        "findById",
+        "list",
+        "count",
+    )
+    assert _table_with_profile(TableProfile(crud=())).effective_operations == ()
+
+
+def test_table_effective_operations_is_a_property_not_a_dataclass_field():
+    assert isinstance(Table.effective_operations, property)
+    assert "effective_operations" not in {field.name for field in dataclasses.fields(Table)}
+    assert "effective_operations" not in repr(_table_with_profile(TableProfile(crud=())))
+    # Equality is field-based: two tables differing only in derived data stay equal.
+    assert _table_with_profile(TableProfile(auditable=True)) == _table_with_profile(TableProfile(auditable=True))
+    assert not hasattr(Column, "effective_operations")
 
 
 def test_table_is_frozen():

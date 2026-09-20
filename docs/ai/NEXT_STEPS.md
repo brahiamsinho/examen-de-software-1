@@ -1,6 +1,8 @@
 # Next Steps
 
-**Update 2026-09-20 (newest):** `2026-09-20-generated-spring-api-filtering-search` is verified (PASS), archived, uncommitted (20/20 tasks, Strict TDD; `apps/spring_generator` 354 passed, Docker backend 1214 passed, frontend 351 passed). New generator capabilities: `JpaSpecificationExecutor` for searchable tables, `Specifications` builder templates, controller filter query params (string LIKE, numeric eq), sort validation with 400, `defaultSort` fallback. Next: commit normally excluding `.pi/`, then address DD147 (`crud` restricts `operations[]`) or continue with deferred inheritance API / relationship-navigation slices.
+**Update 2026-09-20 (newest):** `crud-restricts-operations` (slice 1 of 2, DD160-DD167) is verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted (24/24 tasks, Strict TDD, backend 1214 -> 1267 passed, `apps/relational_mapping` 170, `apps/domain_manifest` 146, ~570 authored lines, no `size:exception` needed; deltas merged: `generation-profile` 9 -> 10 requirements, `domain-manifest-export` stays at 15 with `CRUD Declaration Restricts Operations` renamed from `... Does Not Filter Operations`; archived to `openspec/changes/archive/2026-09-20-crud-restricts-operations/`; the last commit is `20bf71c`, HEAD may have moved, check `git log --oneline -3`). The manifest `operations[]` now honours `crud` / `readOnly`. Accepted warnings: M3 equivalent mutant (covered by a direct test); task 9.1 closed at archive; no safety-net column in apply-progress; private `_OPERATIONS` / `_operations` imported by tests. Candidates in order: (1) **slice 2 `spring-generator-crud-restriction`**: gate the Spring controller/service/imports with the same `effective_operations`, no controller/service when the set is empty, undeclared output byte-identical; it removes the transient manifest/generator divergence of DD166 and fully retires DD147; (2) inheritance API; (3) relation navigation endpoints; (4) Undo/Redo + Presence verification; (5) Flutter frontend (§37 item 17).
+
+**Update 2026-09-20 (previous):** `2026-09-20-generated-spring-api-filtering-search` is verified (PASS), archived and committed as `20bf71c` (20/20 tasks, Strict TDD; `apps/spring_generator` 354 passed, Docker backend 1214 passed, frontend 351 passed). New generator capabilities: `JpaSpecificationExecutor` for searchable tables, `Specifications` builder templates, controller filter query params (string LIKE, numeric eq), sort validation with 400, `defaultSort` fallback. Next: commit normally excluding `.pi/`, then address DD147 (`crud` restricts `operations[]`) or continue with deferred inheritance API / relationship-navigation slices.
 
 Updated 2026-09-20. For the full picture read `HANDOFF_LATEST.md` first. Spec
 section 37 (`product-04-next-django.md`) fixes the implementation order; items
@@ -8,7 +10,7 @@ section 37 (`product-04-next-django.md`) fixes the implementation order; items
 
 ## Where we are
 
-**Update 2026-09-20 (previous dependency):** `uml-generation-profile-authoring` is applied, verify pending, uncommitted (31/31 tasks, Strict TDD, backend 1107 -> 1184 passed, `apps/uml_commands` 86, `apps/uml_documents` 134, ~1208 authored lines, `size:exception` accepted; DD151-DD159). The frontend follow-up `2026-09-20-uml-generation-profile-panel` is now verified and archived. After committing the archived frontend slice, continue in order: (1) filtering/search in the generated Spring API using `searchable` / `sortable` / `defaultSort`; (2) make `crud` restrict `operations[]` in the manifest and the generator (DD147 tech debt); (3) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (4) Flutter frontend (§37 item 17).
+**Update 2026-09-20 (previous dependency):** `uml-generation-profile-authoring` is verified, archived and committed as `07fb611` (31/31 tasks, Strict TDD, backend 1107 -> 1184 passed, `apps/uml_commands` 86, `apps/uml_documents` 134, ~1208 authored lines, `size:exception` accepted; DD151-DD159). The frontend follow-up `2026-09-20-uml-generation-profile-panel` is now verified and archived. After committing the archived frontend slice, continue in order: (1) filtering/search in the generated Spring API using `searchable` / `sortable` / `defaultSort`; (2) make `crud` restrict `operations[]` in the manifest and the generator (DD147 tech debt); (3) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (4) Flutter frontend (§37 item 17).
 
 **Update 2026-09-20 (previous):** `manifest-generation-profile` is verified (PASS WITH WARNINGS, 0 critical) and archived, committed as `cdae44c` (24/24 tasks, Strict TDD, `apps/domain_manifest` 125 passed (88 before), backend 1107 passed (1070 before), ~419 authored lines, no `size:exception` needed; delta merged into `openspec/specs/domain-manifest-export/spec.md`, now 15 requirements, archived to `openspec/changes/archive/2026-09-20-manifest-generation-profile/`). Accepted warnings: M3 equivalent mutant (redundant `profile is None` guard); task 11.4 closed at archive; `EXCLUDED_KEYS` equality not asserted explicitly; the 'foreign id' scenario is covered by an id matching no column. Candidates listed at that time (the newest update supersedes this list): (1) filtering/search in the generated Spring API using `searchable` / `sortable` / `defaultSort`; (2) an authoring path for the profile in commands/UI; (3) make `crud` restrict `operations[]` in the manifest and the generator (DD147 tech debt); (4) §37 item 12 remainder (inheritance DTOs/services/controllers, relation-navigation endpoints); (5) Flutter frontend (§37 item 17).
 
@@ -67,14 +69,14 @@ model uses frozen uuid4-hex class ids. Delta spec is merged into the main
    generation profile (`relational-generation-metadata`) and the Domain Manifest
    emits it (`manifest-generation-profile`); the generated Spring API does not use it yet.
 5. **§37 item 13, generated backend compilable — slice 2 of 3 verified and archived
-   (uncommitted).** Slice 1 (`2026-09-19-spring-boot-project-scaffold`,
+   (committed as `4498029`).** Slice 1 (`2026-09-19-spring-boot-project-scaffold`,
    archived) added the pure scaffold text. Slice 2 `generated-project-compile-check`
    is verified (PASS WITH WARNINGS) and archived: `apps/generation_runner/` (pure `write_sources`
    writer, CLI, sample model, image-tag function) plus the manual compose gate.
    To re-run the gate from the repo root in Git Bash:
    `bash scripts/verify-generated-project.sh` (expect `BUILD SUCCESSFUL`, exit 0).
    It is NOT part of `pytest` (DD85). Immediate next actions, in order:
-   - **Commit slice 2** (nothing is committed yet; never commit `.pi/` or `.pi/*`).
+   - ~~Commit slice 2~~ (done: `4498029`; never commit `.pi/` or `.pi/*`).
    - W2 was fixed: CLI now catches `(GeneratedSourceWriteError, UngeneratableSourceError, ValueError, OSError)`
      with two added test cases in `tests/test_cli.py`; final counts: 822 backend tests (58 in `apps/generation_runner`).
    - **Slice 3 `generated-project-boot-smoke`**: verified (PASS WITH WARNINGS) and

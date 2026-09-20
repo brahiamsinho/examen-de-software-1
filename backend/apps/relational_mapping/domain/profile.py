@@ -56,3 +56,25 @@ class TableProfile:
     read_only: bool | None = None
     crud: tuple[CrudOperation, ...] | None = None
     default_sort: DefaultSort | None = None
+
+
+# The controller's own declaration order (Controller.java.j2); mirrored by
+# domain_manifest.builder.entities._OPERATIONS, pinned by a cross-app test.
+OPERATION_NAMES: tuple[str, ...] = ("create", "findById", "update", "delete", "list", "count")
+
+_CRUD_TO_OPERATIONS = {
+    CrudOperation.CREATE: ("create",),
+    CrudOperation.READ: ("findById", "list", "count"),
+    CrudOperation.UPDATE: ("update",),
+    CrudOperation.DELETE: ("delete",),
+}
+_READ_OPERATIONS = frozenset(_CRUD_TO_OPERATIONS[CrudOperation.READ])
+
+
+def effective_operations(profile: TableProfile | None) -> tuple[str, ...]:
+    """Operation names a table's declared profile leaves enabled (DD160-DD161)."""
+    crud = None if profile is None else profile.crud
+    allowed = set(OPERATION_NAMES) if crud is None else {name for op in crud for name in _CRUD_TO_OPERATIONS[op]}
+    if profile is not None and profile.read_only is True:
+        allowed &= _READ_OPERATIONS
+    return tuple(name for name in OPERATION_NAMES if name in allowed)
