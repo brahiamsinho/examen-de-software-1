@@ -22,6 +22,7 @@ from apps.spring_generator.emit.context import (
     build_request_dto_context,
     build_response_dto_context,
     build_service_context,
+    build_specification_context,
 )
 from apps.spring_generator.emit.inheritance_context import build_inheritance_hierarchy_context
 from apps.spring_generator.emit.errors import (
@@ -91,6 +92,7 @@ def _render_inheritance_table_sources(table: Table, *, base_package: str) -> Gen
         package=repository_context.package,
         class_name=repository_context.class_name,
         repository_name=repository_context.repository_name,
+        extends_interfaces=repository_context.extends_interfaces,
         import_groups=repository_context.import_groups,
     )
     repository_path = "src/main/java/{}/persistence/{}.java".format(pkg_path, repository_context.repository_name)
@@ -113,6 +115,7 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
     response_dto_context = build_response_dto_context(table, base_package=base_package)
     service_context = build_service_context(table, base_package=base_package)
     controller_context = build_controller_context(table, base_package=base_package)
+    specification_context = build_specification_context(table, base_package=base_package)
 
     entity_source = _ENVIRONMENT.get_template("Entity.java.j2").render(
         package=entity_context.package,
@@ -125,6 +128,7 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
         package=repository_context.package,
         class_name=repository_context.class_name,
         repository_name=repository_context.repository_name,
+        extends_interfaces=repository_context.extends_interfaces,
         import_groups=repository_context.import_groups,
     )
     request_dto_source = _ENVIRONMENT.get_template("RequestDto.java.j2").render(
@@ -148,6 +152,10 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
         dependencies=service_context.dependencies,
         constructor_parameters=service_context.constructor_parameters,
         constructor_assignments=service_context.constructor_assignments,
+        list_support_fields=service_context.list_support_fields,
+        list_parameters=service_context.list_parameters,
+        list_statements=service_context.list_statements,
+        list_support_methods=service_context.list_support_methods,
         to_response_statements=service_context.to_response_statements,
         apply_request_statements=service_context.apply_request_statements,
         resource_name=service_context.resource_name,
@@ -161,7 +169,16 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
         request_dto=controller_context.request_dto,
         response_dto=controller_context.response_dto,
         resource_path=controller_context.resource_path,
+        list_parameters=controller_context.list_parameters,
+        list_arguments=controller_context.list_arguments,
         import_groups=controller_context.import_groups,
+    )
+    specification_source = _ENVIRONMENT.get_template("Specifications.java.j2").render(
+        package=specification_context.package,
+        class_name=specification_context.class_name,
+        entity_class=specification_context.entity_class,
+        filters=specification_context.filters,
+        import_groups=specification_context.import_groups,
     )
 
     pkg_path = package_path(base_package)
@@ -171,17 +188,20 @@ def generate_table_sources(table: Table, *, base_package: str = "com.modelia.gen
     response_dto_path = "src/main/java/{}/application/dto/{}.java".format(pkg_path, response_dto_context.class_name)
     service_path = "src/main/java/{}/application/{}.java".format(pkg_path, service_context.class_name)
     controller_path = "src/main/java/{}/api/{}.java".format(pkg_path, controller_context.class_name)
+    specification_path = "src/main/java/{}/application/{}.java".format(pkg_path, specification_context.class_name)
 
-    return GeneratedSources(
-        files=(
-            GeneratedFile(path=entity_path, contents=entity_source),
-            GeneratedFile(path=repository_path, contents=repository_source),
-            GeneratedFile(path=request_dto_path, contents=request_dto_source),
-            GeneratedFile(path=response_dto_path, contents=response_dto_source),
-            GeneratedFile(path=service_path, contents=service_source),
-            GeneratedFile(path=controller_path, contents=controller_source),
-        )
-    )
+    files = [
+        GeneratedFile(path=entity_path, contents=entity_source),
+        GeneratedFile(path=repository_path, contents=repository_source),
+        GeneratedFile(path=request_dto_path, contents=request_dto_source),
+        GeneratedFile(path=response_dto_path, contents=response_dto_source),
+        GeneratedFile(path=service_path, contents=service_source),
+        GeneratedFile(path=controller_path, contents=controller_source),
+    ]
+    if specification_context.filters:
+        files.append(GeneratedFile(path=specification_path, contents=specification_source))
+
+    return GeneratedSources(files=tuple(files))
 
 
 def _extend_generated_files(files: list[GeneratedFile], sources: GeneratedSources) -> None:

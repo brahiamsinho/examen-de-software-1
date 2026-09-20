@@ -1,5 +1,15 @@
 # Decisions Log
 
+## 2026-09-20 — Change applied: Generated Spring API filtering/search (`2026-09-20-generated-spring-api-filtering-search`)
+
+Status: applied, verify pending, uncommitted. The Spring generator now consumes the generation profile carried by relational mapping: searchable column filters, sortable allow-lists, and table `defaultSort`. Searchable non-inheritance tables emit one `application/<Entity>Specifications.java`; repositories extend `JpaSpecificationExecutor` only when searchable filters exist; controllers bind optional Java-field-name query parameters; services compose `Specification` objects, validate every sort property, apply default sort only to unsorted `Pageable`, and preserve no-profile / false-unset output byte-identically.
+
+Decision: invalid sort requests use generated service-side `IllegalArgumentException`, and the generated shared `GlobalExceptionHandler` maps `IllegalArgumentException` to `400 Bad Request`. This was the smallest bounded handler change needed to satisfy the 400 contract without adding a new generated error class.
+
+Decision: the previous generation-runner assertion that declared true profiles were Spring-output neutral is superseded. True `searchable` / `sortable` metadata intentionally changes generated Spring output; false or unset profile values remain output-neutral and are now the pinned compatibility case.
+
+Evidence: focused RED failed before implementation on missing `build_specification_context`; focused GREEN passed (`68 passed`); full Spring generator passed (`354 passed`); Docker backend passed (`1214 passed`); frontend configured strict command passed (`55 files / 351 tests`). Size exception was accepted for the cohesive generator/test slice; no commit or push was performed.
+
 ## 2026-09-20 — Change archived: UML generation profile panel (frontend slice) (`2026-09-20-uml-generation-profile-panel`)
 
 Status: verified and archived, uncommitted. Archive composed five ADDED requirements into `openspec/specs/web-uml-canvas/spec.md` and moved the active change to `openspec/changes/archive/2026-09-20-2026-09-20-uml-generation-profile-panel/`. Tasks were 14/14 complete with no unchecked implementation markers at the final archive gate. Verification recorded PASS_WITH_WARNINGS with 0 blockers and 0 critical findings; `cd frontend && npm test` passed 55 files / 351 tests, the focused lib + panel run passed 39 tests, `cd frontend && npm run lint` passed, and no backend changes were made. The optional `npx tsc --noEmit` warning about a broad test-helper mock type remains recorded as a non-blocking quality warning. No commit or push was performed, and `.pi/` remains excluded.

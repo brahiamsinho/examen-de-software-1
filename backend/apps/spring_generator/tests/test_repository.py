@@ -3,10 +3,11 @@
 Covers: `interface <E>Repository extends JpaRepository<<E>, UUID>`,
 empty body, no `@Repository`, correct entity import (design.md DD17).
 """
+from apps.relational_mapping.domain.profile import ColumnProfile
 from apps.relational_mapping.domain.schema import Column, PrimaryKey
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.renderer import generate_table_sources
-from apps.spring_generator.tests.factories import a_table
+from apps.spring_generator.tests.factories import a_table, searchable
 
 
 def _product_table():
@@ -54,3 +55,34 @@ def test_repository_braces_are_balanced():
     source = _repository_source()
 
     assert source.count("{") == source.count("}")
+
+
+def test_searchable_table_repository_extends_jpa_specification_executor():
+    table = a_table(
+        name="customer",
+        columns=(Column(name="name", type=ColumnType.VARCHAR, nullable=False, profile=searchable()),),
+    )
+
+    sources = generate_table_sources(table, base_package="com.modelia.generated")
+    source = sources.file_by_path("src/main/java/com/modelia/generated/persistence/CustomerRepository.java").contents
+
+    assert "import org.springframework.data.jpa.repository.JpaSpecificationExecutor;" in source
+    assert (
+        "public interface CustomerRepository extends JpaRepository<Customer, UUID>, "
+        "JpaSpecificationExecutor<Customer> {"
+    ) in source
+
+
+def test_ineligible_profile_repository_omits_jpa_specification_executor_and_matches_plain_output():
+    plain = _repository_source()
+    profiled_table = a_table(
+        name="product",
+        columns=(Column(name="name", type=ColumnType.VARCHAR, profile=ColumnProfile(searchable=False)),),
+    )
+
+    profiled = generate_table_sources(profiled_table, base_package="com.modelia.generated").file_by_path(
+        "src/main/java/com/modelia/generated/persistence/ProductRepository.java"
+    ).contents
+
+    assert profiled == plain
+    assert "JpaSpecificationExecutor" not in profiled

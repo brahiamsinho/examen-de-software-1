@@ -8,11 +8,12 @@ not-found contract, private conversion methods, no mapper library).
 Templates rendered directly via the shared Jinja `_ENVIRONMENT` (DD49)
 ahead of `generate_table_sources` wiring, which Phase 7 adds.
 """
+from apps.relational_mapping.domain.profile import ColumnProfile, SortDirection
 from apps.relational_mapping.domain.schema import Column
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.context import build_service_context
 from apps.spring_generator.emit.renderer import _ENVIRONMENT
-from apps.spring_generator.tests.factories import a_foreign_key, a_table
+from apps.spring_generator.tests.factories import a_foreign_key, a_table, searchable, searchable_sortable, sortable, table_default_sort
 
 
 def _render(context):
@@ -25,6 +26,10 @@ def _render(context):
         dependencies=context.dependencies,
         constructor_parameters=context.constructor_parameters,
         constructor_assignments=context.constructor_assignments,
+        list_support_fields=context.list_support_fields,
+        list_parameters=context.list_parameters,
+        list_statements=context.list_statements,
+        list_support_methods=context.list_support_methods,
         to_response_statements=context.to_response_statements,
         apply_request_statements=context.apply_request_statements,
         resource_name=context.resource_name,
@@ -198,3 +203,85 @@ def test_braces_and_parens_are_balanced():
 
     assert source.count("{") == source.count("}")
     assert source.count("(") == source.count(")")
+
+
+def test_searchable_table_service_uses_specification_find_all():
+    table = a_table(
+        name="customer",
+        columns=(
+            Column(name="full_name", type=ColumnType.VARCHAR, profile=searchable()),
+            Column(name="age", type=ColumnType.INTEGER, profile=searchable()),
+        ),
+    )
+
+    source = _render(build_service_context(table, base_package="com.modelia.generated"))
+
+    assert "import org.springframework.data.jpa.domain.Specification;" in source
+    assert "public Page<CustomerResponseDto> list(String fullName, Integer age, Pageable pageable)" in source
+    assert "Pageable effectivePageable = normalizePageable(pageable);" in source
+    assert "Specification<Customer> specification = CustomerSpecifications.byFilters(fullName, age);" in source
+    assert "return customerRepository.findAll(specification, effectivePageable).map(this::toResponseDto);" in source
+
+
+def test_no_profile_service_list_remains_byte_identical_to_existing_shape():
+    source = _render(build_service_context(_product_table(), base_package="com.modelia.generated"))
+
+    assert "public Page<ProductResponseDto> list(Pageable pageable) {\n        return productRepository.findAll(pageable).map(this::toResponseDto);\n    }" in source
+    assert "normalizePageable" not in source
+    assert "Specification<Product>" not in source
+
+
+def test_false_profile_service_matches_no_profile_output_byte_identical():
+    plain = _render(build_service_context(_product_table(), base_package="com.modelia.generated"))
+    table = a_table(name="product", columns=(Column(name="name", type=ColumnType.VARCHAR, profile=ColumnProfile(searchable=False, sortable=False)),))
+
+    profiled = _render(build_service_context(table, base_package="com.modelia.generated"))
+
+    assert profiled == plain
+
+
+def test_service_generates_sortable_allow_list_and_rejects_invalid_sort():
+    table = a_table(name="customer", columns=(Column(name="name", type=ColumnType.VARCHAR, profile=sortable()),))
+
+    source = _render(build_service_context(table, base_package="com.modelia.generated"))
+
+    assert "private static final Set<String> SORTABLE_FIELDS = Set.of(\"name\");" in source
+    assert "for (Sort.Order order : pageable.getSort())" in source
+    assert "if (!SORTABLE_FIELDS.contains(order.getProperty()))" in source
+    assert 'throw new IllegalArgumentException("Unsupported sort property: " + order.getProperty());' in source
+    assert "return customerRepository.findAll(effectivePageable).map(this::toResponseDto);" in source
+
+
+def test_sort_validation_accepts_valid_sort_by_not_throwing_branch_for_allowed_field():
+    table = a_table(name="customer", columns=(Column(name="name", type=ColumnType.VARCHAR, profile=sortable()),))
+
+    source = _render(build_service_context(table, base_package="com.modelia.generated"))
+
+    assert "SORTABLE_FIELDS.contains(order.getProperty())" in source
+    assert "Set.of(\"name\")" in source
+
+
+def test_default_sort_applies_only_when_pageable_unsorted():
+    table = a_table(
+        name="customer",
+        columns=(Column(name="full_name", type=ColumnType.VARCHAR, source_element_id="name-id", profile=sortable()),),
+        profile=table_default_sort("name-id", SortDirection.DESC),
+    )
+
+    source = _render(build_service_context(table, base_package="com.modelia.generated"))
+
+    assert "if (pageable.getSort().isSorted()) {" in source
+    assert "return pageable;" in source
+    assert 'PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "fullName"))' in source
+
+
+def test_sort_validation_can_reject_any_sort_when_no_sortable_allow_list_exists():
+    table = a_table(
+        name="customer",
+        columns=(Column(name="name", type=ColumnType.VARCHAR, profile=searchable()),),
+    )
+
+    source = _render(build_service_context(table, base_package="com.modelia.generated"))
+
+    assert "private static final Set<String> SORTABLE_FIELDS = Set.of();" in source
+    assert "if (!SORTABLE_FIELDS.contains(order.getProperty()))" in source

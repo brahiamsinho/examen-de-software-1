@@ -2,5 +2,5 @@ package {{ package }};
 
 {% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
 {% endfor %}
-{% endfor %}public interface {{ repository_name }} extends JpaRepository<{{ class_name }}, UUID> {
+{% endfor %}public interface {{ repository_name }} extends {{ extends_interfaces }} {
 }

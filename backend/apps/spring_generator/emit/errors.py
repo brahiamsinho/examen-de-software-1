@@ -111,6 +111,18 @@ class InvalidResourcePathError(UngeneratableTableError):
         )
 
 
+class InvalidDefaultSortError(UngeneratableTableError):
+    def __init__(self, table_name: str, attribute_id: str, reason: str):
+        self.table_name = table_name
+        self.attribute_id = attribute_id
+        self.reason = reason
+        super().__init__(
+            "Table {!r} has invalid default sort attribute {!r}: {!r}".format(
+                table_name, attribute_id, reason
+            )
+        )
+
+
 class UngeneratableEnumError(UngeneratableSourceError):
     """Base for every error `reject_ungeneratable_enum` raises (DD33)."""
 

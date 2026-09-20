@@ -7,6 +7,7 @@ the same coupling a cross-app production import would be). Generator
 scenarios need `Table`-shaped builders directly, not
 `CanonicalUmlModel`-shaped ones.
 """
+from apps.relational_mapping.domain.profile import ColumnProfile, DefaultSort, SortDirection, TableProfile
 from apps.relational_mapping.domain.schema import Column, EnumType, ForeignKey, PrimaryKey, Table, UniqueConstraint
 from apps.relational_mapping.domain.types import ColumnType
 
@@ -22,6 +23,7 @@ def a_column(
     enum_type_name: str | None = None,
     source_element_id: str | None = None,
     owning_class_id: str | None = None,
+    profile: ColumnProfile | None = None,
 ) -> Column:
     return Column(
         name=name,
@@ -33,6 +35,7 @@ def a_column(
         enum_type_name=enum_type_name,
         source_element_id=source_element_id,
         owning_class_id=owning_class_id,
+        profile=profile,
     )
 
 
@@ -75,6 +78,7 @@ def a_table(
     discriminator_column: str | None = None,
     discriminator_values: dict | None = None,
     source_class_ids: tuple = (),
+    profile: TableProfile | None = None,
 ) -> Table:
     """A minimal generatable table: UUID PK named `id` plus any extra
     scalar columns. Callers needing an out-of-scope shape (composite
@@ -94,4 +98,21 @@ def a_table(
         source_class_ids=source_class_ids,
         discriminator_column=discriminator_column,
         discriminator_values={} if discriminator_values is None else discriminator_values,
+        profile=profile,
     )
+
+
+def searchable() -> ColumnProfile:
+    return ColumnProfile(searchable=True)
+
+
+def sortable() -> ColumnProfile:
+    return ColumnProfile(sortable=True)
+
+
+def searchable_sortable() -> ColumnProfile:
+    return ColumnProfile(searchable=True, sortable=True)
+
+
+def table_default_sort(attribute_id: str, direction: SortDirection = SortDirection.ASC) -> TableProfile:
+    return TableProfile(default_sort=DefaultSort(attribute_id=attribute_id, direction=direction))

@@ -1,6 +1,6 @@
 # Next Steps
 
-**Update 2026-09-20 (newest):** `2026-09-20-uml-generation-profile-panel` is verified and archived, uncommitted (14/14 tasks, Strict TDD; 351 frontend tests and 39 focused tests recorded; no backend changes). Next: commit normally excluding `.pi/`. After this frontend slice, continue with generated Spring filtering/search using `searchable`, `sortable`, and `defaultSort`, then address DD147 so `crud` restricts manifest/generator operations.
+**Update 2026-09-20 (newest):** `2026-09-20-generated-spring-api-filtering-search` is verified (PASS), archived, uncommitted (20/20 tasks, Strict TDD; `apps/spring_generator` 354 passed, Docker backend 1214 passed, frontend 351 passed). New generator capabilities: `JpaSpecificationExecutor` for searchable tables, `Specifications` builder templates, controller filter query params (string LIKE, numeric eq), sort validation with 400, `defaultSort` fallback. Next: commit normally excluding `.pi/`, then address DD147 (`crud` restricts `operations[]`) or continue with deferred inheritance API / relationship-navigation slices.
 
 Updated 2026-09-20. For the full picture read `HANDOFF_LATEST.md` first. Spec
 section 37 (`product-04-next-django.md`) fixes the implementation order; items

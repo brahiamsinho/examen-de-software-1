@@ -35,8 +35,8 @@ public class {{ class_name }} {
     }
 
     @GetMapping("")
-    public Page<{{ response_dto }}> list(Pageable pageable) {
-        return {{ service_field }}.list(pageable);
+    public Page<{{ response_dto }}> list({{ list_parameters }}) {
+        return {{ service_field }}.list({{ list_arguments }});
     }
 
     @GetMapping("/count")

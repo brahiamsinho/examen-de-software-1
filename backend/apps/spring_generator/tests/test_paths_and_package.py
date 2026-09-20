@@ -15,7 +15,7 @@ import pytest
 from apps.relational_mapping.domain.schema import Column, PrimaryKey
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.renderer import generate_table_sources
-from apps.spring_generator.tests.factories import a_table
+from apps.spring_generator.tests.factories import a_table, searchable
 
 
 def _product_table():
@@ -145,3 +145,21 @@ def test_no_host_port_or_url_substring_in_output():
         lowered = generated_file.contents.lower()
         for forbidden in ("localhost", "http://", "https://", "5432", "8080", "0.0.0.0"):
             assert forbidden not in lowered
+
+
+def test_searchable_table_yields_exactly_one_extra_specification_file():
+    table = a_table(name="customer", columns=(Column(name="name", type=ColumnType.VARCHAR, profile=searchable()),))
+
+    sources = generate_table_sources(table)
+
+    expected_order = (
+        "src/main/java/com/modelia/generated/domain/Customer.java",
+        "src/main/java/com/modelia/generated/persistence/CustomerRepository.java",
+        "src/main/java/com/modelia/generated/application/dto/CustomerRequestDto.java",
+        "src/main/java/com/modelia/generated/application/dto/CustomerResponseDto.java",
+        "src/main/java/com/modelia/generated/application/CustomerService.java",
+        "src/main/java/com/modelia/generated/api/CustomerController.java",
+        "src/main/java/com/modelia/generated/application/CustomerSpecifications.java",
+    )
+    assert tuple(generated_file.path for generated_file in sources.files) == expected_order
+    assert len(sources.files) == 7

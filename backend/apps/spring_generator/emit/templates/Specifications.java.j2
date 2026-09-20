@@ -1,0 +1,25 @@
+package {{ package }};
+
+{% for group in import_groups %}{% for fqn in group %}import {{ fqn }};
+{% endfor %}
+{% endfor %}public final class {{ class_name }} {
+
+    private {{ class_name }}() {
+    }
+
+    public static Specification<{{ entity_class }}> byFilters({% for filter in filters %}{{ filter.java_type }} {{ filter.field_name }}{{ ", " if not loop.last else "" }}{% endfor %}) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+{% for filter in filters %}{% if filter.match_kind == "string_contains_ignore_case" %}            if ({{ filter.field_name }} != null && !{{ filter.field_name }}.isBlank()) {
+                predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("{{ filter.field_name }}")), "%" + {{ filter.field_name }}.toLowerCase() + "%"));
+            }
+{% else %}            if ({{ filter.field_name }} != null) {
+                predicates.add(criteriaBuilder.equal(root.get("{{ filter.field_name }}"), {{ filter.field_name }}));
+            }
+{% endif %}{% endfor %}            if (predicates.isEmpty()) {
+                return criteriaBuilder.conjunction();
+            }
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+}

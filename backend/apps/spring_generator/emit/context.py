@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from apps.relational_mapping.domain.schema import EnumType, ForeignKey, Table
 from apps.relational_mapping.domain.types import ColumnType
+from apps.spring_generator.emit.errors import InvalidDefaultSortError
 from apps.spring_generator.emit.javatypes import java_type_for
 from apps.spring_generator.emit.naming import (
     camel_case,
@@ -53,6 +54,35 @@ class RepositoryContext:
     package: str
     class_name: str
     repository_name: str
+    extends_interfaces: str
+    import_groups: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class SearchFilterContext:
+    field_name: str
+    pascal_name: str
+    java_type: str
+    match_kind: str
+
+
+@dataclass(frozen=True)
+class SortableFieldContext:
+    field_name: str
+
+
+@dataclass(frozen=True)
+class DefaultSortContext:
+    field_name: str
+    direction: str
+
+
+@dataclass(frozen=True)
+class SpecificationContext:
+    package: str
+    class_name: str
+    entity_class: str
+    filters: tuple[SearchFilterContext, ...]
     import_groups: tuple[tuple[str, ...], ...]
 
 
@@ -109,6 +139,118 @@ def _group_imports(base_package: str, fqns: set[str]) -> tuple[tuple[str, ...], 
         if matched:
             groups.append(tuple(matched))
     return tuple(groups)
+
+
+def _fk_column_names(table: Table) -> set[str]:
+    names: set[str] = set()
+    for foreign_key in table.foreign_keys:
+        for column_name in foreign_key.column_names:
+            names.add(column_name)
+    return names
+
+
+def _pk_column_name(table: Table) -> str:
+    return table.primary_key.column_names[0]
+
+
+def _is_supported_search_type(column_type: ColumnType) -> bool:
+    return column_type in (ColumnType.VARCHAR, ColumnType.TEXT, ColumnType.INTEGER, ColumnType.BIGINT, ColumnType.NUMERIC)
+
+
+def _is_supported_sort_type(column_type: ColumnType) -> bool:
+    return column_type in (ColumnType.VARCHAR, ColumnType.TEXT, ColumnType.INTEGER, ColumnType.BIGINT, ColumnType.NUMERIC)
+
+
+def _is_searchable_column(table: Table, column) -> bool:
+    if column.profile is None or column.profile.searchable is not True:
+        return False
+    if column.name == _pk_column_name(table):
+        return False
+    if column.name in _fk_column_names(table):
+        return False
+    if table.discriminator_column is not None and column.name == table.discriminator_column:
+        return False
+    if column.enum_type_name is not None:
+        return False
+    return _is_supported_search_type(column.type)
+
+
+def _is_sortable_column(table: Table, column) -> bool:
+    if column.profile is None or column.profile.sortable is not True:
+        return False
+    if column.name == _pk_column_name(table):
+        return False
+    if column.name in _fk_column_names(table):
+        return False
+    if table.discriminator_column is not None and column.name == table.discriminator_column:
+        return False
+    if column.enum_type_name is not None:
+        return False
+    return _is_supported_sort_type(column.type)
+
+
+def _search_filter_context(column) -> SearchFilterContext:
+    field_name = camel_case(column.name)
+    match_kind = "string_contains_ignore_case"
+    if column.type in (ColumnType.INTEGER, ColumnType.BIGINT, ColumnType.NUMERIC):
+        match_kind = "numeric_equals"
+    return SearchFilterContext(
+        field_name=field_name,
+        pascal_name=pascal_case(column.name),
+        java_type=java_type_for(column.type).name,
+        match_kind=match_kind,
+    )
+
+
+def _search_filters(table: Table) -> tuple[SearchFilterContext, ...]:
+    return tuple(_search_filter_context(column) for column in table.columns if _is_searchable_column(table, column))
+
+
+def _sortable_fields(table: Table) -> tuple[SortableFieldContext, ...]:
+    return tuple(
+        SortableFieldContext(field_name=camel_case(column.name))
+        for column in table.columns
+        if _is_sortable_column(table, column)
+    )
+
+
+def _resolve_default_sort(table: Table) -> DefaultSortContext | None:
+    if table.profile is None or table.profile.default_sort is None:
+        return None
+
+    default_sort = table.profile.default_sort
+    attribute_id = default_sort.attribute_id
+    column = None
+    for candidate in table.columns:
+        if candidate.source_element_id == attribute_id:
+            column = candidate
+            break
+
+    if column is None:
+        raise InvalidDefaultSortError(table.name, attribute_id, "attribute_not_found")
+    if column.name == _pk_column_name(table):
+        raise InvalidDefaultSortError(table.name, attribute_id, "attribute_is_primary_key")
+    if column.name in _fk_column_names(table):
+        raise InvalidDefaultSortError(table.name, attribute_id, "attribute_is_foreign_key")
+    if column.enum_type_name is not None:
+        raise InvalidDefaultSortError(table.name, attribute_id, "attribute_is_enum")
+    if not _is_supported_sort_type(column.type):
+        raise InvalidDefaultSortError(table.name, attribute_id, "attribute_type_unsupported")
+    if column.profile is None or column.profile.sortable is not True:
+        raise InvalidDefaultSortError(table.name, attribute_id, "attribute_not_sortable")
+
+    return DefaultSortContext(field_name=camel_case(column.name), direction=default_sort.direction.value.upper())
+
+
+def _filter_argument_list(filters: tuple[SearchFilterContext, ...]) -> str:
+    return _comma_join([field.field_name for field in filters])
+
+
+def _quoted_set_literal(values: tuple[str, ...]) -> str:
+    parts: list[str] = []
+    for value in values:
+        parts.append('"{}"'.format(value))
+    return "Set.of({})".format(_comma_join(parts))
 
 
 def _column_annotation(column, *, is_primary_key: bool) -> str:
@@ -420,6 +562,12 @@ class ServiceContext:
     dependencies: tuple[RepositoryDependencyContext, ...]   # deduped (DD40)
     constructor_parameters: str     # precomputed via _comma_join (DD49)
     constructor_assignments: tuple[str, ...]
+    list_support_fields: tuple[str, ...]
+    list_parameters: str
+    list_statements: tuple[str, ...]
+    list_support_methods: tuple[str, ...]
+    sortable_fields: tuple[SortableFieldContext, ...]
+    default_sort: DefaultSortContext | None
     to_response_statements: tuple[str, ...]                 # DD44
     apply_request_statements: tuple[str, ...]               # DD44
     resource_name: str              # table.name, for ResourceNotFoundException
@@ -501,6 +649,85 @@ def _apply_request_statement_for_fk(column, foreign_key: ForeignKey, *, reposito
     )
 
 
+def _list_support_fields(
+    sortable_fields: tuple[SortableFieldContext, ...], *, needs_sort_validation: bool
+) -> tuple[str, ...]:
+    if not needs_sort_validation:
+        return ()
+    values = tuple(field.field_name for field in sortable_fields)
+    return ('private static final Set<String> SORTABLE_FIELDS = {};'.format(_quoted_set_literal(values)),)
+
+
+def _list_support_methods(default_sort: DefaultSortContext | None, *, needs_sort_validation: bool) -> tuple[str, ...]:
+    if not needs_sort_validation:
+        return ()
+
+    validate_method = (
+        "private void validateSort(Pageable pageable) {\n"
+        "        for (Sort.Order order : pageable.getSort()) {\n"
+        "            if (!SORTABLE_FIELDS.contains(order.getProperty())) {\n"
+        "                throw new IllegalArgumentException(\"Unsupported sort property: \" + order.getProperty());\n"
+        "            }\n"
+        "        }\n"
+        "    }"
+    )
+
+    if default_sort is None:
+        normalize_method = (
+            "private Pageable normalizePageable(Pageable pageable) {\n"
+            "        validateSort(pageable);\n"
+            "        return pageable;\n"
+            "    }"
+        )
+    else:
+        normalize_method = (
+            "private Pageable normalizePageable(Pageable pageable) {{\n"
+            "        validateSort(pageable);\n"
+            "        if (pageable.getSort().isSorted()) {{\n"
+            "            return pageable;\n"
+            "        }}\n"
+            "        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), "
+            "Sort.by(Sort.Direction.{direction}, \"{field}\"));\n"
+            "    }}"
+        ).format(direction=default_sort.direction, field=default_sort.field_name)
+
+    return (validate_method, normalize_method)
+
+
+def _list_parameters(filters: tuple[SearchFilterContext, ...]) -> str:
+    parts = ["{} {}".format(field.java_type, field.field_name) for field in filters]
+    parts.append("Pageable pageable")
+    return _comma_join(parts)
+
+
+def _list_statements(
+    *,
+    entity_class: str,
+    repository_field: str,
+    filters: tuple[SearchFilterContext, ...],
+    needs_sort_validation: bool,
+) -> tuple[str, ...]:
+    if not filters and not needs_sort_validation:
+        return ("return {}.findAll(pageable).map(this::toResponseDto);".format(repository_field),)
+
+    statements = ["Pageable effectivePageable = normalizePageable(pageable);"]
+    if filters:
+        statements.append(
+            "Specification<{entity_class}> specification = {entity_class}Specifications.byFilters({arguments});".format(
+                entity_class=entity_class,
+                arguments=_filter_argument_list(filters),
+            )
+        )
+        statements.append(
+            "return {}.findAll(specification, effectivePageable).map(this::toResponseDto);".format(
+                repository_field
+            )
+        )
+    else:
+        statements.append("return {}.findAll(effectivePageable).map(this::toResponseDto);".format(repository_field))
+    return tuple(statements)
+
+
 def build_service_context(table: Table, *, base_package: str) -> ServiceContext:
     entity_class = pascal_case(table.name)
     own_repository_field = _repository_field_for(table.name)
@@ -560,6 +787,20 @@ def build_service_context(table: Table, *, base_package: str) -> ServiceContext:
     dependency_assignments = ["this.{0} = {0};".format(dep.field_name) for dep in dependencies]
     constructor_assignments = tuple([own_assignment] + dependency_assignments)
 
+    filters = _search_filters(table)
+    sortable_fields = _sortable_fields(table)
+    default_sort = _resolve_default_sort(table)
+    needs_sort_validation = bool(filters) or bool(sortable_fields) or default_sort is not None
+    list_parameters = _list_parameters(filters)
+    list_statements = _list_statements(
+        entity_class=entity_class,
+        repository_field=own_repository_field,
+        filters=filters,
+        needs_sort_validation=needs_sort_validation,
+    )
+    list_support_fields = _list_support_fields(sortable_fields, needs_sort_validation=needs_sort_validation)
+    list_support_methods = _list_support_methods(default_sort, needs_sort_validation=needs_sort_validation)
+
     imports = {
         "org.springframework.stereotype.Service",
         "org.springframework.transaction.annotation.Transactional",
@@ -574,6 +815,13 @@ def build_service_context(table: Table, *, base_package: str) -> ServiceContext:
     }
     for dependency in dependencies:
         imports.add("{}.persistence.{}".format(base_package, dependency.type_name))
+    if filters:
+        imports.add("org.springframework.data.jpa.domain.Specification")
+    if needs_sort_validation:
+        imports.add("org.springframework.data.domain.Sort")
+        imports.add("java.util.Set")
+    if default_sort is not None:
+        imports.add("org.springframework.data.domain.PageRequest")
 
     return ServiceContext(
         package="{}.application".format(base_package),
@@ -584,6 +832,12 @@ def build_service_context(table: Table, *, base_package: str) -> ServiceContext:
         dependencies=tuple(dependencies),
         constructor_parameters=constructor_parameters,
         constructor_assignments=constructor_assignments,
+        list_support_fields=list_support_fields,
+        list_parameters=list_parameters,
+        list_statements=list_statements,
+        list_support_methods=list_support_methods,
+        sortable_fields=sortable_fields,
+        default_sort=default_sort,
         to_response_statements=tuple(to_response_statements),
         apply_request_statements=tuple(apply_request_statements),
         resource_name=table.name,
@@ -600,7 +854,21 @@ class ControllerContext:
     request_dto: str
     response_dto: str
     resource_path: str              # "/api/order-lines"                  (DD45)
+    list_parameters: str
+    list_arguments: str
     import_groups: tuple[tuple[str, ...], ...]
+
+
+def _controller_list_parameters(filters: tuple[SearchFilterContext, ...]) -> str:
+    parts = ["@RequestParam(required = false) {} {}".format(field.java_type, field.field_name) for field in filters]
+    parts.append("Pageable pageable")
+    return _comma_join(parts)
+
+
+def _controller_list_arguments(filters: tuple[SearchFilterContext, ...]) -> str:
+    parts = [field.field_name for field in filters]
+    parts.append("pageable")
+    return _comma_join(parts)
 
 
 def build_controller_context(table: Table, *, base_package: str) -> ControllerContext:
@@ -610,6 +878,7 @@ def build_controller_context(table: Table, *, base_package: str) -> ControllerCo
     request_dto = "{}RequestDto".format(entity_class)
     response_dto = "{}ResponseDto".format(entity_class)
     resource_path = "/api/{}".format(resource_path_segment(table.name))
+    filters = _search_filters(table)
 
     imports = {
         "org.springframework.web.bind.annotation.RestController",
@@ -630,6 +899,11 @@ def build_controller_context(table: Table, *, base_package: str) -> ControllerCo
         "{}.application.dto.{}".format(base_package, request_dto),
         "{}.application.dto.{}".format(base_package, response_dto),
     }
+    if filters:
+        imports.add("org.springframework.web.bind.annotation.RequestParam")
+    for filter_context in filters:
+        if filter_context.java_type == "BigDecimal":
+            imports.add("java.math.BigDecimal")
 
     return ControllerContext(
         package="{}.api".format(base_package),
@@ -639,21 +913,53 @@ def build_controller_context(table: Table, *, base_package: str) -> ControllerCo
         request_dto=request_dto,
         response_dto=response_dto,
         resource_path=resource_path,
+        list_parameters=_controller_list_parameters(filters),
+        list_arguments=_controller_list_arguments(filters),
+        import_groups=_group_imports(base_package, imports),
+    )
+
+
+def build_specification_context(table: Table, *, base_package: str) -> SpecificationContext:
+    entity_class = pascal_case(table.name)
+    filters = _search_filters(table)
+    imports = {
+        "java.util.ArrayList",
+        "java.util.List",
+        "jakarta.persistence.criteria.Predicate",
+        "org.springframework.data.jpa.domain.Specification",
+        "{}.domain.{}".format(base_package, entity_class),
+    }
+    if any(field.java_type == "BigDecimal" for field in filters):
+        imports.add("java.math.BigDecimal")
+
+    return SpecificationContext(
+        package="{}.application".format(base_package),
+        class_name="{}Specifications".format(entity_class),
+        entity_class=entity_class,
+        filters=filters,
         import_groups=_group_imports(base_package, imports),
     )
 
 
 def build_repository_context(table: Table, *, base_package: str) -> RepositoryContext:
     entity_class_name = pascal_case(table.name)
+    filters = () if (table.discriminator_column is not None or bool(table.discriminator_values)) else _search_filters(table)
     imports = {
         "org.springframework.data.jpa.repository.JpaRepository",
         "java.util.UUID",
         "{}.domain.{}".format(base_package, entity_class_name),
     }
+    extends_interfaces = "JpaRepository<{}, UUID>".format(entity_class_name)
+    if filters:
+        imports.add("org.springframework.data.jpa.repository.JpaSpecificationExecutor")
+        extends_interfaces = "{}, JpaSpecificationExecutor<{}>".format(
+            extends_interfaces, entity_class_name
+        )
 
     return RepositoryContext(
         package="{}.persistence".format(base_package),
         class_name=entity_class_name,
         repository_name="{}Repository".format(entity_class_name),
+        extends_interfaces=extends_interfaces,
         import_groups=_group_imports(base_package, imports),
     )

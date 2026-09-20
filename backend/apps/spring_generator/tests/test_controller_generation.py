@@ -8,11 +8,12 @@ POST/PUT only), DD47 (`Pageable` bound directly, no custom
 Jinja `_ENVIRONMENT` (DD49) ahead of `generate_table_sources` wiring,
 which Phase 7 adds.
 """
+from apps.relational_mapping.domain.profile import ColumnProfile
 from apps.relational_mapping.domain.schema import Column
 from apps.relational_mapping.domain.types import ColumnType
 from apps.spring_generator.emit.context import build_controller_context
 from apps.spring_generator.emit.renderer import _ENVIRONMENT
-from apps.spring_generator.tests.factories import a_table
+from apps.spring_generator.tests.factories import a_table, searchable
 
 
 def _render(context):
@@ -24,6 +25,8 @@ def _render(context):
         request_dto=context.request_dto,
         response_dto=context.response_dto,
         resource_path=context.resource_path,
+        list_parameters=context.list_parameters,
+        list_arguments=context.list_arguments,
         import_groups=context.import_groups,
     )
 
@@ -107,3 +110,40 @@ def test_braces_and_parens_are_balanced():
 
     assert source.count("{") == source.count("}")
     assert source.count("(") == source.count(")")
+
+
+def test_searchable_fields_become_optional_typed_query_parameters():
+    table = a_table(
+        name="customer",
+        columns=(
+            Column(name="full_name", type=ColumnType.VARCHAR, profile=searchable()),
+            Column(name="age", type=ColumnType.INTEGER, profile=searchable()),
+        ),
+    )
+
+    source = _render(build_controller_context(table, base_package="com.modelia.generated"))
+
+    assert "import org.springframework.web.bind.annotation.RequestParam;" in source
+    assert "@RequestParam(required = false) String fullName" in source
+    assert "@RequestParam(required = false) Integer age" in source
+    assert "full_name" not in source
+    assert "Pageable pageable" in source
+    assert "return customerService.list(fullName, age, pageable);" in source
+
+
+def test_numeric_big_decimal_query_parameter_import_is_conditional():
+    table = a_table(name="order", columns=(Column(name="total", type=ColumnType.NUMERIC, profile=searchable()),))
+
+    source = _render(build_controller_context(table, base_package="com.modelia.generated"))
+
+    assert "import java.math.BigDecimal;" in source
+    assert "@RequestParam(required = false) BigDecimal total" in source
+
+
+def test_false_searchable_controller_matches_no_profile_output_byte_identical():
+    plain = _render(build_controller_context(_product_table(), base_package="com.modelia.generated"))
+    table = a_table(name="product", columns=(Column(name="name", type=ColumnType.VARCHAR, profile=ColumnProfile(searchable=False)),))
+
+    profiled = _render(build_controller_context(table, base_package="com.modelia.generated"))
+
+    assert profiled == plain

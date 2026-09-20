@@ -1,11 +1,10 @@
-"""relational-generation-metadata: carrying a generation profile through the
-mapper must not change any generated output (relational-mapping spec,
-Requirement: Profile Carry-Through Is Output-Neutral).
+"""Profile carry-through regression tests.
 
-The same sample model is mapped twice, with and without declared profiles;
-the Spring sources must be identical (the Domain Manifest half lives in
+The Spring generator now consumes searchable/sortable/defaultSort profile
+metadata, so only unset/false profile values remain output-neutral for Spring
+sources. The Domain Manifest half lives in
 `domain_manifest/tests/test_profile_output_neutral.py`, since no other app may
-import the manifest app). No consumer reads `Table.profile` / `Column.profile` yet.
+import the manifest app.
 """
 import dataclasses
 
@@ -16,7 +15,7 @@ from apps.spring_generator.emit.renderer import generate_project_sources
 BASE_PACKAGE = "com.modelia.generated"
 
 
-def _model_with_declared_profiles():
+def _model_with_declared_profiles(*, searchable: bool = True, sortable: bool = True):
     model = build_sample_model()
     metadata = {}
     for uml_class in model.classes:
@@ -24,7 +23,7 @@ def _model_with_declared_profiles():
             "profile": {"auditable": True, "readOnly": False, "crud": ["read", "create"]}
         }
         for attribute in uml_class.attributes:
-            metadata[attribute.id] = {"profile": {"searchable": True, "sortable": True}}
+            metadata[attribute.id] = {"profile": {"searchable": searchable, "sortable": sortable}}
     return dataclasses.replace(model, generation_metadata=metadata)
 
 
@@ -35,10 +34,19 @@ def test_declared_profiles_are_actually_carried_by_the_mapper():
     assert any(column.profile is not None for table in relational.tables for column in table.columns)
 
 
-def test_declared_profile_does_not_change_spring_sources():
+def test_false_searchable_sortable_profile_does_not_change_spring_sources():
+    plain = map_to_relational(build_sample_model())
+    profiled = map_to_relational(_model_with_declared_profiles(searchable=False, sortable=False))
+
+    assert generate_project_sources(profiled, base_package=BASE_PACKAGE) == generate_project_sources(
+        plain, base_package=BASE_PACKAGE
+    )
+
+
+def test_true_searchable_sortable_profile_changes_spring_sources():
     plain = map_to_relational(build_sample_model())
     profiled = map_to_relational(_model_with_declared_profiles())
 
-    assert generate_project_sources(profiled, base_package=BASE_PACKAGE) == generate_project_sources(
+    assert generate_project_sources(profiled, base_package=BASE_PACKAGE) != generate_project_sources(
         plain, base_package=BASE_PACKAGE
     )
