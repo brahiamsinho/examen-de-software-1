@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { DocumentGrid } from "@/components/workspace/DocumentGrid";
 
@@ -51,5 +51,18 @@ describe("DocumentGrid", () => {
 
     expect(screen.getByRole("heading", { name: "Todavía no hay diagramas" })).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+});
+
+describe("DocumentGrid delete action", () => {
+  it("shows a delete button per card only when onDelete is provided", () => {
+    const { rerender } = render(<DocumentGrid documents={[docA]} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+
+    const onDelete = vi.fn();
+    rerender(<DocumentGrid documents={[docA]} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar diagrama Ventas" }));
+
+    expect(onDelete).toHaveBeenCalledWith(docA);
   });
 });

@@ -119,6 +119,25 @@ def latest_deployment(
     return deployment
 
 
+def stop_active_for_document(
+    *, organization: Organization, doc_id: UUID, runner: RunnerClientProtocol | None = None
+) -> None:
+    """Best-effort stop of every active deployment of a document (used before deleting it).
+
+    Never raises: the runner's TTL reaper and startup sweep are the backstop.
+    """
+    try:
+        runner = runner or get_runner_client()
+        active = _scoped(organization).filter(document_id=doc_id, status__in=ACTIVE_STATUSES)
+        for deployment in list(active):
+            try:
+                runner.stop(str(deployment.id))
+            except RunnerError:
+                pass
+    except RunnerError:
+        pass
+
+
 def stop_deployment(
     *,
     organization: Organization,

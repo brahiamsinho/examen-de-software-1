@@ -12,3 +12,7 @@ not an unhandled 500.
 
 class InvalidCommandPayloadError(ValueError):
     """A command payload's inner shape could not be converted to a domain object."""
+
+
+class DocumentNotEmptyError(Exception):
+    """The target document already has classes or relationships, so its content cannot be replaced."""

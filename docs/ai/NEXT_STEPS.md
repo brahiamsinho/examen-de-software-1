@@ -1,5 +1,7 @@
 # Next Steps
 
+**Update 2026-09-21 (diagram delete + XML into a blank diagram):** both are in (details in `CURRENT_STATE.md`). Next candidates: also broadcast a `document.deleted` event so other open editors leave a deleted diagram (today they get 404 on the next fetch), and an undo/soft-delete if users ask for recovery.
+
 **Update 2026-09-21 (stage 2, cloud deploy; small direct change, no SDD, uncommitted):** the whole stack can now run on one VM behind a DuckDNS domain: `docker-compose.prod.yml` (standalone; `docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d --build`) with Caddy (only 80/443, automatic HTTPS, `deploy/Caddyfile`), a restricted `tecnativa/docker-socket-proxy` instead of the raw socket for the runner (DD169), and `deploy/README.md` + `deploy/env.prod.example`. Also fixed prod-image blockers: backend `collectstatic` build env, frontend `NEXT_PUBLIC_API_URL` build arg and a test-file type error that broke `next build`; new env-driven settings `TRUST_X_FORWARDED_PROTO`, `EMAIL_HOST_USER/PASSWORD/USE_TLS`. Verified locally with `APP_DOMAIN=localhost` (Caddy internal TLS): routing, and a full build/run/stop of a generated backend through the proxy. Real Let's Encrypt/DuckDNS is only verifiable on the VM. Dev `docker compose up` is unchanged.
 
 

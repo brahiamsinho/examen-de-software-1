@@ -54,3 +54,21 @@ export function takeImportWarnings(docId: string): string[] {
     return [];
   }
 }
+
+/**
+ * Loads an XMI file INTO an existing blank document (replacing its model).
+ * The server answers 409 `document_not_empty` when the document already has
+ * classes or relationships.
+ */
+export async function importXmiIntoDocument(
+  orgSlug: string,
+  docId: string,
+  file: File,
+): Promise<XmiImportResult> {
+  const body = new FormData();
+  body.append("file", file);
+  return apiFetch<XmiImportResult>(`${base(orgSlug)}/${encodeURIComponent(docId)}/import-xmi`, {
+    method: "POST",
+    body,
+  });
+}

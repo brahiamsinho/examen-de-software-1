@@ -174,13 +174,16 @@ class DocumentConsumer(JsonWebsocketConsumer):
         x, y = content.get("x"), content.get("y")
         if _is_number(x) and _is_number(y):
             # DD8: the durable write, once per release — never per frame.
-            services.save_layout_position(
-                organization=membership.organization,
-                doc_id=self.doc_id,
-                class_id=class_id,
-                position=Position(x=float(x), y=float(y)),
-                now=timezone.now(),
-            )
+            try:
+                services.save_layout_position(
+                    organization=membership.organization,
+                    doc_id=self.doc_id,
+                    class_id=class_id,
+                    position=Position(x=float(x), y=float(y)),
+                    now=timezone.now(),
+                )
+            except Http404:
+                pass  # the document was deleted mid-drag: nothing to persist
         # else: null/omitted coordinates (the RemoveClass-mid-drag case) —
         # release the lock and skip the durable write entirely.
 

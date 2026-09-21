@@ -1,10 +1,12 @@
 "use client";
 
 import { useAtomValue } from "jotai";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, FileUp, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
@@ -12,8 +14,10 @@ import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
-import { DeploymentActions, DeploymentNotices } from "@/components/workspace/DeploymentControls";
+import { DeploymentActions, DeploymentNotices, DeploymentUrl } from "@/components/workspace/DeploymentControls";
+import { DeleteDiagramDialog } from "@/components/workspace/DeleteDiagramDialog";
 import { DownloadBackendButton } from "@/components/workspace/DownloadBackendButton";
+import { ImportXmiControl } from "@/components/workspace/ImportXmiControl";
 import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeControl";
 import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
 import { RemoveOperationControl } from "@/components/workspace/RemoveOperationControl";
@@ -22,10 +26,11 @@ import { GenerationProfilePanel } from "@/components/workspace/GenerationProfile
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
-import { exportXmi, takeImportWarnings } from "@/lib/xmi_interop";
+import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_interop";
 import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
-import { activeOrgSlugAtom } from "@/state/organizations";
+import { useDocumentActions } from "@/state/documents";
+import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
 
 /**
  * Container (design.md DD11): stays `"use client"` and unwraps the Next 16
@@ -43,6 +48,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const orgSlug = useAtomValue(activeOrgSlugAtom);
   const {
     document,
+    applyDocument,
     error,
     lastValidation,
     isSubmitting,
@@ -55,6 +61,13 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     sendRelease,
   } = useDocument(orgSlug, docId);
   const deployment = useBackendDeployment(orgSlug, docId);
+  const router = useRouter();
+  const { deleteDiagram } = useDocumentActions(orgSlug);
+  // The role only gates what is SHOWN: the backend re-checks it (403) on every write.
+  const organizations = useAtomValue(organizationsAtom);
+  const myRole = organizations.find((org) => org.slug === orgSlug)?.my_role ?? null;
+  const canEdit = myRole === "OWNER" || myRole === "EDITOR";
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
   // Read after mount (sessionStorage does not exist during SSR); consumed once.
@@ -85,6 +98,21 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
   if (document === null) {
     return null;
+  }
+
+  // Same emptiness rule the backend enforces on `POST .../import-xmi` (409 otherwise).
+  const isBlank = document.model.classes.length === 0 && document.model.relationships.length === 0;
+
+  async function handleImportIntoDocument(file: File) {
+    const result = await importXmiIntoDocument(orgSlug!, docId, file);
+    const { warnings, ...imported } = result;
+    applyDocument(imported);
+    setImportWarnings(warnings);
+  }
+
+  async function handleDelete() {
+    await deleteDiagram(docId);
+    router.replace("/dashboard");
   }
 
   const classIds = new Set(document.model.classes.map((c) => c.id));
@@ -174,14 +202,21 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               label="Exportar XML"
               pendingLabel="Exportando..."
             />
+            {canEdit ? (
+              <Button type="button" variant="outline" size="lg" onClick={() => setDeleteOpen(true)}>
+                <Trash2 />
+                Eliminar diagrama
+              </Button>
+            ) : null}
           </div>
         </div>
+        <DeploymentUrl deployment={deployment.deployment} />
         <DeploymentNotices deployment={deployment.deployment} actionError={deployment.actionError} />
       </header>
 
       <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="h-[calc(100vh-12rem)] min-h-[36rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
+          <div className="relative h-[calc(100vh-12rem)] min-h-[36rem] w-full overflow-hidden rounded-lg border border-border bg-muted/30">
             <DiagramCanvas
               model={document.model}
               revision={document.revision}
@@ -195,6 +230,20 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               onLivePosition={sendPosition}
               onRelease={sendRelease}
             />
+            {isBlank && canEdit ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+                <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card/95 px-6 py-6 text-center shadow-xs">
+                  <span className="flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                    <FileUp className="size-5" aria-hidden="true" />
+                  </span>
+                  <h2 className="font-heading text-base font-semibold">Este diagrama está vacío</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Agrega clases desde el panel derecho o carga un modelo desde un archivo XML.
+                  </p>
+                  <ImportXmiControl onImport={handleImportIntoDocument} disabled={isSubmitting} />
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {foreignLocks.length > 0 ? (
@@ -360,6 +409,13 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
           </Tabs>
         </aside>
       </div>
+
+      <DeleteDiagramDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        diagramName={document.metadata.name}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

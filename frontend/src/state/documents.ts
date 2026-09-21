@@ -2,7 +2,12 @@ import { atom, useAtomValue, useSetAtom } from "jotai";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { createDocument, listDocuments, type DocumentSummary } from "@/lib/uml_documents";
+import {
+  createDocument,
+  deleteDocument,
+  listDocuments,
+  type DocumentSummary,
+} from "@/lib/uml_documents";
 import { importXmi, stashImportWarnings } from "@/lib/xmi_interop";
 
 /**
@@ -49,7 +54,20 @@ export function useDocumentActions(orgSlug: string | null) {
     [orgSlug, invalidate, router],
   );
 
-  return { createDiagram, importDiagram };
+  /**
+   * Deletes then invalidates the shared list so the sidebar and the grid drop
+   * the card. Navigation is the caller's call: the grid stays put, the editor
+   * leaves the (now nonexistent) document.
+   */
+  const deleteDiagram = useCallback(
+    async (docId: string) => {
+      await deleteDocument(orgSlug!, docId);
+      invalidate();
+    },
+    [orgSlug, invalidate],
+  );
+
+  return { createDiagram, importDiagram, deleteDiagram };
 }
 
 /**

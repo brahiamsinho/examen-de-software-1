@@ -36,3 +36,16 @@ describe("ImportXmiControl", () => {
     expect(screen.getByRole("button", { name: "Importar XML" })).toBeDisabled();
   });
 });
+
+describe("ImportXmiControl document_not_empty", () => {
+  it("shows a friendly Spanish message when the target diagram already has content", async () => {
+    const onImport = vi.fn().mockRejectedValue(
+      new ApiError({ status: 409, code: "document_not_empty", detail: "raw" }),
+    );
+    render(<ImportXmiControl onImport={onImport} />);
+
+    fireEvent.change(screen.getByLabelText("Archivo XML"), { target: { files: [file] } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Este diagrama ya tiene contenido");
+  });
+});

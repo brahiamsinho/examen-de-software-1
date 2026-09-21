@@ -308,3 +308,8 @@ export function openDocumentSocket(
     sendRelease: (classId, x, y) => send({ type: "node.release", class_id: classId, x, y }),
   };
 }
+
+/** `DELETE .../documents/{docId}` answers 204; a 403 (VIEWER) or 404 reaches the caller as `ApiError`. */
+export async function deleteDocument(orgSlug: string, docId: string): Promise<void> {
+  await apiFetch<void>(`${base(orgSlug)}/${encodeURIComponent(docId)}`, { method: "DELETE" });
+}

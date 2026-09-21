@@ -14,6 +14,7 @@ from ninja.security import django_auth
 
 from apps.organizations.constants import Role
 from apps.organizations.permissions import require_role, resolve_membership
+from apps.backend_deployments import service as deployment_service
 from apps.uml_documents import codec, services
 from apps.uml_documents.errors import InvalidCommandPayloadError
 from apps.uml_documents.schemas import (
@@ -65,6 +66,19 @@ def get_document_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
     membership = resolve_membership(request, org_slug)
     document = services.get_document(organization=membership.organization, doc_id=doc_id)
     return _document_out(document)
+
+
+@documents_router.delete("/{doc_id}", response={204: None})
+def delete_document_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    services.get_document(organization=membership.organization, doc_id=doc_id)  # 404 before side effects
+    # Best effort: a runner outage must never block deleting the diagram.
+    deployment_service.stop_active_for_document(
+        organization=membership.organization, doc_id=doc_id
+    )
+    services.delete_document(organization=membership.organization, doc_id=doc_id)
+    return Status(204, None)
 
 
 @documents_router.post("/{doc_id}/commands", response=CommandResultOut)

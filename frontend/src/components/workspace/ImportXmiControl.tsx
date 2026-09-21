@@ -33,7 +33,11 @@ export function ImportXmiControl({ onImport, disabled = false }: ImportXmiContro
       await onImport(file);
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.detail : "Ocurrió un error inesperado. Intenta de nuevo.",
+        err instanceof ApiError && err.code === "document_not_empty"
+          ? "Este diagrama ya tiene contenido. Solo puedes importar en un diagrama en blanco."
+          : err instanceof ApiError
+            ? err.detail
+            : "Ocurrió un error inesperado. Intenta de nuevo.",
       );
     } finally {
       setPending(false);

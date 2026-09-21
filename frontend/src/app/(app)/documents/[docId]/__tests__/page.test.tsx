@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DocumentPage from "@/app/(app)/documents/[docId]/page";
 import type { UmlModel } from "@/lib/uml_documents";
-import { activeOrgSlugAtom } from "@/state/organizations";
+import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
 
 /**
  * Container (design.md DD11): unwraps `params` with `use()`, reads
@@ -15,6 +15,8 @@ import { activeOrgSlugAtom } from "@/state/organizations";
  * `DiagramCanvas.test.tsx`; this suite only proves the container's own
  * state machine and error handling.
  */
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+
 const useDocumentMock = vi.fn();
 vi.mock("@/state/document", () => ({ useDocument: (...args: unknown[]) => useDocumentMock(...args) }));
 
@@ -100,9 +102,12 @@ const document = {
   updated_at: "2026-09-12T10:00:00Z",
 };
 
-function renderPage(orgSlug: string | null = "acme") {
+function renderPage(orgSlug: string | null = "acme", role: "OWNER" | "EDITOR" | "VIEWER" | null = null) {
   const store = createStore();
   store.set(activeOrgSlugAtom, orgSlug);
+  if (role) {
+    store.set(organizationsAtom, [{ id: "1", name: "Acme", slug: "acme", plan: "team", my_role: role }]);
+  }
   return render(
     <Provider store={store}>
       <DocumentPage params={paramsPromise("doc-1")} />
@@ -581,5 +586,47 @@ describe("DocumentPage — backend download", () => {
 
     expect(useDeploymentMock).toHaveBeenCalledWith("acme", "doc-1");
     expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  describe("delete and import-into-blank actions", () => {
+    const blank = { ...document, model: { ...model, classes: [], relationships: [] } };
+    const stateFor = (doc: typeof document) => ({
+      document: doc,
+      applyDocument: vi.fn(),
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+
+    it.each([
+      ["OWNER", true],
+      ["EDITOR", true],
+      ["VIEWER", false],
+    ] as const)("role %s: header delete button visible = %s", async (role, visible) => {
+      useDocumentMock.mockReturnValue(stateFor(document));
+
+      renderPage("acme", role);
+
+      await screen.findByText("Tap Cliente");
+      expect(screen.queryByRole("button", { name: "Eliminar diagrama" }) !== null).toBe(visible);
+    });
+
+    it("offers 'Importar XML' only on a blank diagram, and only to editors", async () => {
+      useDocumentMock.mockReturnValue(stateFor(blank));
+      const { unmount } = renderPage("acme", "EDITOR");
+      expect(await screen.findByRole("button", { name: "Importar XML" })).toBeInTheDocument();
+      unmount();
+
+      useDocumentMock.mockReturnValue(stateFor(blank));
+      const viewer = renderPage("acme", "VIEWER");
+      expect(screen.queryByRole("button", { name: "Importar XML" })).not.toBeInTheDocument();
+      viewer.unmount();
+
+      useDocumentMock.mockReturnValue(stateFor(document));
+      renderPage("acme", "EDITOR");
+      await screen.findByText("Tap Cliente");
+      expect(screen.queryByRole("button", { name: "Importar XML" })).not.toBeInTheDocument();
+    });
   });
 });

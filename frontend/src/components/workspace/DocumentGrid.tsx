@@ -1,4 +1,4 @@
-import { FileText } from "lucide-react";
+import { FileText, Trash2 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -10,6 +10,8 @@ type DocumentGridProps = {
   documents: DocumentSummary[];
   /** Actions shown inside the empty state (the header hides them then). */
   emptyActions?: ReactNode;
+  /** Omit to hide the per-card delete button (VIEWERs cannot delete). */
+  onDelete?: (doc: DocumentSummary) => void;
 };
 
 /**
@@ -20,7 +22,7 @@ type DocumentGridProps = {
  * `emptyActions` lets the container place its create/import controls there
  * so they exist exactly once on the page.
  */
-export function DocumentGrid({ documents, emptyActions }: DocumentGridProps) {
+export function DocumentGrid({ documents, emptyActions, onDelete }: DocumentGridProps) {
   if (documents.length === 0) {
     return (
       <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border px-6 py-14 text-center">
@@ -51,7 +53,7 @@ export function DocumentGrid({ documents, emptyActions }: DocumentGridProps) {
         const updated = formatUpdatedAt(doc.updated_at);
         const untitled = !doc.name.trim();
         return (
-          <li key={doc.id}>
+          <li key={doc.id} className="group/card relative">
             <Link
               href={`/documents/${doc.id}`}
               className="group flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-xs transition-all outline-none hover:-translate-y-0.5 hover:border-ring hover:shadow-md focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -76,6 +78,17 @@ export function DocumentGrid({ documents, emptyActions }: DocumentGridProps) {
                 ) : null}
               </span>
             </Link>
+            {onDelete ? (
+              <button
+                type="button"
+                aria-label={`Eliminar diagrama ${documentTitle(doc)}`}
+                title="Eliminar diagrama"
+                onClick={() => onDelete(doc)}
+                className="absolute top-3 right-3 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-all outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50 sm:opacity-0 sm:group-hover/card:opacity-100"
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </button>
+            ) : null}
           </li>
         );
       })}

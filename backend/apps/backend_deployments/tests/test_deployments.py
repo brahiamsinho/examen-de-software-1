@@ -174,3 +174,25 @@ class TestApi:
     def test_anonymous_gets_401(self, auth_client):
         organization, *_ = make_org_with_roles()
         assert auth_client.post(_api(organization, uuid4())).status_code == 401
+
+
+@pytest.mark.django_db
+class TestDeleteDocumentWithDeployment:
+    @pytest.fixture(autouse=True)
+    def _archive(self, monkeypatch):
+        monkeypatch.setattr(service, "build_project_archive", lambda doc: b"zip")
+
+    @pytest.mark.parametrize("runner_down", [False, True])
+    def test_deleting_the_diagram_stops_its_deployment_best_effort(
+        self, auth_client, fake_runner, runner_down
+    ):
+        organization, owner, *_ = make_org_with_roles()
+        doc_id = _doc_with_class(auth_client, organization, owner)
+        deployment_id = auth_client.post(_api(organization, doc_id)).json()["id"]
+        fake_runner.down = runner_down
+
+        response = auth_client.delete(f"/api/orgs/{organization.slug}/documents/{doc_id}")
+
+        assert response.status_code == 204  # a runner outage never blocks the delete
+        assert fake_runner.stopped == ([] if runner_down else [deployment_id])
+        assert not Deployment.all_objects.filter(document_id=doc_id).exists()  # cascaded

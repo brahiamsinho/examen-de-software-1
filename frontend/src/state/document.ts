@@ -350,8 +350,18 @@ export function useDocument(orgSlug: string | null, docId: string) {
     [orgSlug, docId],
   );
 
+  /**
+   * Adopts a document returned by a server-side replace (the blank-diagram XMI
+   * import). Same monotonic rule as a socket broadcast, so it never regresses
+   * behind a newer revision that arrived first.
+   */
+  const applyDocument = useCallback((incoming: UmlDocument) => {
+    setDocument((prev) => (prev !== null && incoming.revision < prev.revision ? prev : incoming));
+  }, []);
+
   return {
     document,
+    applyDocument,
     loading,
     error,
     lastValidation,

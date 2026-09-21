@@ -7,11 +7,13 @@ import { Plus } from "lucide-react";
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
 import { Button } from "@/components/ui/button";
 import { CreateOrgDialog } from "@/components/workspace/CreateOrgDialog";
+import { DeleteDiagramDialog } from "@/components/workspace/DeleteDiagramDialog";
 import { DocumentGrid } from "@/components/workspace/DocumentGrid";
 import { ImportXmiControl } from "@/components/workspace/ImportXmiControl";
 import { NewDocumentDialog } from "@/components/workspace/NewDocumentDialog";
 import { OrgEmptyState } from "@/components/workspace/OrgEmptyState";
 import { ROLE_LABELS } from "@/components/workspace/roleLabels";
+import type { DocumentSummary } from "@/lib/uml_documents";
 import { useDocumentActions, useDocuments } from "@/state/documents";
 import { useOrganizations } from "@/state/organizations";
 
@@ -35,9 +37,10 @@ export default function DashboardPage() {
   const activeOrg = organizations.find((org) => org.slug === activeSlug) ?? null;
   const canCreateDocument = activeOrg?.my_role === "OWNER" || activeOrg?.my_role === "EDITOR";
   const { documents, loading } = useDocuments(activeOrg?.slug ?? null);
-  const { createDiagram, importDiagram } = useDocumentActions(activeOrg?.slug ?? null);
+  const { createDiagram, importDiagram, deleteDiagram } = useDocumentActions(activeOrg?.slug ?? null);
   const [newDiagramOpen, setNewDiagramOpen] = useState(false);
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<DocumentSummary | null>(null);
 
   if (organizations.length === 0) {
     return (
@@ -100,13 +103,25 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <DocumentGrid documents={documents} emptyActions={actions} />
+            <DocumentGrid
+              documents={documents}
+              emptyActions={actions}
+              onDelete={canCreateDocument ? setPendingDelete : undefined}
+            />
           )}
 
           <NewDocumentDialog
             open={newDiagramOpen}
             onOpenChange={setNewDiagramOpen}
             onCreate={createDiagram}
+          />
+          <DeleteDiagramDialog
+            open={pendingDelete !== null}
+            onOpenChange={(open) => {
+              if (!open) setPendingDelete(null);
+            }}
+            diagramName={pendingDelete?.name ?? ""}
+            onConfirm={() => deleteDiagram(pendingDelete!.id)}
           />
         </>
       ) : null}

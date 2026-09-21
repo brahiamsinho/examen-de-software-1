@@ -7,6 +7,7 @@ place that reassembles a full `ProjectDocument` from a `UmlDocument` row
 raising default manager or `all_objects` directly (Tenant Scoping on
 Every Access).
 """
+import dataclasses
 import datetime
 from uuid import UUID
 
@@ -25,7 +26,7 @@ from apps.relational_mapping.mapping.profile_parser import (
 )
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_documents import codec, schemas
-from apps.uml_documents.errors import InvalidCommandPayloadError
+from apps.uml_documents.errors import DocumentNotEmptyError, InvalidCommandPayloadError
 from apps.uml_documents.models import UmlDocument
 from apps.uml_modeling.documents import DiagramLayout, Position, ProjectDocument, ProjectMetadata
 from apps.uml_modeling.domain.elements import (
@@ -140,6 +141,41 @@ def create_document_from_model(
         data=data,
     )
     return _to_project_document(row)
+
+
+@transaction.atomic
+def replace_blank_document_content(
+    *,
+    organization: Organization,
+    doc_id: UUID,
+    model: CanonicalUmlModel,
+    layout: DiagramLayout,
+    now: datetime.datetime,
+) -> ProjectDocument:
+    """Loads a ready model (e.g. an XMI import) INTO an existing blank document.
+
+    Serialized under the same row lock as `submit_command`, so the emptiness
+    check cannot race a concurrent edit. Refuses with `DocumentNotEmptyError`
+    when the document already has classes or relationships. The name stays the
+    one the user chose; the revision is bumped once and the result is broadcast
+    on commit so other connected clients see the new content.
+    """
+    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    document = _to_project_document(row)
+    if document.model.classes or document.model.relationships:
+        raise DocumentNotEmptyError("The document already has content.")
+    updated = dataclasses.replace(
+        document, model=model, layout=layout, revision=document.revision + 1, updated_at=now
+    )
+    _save(row, updated)
+    transaction.on_commit(lambda: broadcast_document(document=updated))
+    return updated
+
+
+def delete_document(*, organization: Organization, doc_id: UUID) -> None:
+    """Hard-deletes the document. Rows that reference it (deployments) cascade."""
+    row = _get_row(organization=organization, doc_id=doc_id)
+    row.delete()
 
 
 def get_document(*, organization: Organization, doc_id: UUID) -> ProjectDocument:

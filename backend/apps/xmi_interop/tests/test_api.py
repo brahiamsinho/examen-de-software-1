@@ -78,3 +78,52 @@ class TestExportXmi:
         response = auth_client.get(f"/api/orgs/{organization.slug}/documents/{doc_id}/export-xmi")
 
         assert response.status_code in (403, 404)
+
+
+@pytest.mark.django_db
+class TestImportXmiIntoBlankDocument:
+    def _blank(self, client, organization, user) -> str:
+        client.force_login(user)
+        return client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "Mi diagrama"},
+            content_type="application/json",
+        ).json()["id"]
+
+    def _import_into(self, client, organization, doc_id):
+        return client.post(
+            f"/api/orgs/{organization.slug}/documents/{doc_id}/import-xmi",
+            {"file": SimpleUploadedFile("ea.xml", FIXTURE.read_bytes(), content_type="application/xml")},
+        )
+
+    def test_blank_document_receives_the_model_and_keeps_its_name(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = self._blank(auth_client, organization, editor)
+
+        response = self._import_into(auth_client, organization, doc_id)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == doc_id and body["metadata"]["name"] == "Mi diagrama"
+        assert body["revision"] == 2 and isinstance(body["warnings"], list)
+        assert sorted(c["name"] for c in body["model"]["classes"]) == ["Class A", "Class B"]
+        assert len(body["layout"]["positions"]) == 2
+        fetched = auth_client.get(f"/api/orgs/{organization.slug}/documents/{doc_id}").json()
+        assert len(fetched["model"]["classes"]) == 2
+
+    def test_non_empty_document_is_refused_with_409(self, auth_client):
+        organization, owner, *_ = make_org_with_roles()
+        doc_id = self._blank(auth_client, organization, owner)
+        assert self._import_into(auth_client, organization, doc_id).status_code == 200
+
+        response = self._import_into(auth_client, organization, doc_id)
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "document_not_empty"
+
+    def test_viewer_cannot_import_into_a_document(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        doc_id = self._blank(auth_client, organization, owner)
+        auth_client.force_login(viewer)
+
+        assert self._import_into(auth_client, organization, doc_id).status_code == 403

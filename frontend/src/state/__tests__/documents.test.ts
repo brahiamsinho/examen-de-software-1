@@ -13,7 +13,7 @@ import { useDocumentActions, useDocuments, useInvalidateDocuments } from "@/stat
  */
 vi.mock("@/lib/uml_documents", async () => {
   const actual = await vi.importActual<typeof import("@/lib/uml_documents")>("@/lib/uml_documents");
-  return { ...actual, listDocuments: vi.fn(), createDocument: vi.fn() };
+  return { ...actual, listDocuments: vi.fn(), createDocument: vi.fn(), deleteDocument: vi.fn() };
 });
 
 const push = vi.fn();
@@ -136,5 +136,22 @@ describe("state/documents useDocumentActions()", () => {
     expect(xmiLib.importXmi).toHaveBeenCalledWith("acme", file);
     expect(xmiLib.stashImportWarnings).toHaveBeenCalledWith("doc-8", ["w"]);
     expect(push).toHaveBeenCalledWith("/documents/doc-8");
+  });
+});
+
+describe("state/documents deleteDiagram()", () => {
+  it("deletes through the API and refreshes every mounted list", async () => {
+    vi.mocked(docsLib.listDocuments).mockReset().mockResolvedValue([docA]);
+    vi.mocked(docsLib.deleteDocument).mockReset().mockResolvedValue(undefined);
+    const { result } = renderHook(() => ({
+      list: useDocuments("acme"),
+      actions: useDocumentActions("acme"),
+    }));
+    await waitFor(() => expect(docsLib.listDocuments).toHaveBeenCalledTimes(1));
+
+    await act(() => result.current.actions.deleteDiagram("doc-1"));
+
+    expect(docsLib.deleteDocument).toHaveBeenCalledWith("acme", "doc-1");
+    await waitFor(() => expect(docsLib.listDocuments).toHaveBeenCalledTimes(2));
   });
 });

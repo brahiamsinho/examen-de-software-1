@@ -443,3 +443,33 @@ class TestSetGenerationProfile:
         assert response.json()["revision"] == 5
         assert UmlDocument.all_objects.get(id=doc_id).data["model"]["generation_metadata"] == {}
         assert broadcast.call_count == 1
+
+
+@pytest.mark.django_db
+class TestDeleteDocument:
+    def _create(self, client, organization, user) -> str:
+        client.force_login(user)
+        return client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "Doomed"},
+            content_type="application/json",
+        ).json()["id"]
+
+    def test_editor_deletes_and_the_document_is_gone(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = self._create(auth_client, organization, editor)
+        url = f"/api/orgs/{organization.slug}/documents/{doc_id}"
+
+        assert auth_client.delete(url).status_code == 204
+        assert auth_client.get(url).status_code == 404
+        assert auth_client.delete(url).status_code == 404
+
+    def test_viewer_is_forbidden_and_the_document_survives(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        doc_id = self._create(auth_client, organization, owner)
+        auth_client.force_login(viewer)
+
+        response = auth_client.delete(f"/api/orgs/{organization.slug}/documents/{doc_id}")
+
+        assert response.status_code == 403
+        assert UmlDocument.all_objects.filter(id=doc_id).exists()
