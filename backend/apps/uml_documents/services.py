@@ -120,6 +120,28 @@ def create_document(
     return _to_project_document(row)
 
 
+def create_document_from_model(
+    *,
+    organization: Organization,
+    owner_id: str,
+    name: str,
+    model: CanonicalUmlModel,
+    layout: DiagramLayout,
+    now: datetime.datetime,
+) -> ProjectDocument:
+    """Like `create_document`, but seeded with a ready model (e.g. an XMI import)."""
+    data = codec.to_json(ProjectMetadata(name=name), model, layout)
+    row = UmlDocument.objects.for_organization(organization).create(
+        organization=organization,
+        owner_id=owner_id,
+        revision=1,
+        created_at=now,
+        updated_at=now,
+        data=data,
+    )
+    return _to_project_document(row)
+
+
 def get_document(*, organization: Organization, doc_id: UUID) -> ProjectDocument:
     row = _get_row(organization=organization, doc_id=doc_id)
     return _to_project_document(row)

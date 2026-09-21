@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-written XMI 2.1 sample. NOT exported by Enterprise Architect: no real EA XMI 2.1 file was verified. -->
+<xmi:XMI xmi:version="2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1">
+  <uml:Model xmi:type="uml:Model" xmi:id="m1" name="Shop">
+    <packagedElement xmi:type="uml:Package" xmi:id="p1" name="Sales">
+      <packagedElement xmi:type="uml:Enumeration" xmi:id="e1" name="Status">
+        <ownedLiteral xmi:type="uml:EnumerationLiteral" xmi:id="e1a" name="OPEN"/>
+        <ownedLiteral xmi:type="uml:EnumerationLiteral" xmi:id="e1b" name="CLOSED"/>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Class" xmi:id="c1" name="Order">
+        <ownedAttribute xmi:type="uml:Property" xmi:id="c1a" name="total" visibility="private">
+          <type xmi:idref="EAJava_double"/>
+        </ownedAttribute>
+        <ownedAttribute xmi:type="uml:Property" xmi:id="c1b" name="status" visibility="private" type="e1"/>
+        <ownedAttribute xmi:type="uml:Property" xmi:id="c1c" name="lines" association="a1" aggregation="composite" type="c2">
+          <lowerValue xmi:type="uml:LiteralInteger" value="0"/>
+          <upperValue xmi:type="uml:LiteralUnlimitedNatural" value="*"/>
+        </ownedAttribute>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Class" xmi:id="c2" name="OrderLine">
+        <ownedAttribute xmi:type="uml:Property" xmi:id="c2a" name="qty" type="dt1"/>
+        <ownedAttribute xmi:type="uml:Property" xmi:id="c2b" name="order" association="a1" type="c1"/>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Class" xmi:id="c3" name="SpecialOrder">
+        <generalization xmi:type="uml:Generalization" xmi:id="g1" general="c1"/>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Association" xmi:id="a1" name="contains">
+        <memberEnd xmi:idref="c2b"/>
+        <memberEnd xmi:idref="c1c"/>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Actor" xmi:id="x1" name="Clerk"/>
+    </packagedElement>
+    <packagedElement xmi:type="uml:PrimitiveType" xmi:id="dt1" name="Integer"/>
+  </uml:Model>
+</xmi:XMI>

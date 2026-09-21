@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.generation_export",
+    "apps.xmi_interop",
     "apps.users",
     "apps.organizations",
 ]

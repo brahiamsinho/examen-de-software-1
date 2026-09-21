@@ -2,7 +2,7 @@
 
 import { useAtomValue } from "jotai";
 import { AlertTriangle } from "lucide-react";
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,9 @@ import { RemoveOperationControl } from "@/components/workspace/RemoveOperationCo
 import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelationshipControl";
 import { GenerationProfilePanel } from "@/components/workspace/GenerationProfilePanel";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
+import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
+import { exportXmi, takeImportWarnings } from "@/lib/xmi_interop";
 import { useDocument } from "@/state/document";
 import { activeOrgSlugAtom } from "@/state/organizations";
 
@@ -51,6 +53,11 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   } = useDocument(orgSlug, docId);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
+  // Read after mount (sessionStorage does not exist during SSR); consumed once.
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  useEffect(() => {
+    setImportWarnings(takeImportWarnings(docId));
+  }, [docId]);
 
   if (orgSlug === null) {
     return (
@@ -177,7 +184,16 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
         </div>
 
         <aside className="flex w-full flex-col gap-6 lg:w-96 lg:shrink-0">
-          <DownloadBackendButton onDownload={() => downloadGeneratedBackend(orgSlug, docId)} />
+          <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
+
+          <div className="flex flex-wrap gap-2">
+            <DownloadBackendButton onDownload={() => downloadGeneratedBackend(orgSlug, docId)} />
+            <DownloadBackendButton
+              onDownload={() => exportXmi(orgSlug, docId)}
+              label="Exportar XML"
+              pendingLabel="Exportando..."
+            />
+          </div>
 
           <ValidationPanel lastValidation={lastValidation} />
 

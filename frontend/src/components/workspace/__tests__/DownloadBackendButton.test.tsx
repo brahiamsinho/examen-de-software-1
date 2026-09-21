@@ -71,6 +71,19 @@ describe("DownloadBackendButton", () => {
     });
   });
 
+  it("uses custom captions (reused for the XML export)", async () => {
+    let resolveDownload: () => void = () => {};
+    const onDownload = vi.fn(
+      () => new Promise<void>((resolve) => { resolveDownload = resolve; }),
+    );
+    render(<DownloadBackendButton onDownload={onDownload} label="Exportar XML" pendingLabel="Exportando..." />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Exportar XML" }));
+
+    expect(await screen.findByRole("button", { name: "Exportando..." })).toBeDisabled();
+    resolveDownload();
+  });
+
   it("is disabled when the disabled prop is set", () => {
     render(<DownloadBackendButton onDownload={vi.fn()} disabled />);
 

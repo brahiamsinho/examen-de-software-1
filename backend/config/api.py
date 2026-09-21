@@ -29,6 +29,7 @@ from apps.uml_documents.api import (
     register_exception_handlers as register_uml_documents_exception_handlers,
 )
 from apps.users.api import auth_router, register_exception_handlers as register_user_exception_handlers
+from apps.xmi_interop.api import xmi_router
 
 api = NinjaAPI()
 
@@ -41,6 +42,9 @@ def health(request):
 api.add_router("/auth", auth_router, tags=["auth"])
 api.add_router("/orgs", organizations_router, tags=["organizations"])
 api.add_router("/orgs/{org_slug}/members", memberships_router, tags=["memberships"])
+# Registered BEFORE documents_router: its GET `/{doc_id}` would otherwise match the literal
+# path `/import-xmi` first and answer 405 for the POST.
+api.add_router("/orgs/{org_slug}/documents", xmi_router, tags=["xmi"])
 api.add_router("/orgs/{org_slug}/documents", documents_router, tags=["documents"])
 api.add_router("/orgs/{org_slug}/documents", generation_router, tags=["generation"])
 register_user_exception_handlers(api)

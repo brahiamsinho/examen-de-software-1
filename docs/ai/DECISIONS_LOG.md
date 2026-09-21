@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-09-20 — XMI interop dialect (small direct change, no DD number)
+
+- Export dialect is XMI 1.1 / UML 1.3 exactly as Enterprise Architect exports it (mirrored from a real sample), windows-1252, deterministic. Import reads that dialect (verified) plus a basic XMI 2.1 (hand-written fixture only, unverified against real EA).
+- Canonical direction: the whole (diamond) end of aggregation/composition is `source`; UML 1.x marks the whole end, UML 2 marks the part end (the 2.x reader flips it). EA class boxes map to canonical centre positions.
+- Import never fails on recoverable content: everything skipped or assumed is a warning; only non-XML, forbidden constructs (defusedxml), > 5 MB, non-XMI or zero classes fail (422 `invalid_xmi` / `unsupported_xmi`).
+- `import-xmi` router is registered before `documents_router` (route shadowing by `/{doc_id}`).
+
 ## 2026-09-20 — Change archived: CRUD restricts operations, manifest slice (DD160-DD167) (`crud-restricts-operations`)
 
 Status: verified (PASS WITH WARNINGS, 0 critical) and archived, uncommitted (24/24 tasks, task 9.1 closed at archive; Strict TDD; backend 1214 -> 1267 passed, `apps/relational_mapping` 170, `apps/domain_manifest` 146, ~570 authored lines, no `size:exception`; archived to `openspec/changes/archive/2026-09-20-crud-restricts-operations/`; deltas merged: `generation-profile` 9 -> 10 requirements, `domain-manifest-export` stays at 15 with 1 renamed and 3 modified; accepted warnings: M3 equivalent mutant covered by a direct test, no safety-net column in apply-progress, private `_OPERATIONS` / `_operations` imported by tests; the last commit is `20bf71c feat(spring-generator): add filtering/search, sort validation and defaultSort`). Slice 1 of 2: the declared table `crud` / `readOnly` now restrict `operations[]` in the Domain Manifest. Slice 2 `spring-generator-crud-restriction` (generator consumes the same function) is a separate later change. Same text as `openspec/changes/crud-restricts-operations/design.md` (parity).

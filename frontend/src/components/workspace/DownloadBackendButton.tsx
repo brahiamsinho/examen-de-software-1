@@ -10,6 +10,9 @@ import { ApiError } from "@/lib/api";
 type DownloadBackendButtonProps = {
   onDownload: () => Promise<void>;
   disabled?: boolean;
+  /** Idle/pending captions; default to the backend-download wording, reused for the XML export. */
+  label?: string;
+  pendingLabel?: string;
 };
 
 /**
@@ -18,7 +21,12 @@ type DownloadBackendButtonProps = {
  * component never imports the transport. A 422 shows the server's own
  * `detail` (e.g. "the document has no classes"), anything else a generic message.
  */
-export function DownloadBackendButton({ onDownload, disabled = false }: DownloadBackendButtonProps) {
+export function DownloadBackendButton({
+  onDownload,
+  disabled = false,
+  label = "Descargar backend",
+  pendingLabel = "Generando...",
+}: DownloadBackendButtonProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +56,7 @@ export function DownloadBackendButton({ onDownload, disabled = false }: Download
         disabled={pending || disabled}
       >
         <Download />
-        {pending ? "Generando..." : "Descargar backend"}
+        {pending ? pendingLabel : label}
       </Button>
 
       {error ? (

@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { CreateDocumentForm } from "@/components/workspace/CreateDocumentForm";
 import { CreateOrgForm } from "@/components/workspace/CreateOrgForm";
 import { DocumentList } from "@/components/workspace/DocumentList";
+import { ImportXmiControl } from "@/components/workspace/ImportXmiControl";
 import { OrgEmptyState } from "@/components/workspace/OrgEmptyState";
 import { createDocument } from "@/lib/uml_documents";
+import { importXmi, stashImportWarnings } from "@/lib/xmi_interop";
 import { useDocuments } from "@/state/documents";
 import { useOrganizations } from "@/state/organizations";
 
@@ -47,6 +49,12 @@ export default function DashboardPage() {
     return doc;
   }
 
+  async function handleImportXmi(file: File) {
+    const doc = await importXmi(activeOrg!.slug, file);
+    stashImportWarnings(doc.id, doc.warnings);
+    router.push(`/documents/${doc.id}`);
+  }
+
   if (organizations.length === 0) {
     return (
       <div className="flex flex-col gap-6 p-6">
@@ -72,9 +80,12 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Mis Diagramas</h2>
             {canCreateDocument ? (
-              <Button type="button" onClick={() => setShowCreateForm((prev) => !prev)}>
-                Nuevo Diagrama
-              </Button>
+              <div className="flex items-start gap-2">
+                <ImportXmiControl onImport={handleImportXmi} />
+                <Button type="button" onClick={() => setShowCreateForm((prev) => !prev)}>
+                  Nuevo Diagrama
+                </Button>
+              </div>
             ) : null}
           </div>
           {showCreateForm ? <CreateDocumentForm onCreate={handleCreateDocument} /> : null}
