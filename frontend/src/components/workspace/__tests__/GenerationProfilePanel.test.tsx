@@ -35,7 +35,7 @@ function renderPanel(options: {
     <GenerationProfilePanel
       classes={options.modelClasses ?? classes}
       generationMetadata={options.generationMetadata ?? {}}
-      onSubmit={onSubmit}
+      onSubmit={onSubmit as unknown as React.ComponentProps<typeof GenerationProfilePanel>["onSubmit"]}
     />,
   );
   return { onSubmit };

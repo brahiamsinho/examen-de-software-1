@@ -18,6 +18,10 @@ CMD ["npm", "run", "dev"]
 FROM deps AS build
 WORKDIR /app
 COPY . .
+# NEXT_PUBLIC_* values are inlined into the browser bundle at build time, so the
+# public API origin must be a build arg (docker-compose.prod.yml passes it).
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 # --- prod: minimal runtime image -------------------------------------------

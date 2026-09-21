@@ -64,8 +64,8 @@ services:
   # build container + one Postgres + one JRE container per deployment, on a
   # private network) and reverse-proxies /gen/<deployment-id>/... to it.
   #
-  # SECURITY: this is the ONLY service with the Docker socket. Stage 1 mounts the
-  # raw socket; stage 2 replaces it with a restricted docker-socket-proxy that only
+  # SECURITY: this is the ONLY service with the Docker socket. Dev mounts the
+  # raw socket; docker-compose.prod.yml replaces it with a restricted docker-socket-proxy that only
   # allows the calls runner/app/docker_ops.py makes. The port is published to
   # loopback only (RUNNER_BIND); in the cloud keep it that way and route only
   # `/gen/*` to `runner:8090` from the reverse proxy (Caddy). The management API

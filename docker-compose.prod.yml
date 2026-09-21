@@ -1,0 +1,168 @@
+# PRODUCTION / single-VM stack. Standalone file (does not extend the dev
+# docker-compose.yml). Run from the repo root:
+#
+#   docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d --build
+#
+# Only Caddy publishes host ports (80/443). backend, runner, db, redis and the
+# docker-socket-proxy are reachable only on the private Compose networks.
+# See deploy/README.md.
+
+name: modelia-prod
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in deploy/.env.prod}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates: keep this volume or Let's Encrypt rate limits bite
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+      - runner
+
+  frontend:
+    build:
+      context: ./frontend
+      target: prod
+      args:
+        # Same origin as the site: Caddy routes /api and /ws to the backend.
+        NEXT_PUBLIC_API_URL: https://${APP_DOMAIN:?set APP_DOMAIN in deploy/.env.prod}
+    restart: unless-stopped
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      # Server-side calls stay on the private network (Host: backend:8000).
+      INTERNAL_API_URL: http://backend:8000
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      target: prod
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in deploy/.env.prod}
+      DEBUG: "False"
+      # `backend` is the Host the frontend's server-side session check sends.
+      ALLOWED_HOSTS: ${APP_DOMAIN},backend
+      TRUST_X_FORWARDED_PROTO: "True"
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.prod}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # One public origin: also used by the websocket origin check.
+      CORS_ALLOWED_ORIGINS: https://${APP_DOMAIN}
+      CORS_ALLOW_CREDENTIALS: "True"
+      CSRF_TRUSTED_ORIGINS: https://${APP_DOMAIN}
+      SESSION_COOKIE_SAMESITE: Lax
+      CSRF_COOKIE_SAMESITE: Lax
+      SESSION_COOKIE_SECURE: "True"
+      CSRF_COOKIE_SECURE: "True"
+      FRONTEND_BASE_URL: https://${APP_DOMAIN}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-localhost}
+      EMAIL_PORT: ${EMAIL_PORT:-25}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-False}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@localhost}
+      RUNNER_URL: http://runner:8090
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in deploy/.env.prod}
+      PUBLIC_BASE_URL: https://${APP_DOMAIN}
+      DEPLOYMENT_MAX_ACTIVE_PER_ORG: ${DEPLOYMENT_MAX_ACTIVE_PER_ORG:-2}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Builds and runs generated Spring backends; reverse-proxies /gen/<id>/...
+  # It never sees the raw Docker socket: it talks to socket-proxy over the
+  # internal `docker_api` network only.
+  runner:
+    build:
+      context: ./runner
+    restart: unless-stopped
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in deploy/.env.prod}
+      PUBLIC_BASE_URL: https://${APP_DOMAIN}
+      RUNNER_BUILD_IMAGE:
+      RUNNER_RUNTIME_IMAGE:
+      RUNNER_POSTGRES_IMAGE:
+      RUNNER_BUILD_MEM:
+      RUNNER_APP_MEM:
+      RUNNER_DB_MEM:
+      RUNNER_BUILD_CPUS:
+      RUNNER_APP_CPUS:
+      RUNNER_DB_CPUS:
+      RUNNER_MAX_LIFETIME_SECONDS:
+      RUNNER_BUILD_TIMEOUT:
+      RUNNER_START_TIMEOUT:
+      RUNNER_MAX_ZIP_BYTES:
+      RUNNER_JPA_DDL_AUTO:
+    networks: [default, docker_api]
+    depends_on:
+      - socket-proxy
+
+  # The ONLY container with the Docker socket. It exposes just the API sections
+  # the runner uses (see runner/app/docker_ops.py); everything else answers 403.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1" # create/start/inspect/logs/kill/remove, put_archive
+      IMAGES: "1" # image inspect + pull of the allowlisted images
+      NETWORKS: "1" # per-deployment internal network, connect/disconnect the runner
+      VOLUMES: "1" # per-deployment named volumes
+      POST: "1" # write methods (POST/PUT/DELETE) inside those sections; 0.3.0 has no separate DELETE switch
+      # Left at 0 on purpose: EXEC, BUILD, SWARM, SERVICES, TASKS, SECRETS, CONFIGS,
+      # PLUGINS, SYSTEM, AUTH, COMMIT, DISTRIBUTION, NODES, SESSION, GRPC.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [docker_api]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.prod}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  # No route out: only the runner and the proxy are members.
+  docker_api:
+    internal: true
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

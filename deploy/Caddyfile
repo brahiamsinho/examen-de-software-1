@@ -1,0 +1,28 @@
+# Single public entry point of the cloud deployment (docker-compose.prod.yml).
+# {$APP_DOMAIN} is the DuckDNS host (e.g. modelia.duckdns.org): Caddy gets and
+# renews its Let's Encrypt certificate automatically. With APP_DOMAIN=localhost
+# it uses its own internal CA instead (local testing only).
+#
+# Only these paths leave the private network. The runner's management API
+# (/deployments, /healthz), Django admin, Postgres and Redis are NOT routed.
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	# Generated Spring backends, reverse-proxied by the runner.
+	handle /gen/* {
+		reverse_proxy runner:8090
+	}
+
+	# Django API and the realtime document websocket (Caddy upgrades WS itself).
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /ws/* {
+		reverse_proxy backend:8000
+	}
+
+	# Everything else: the Next.js app.
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

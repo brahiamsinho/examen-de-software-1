@@ -12,8 +12,8 @@ COPY tests ./tests
 CMD ["python", "-m", "pytest", "-q", "tests"]
 
 FROM base AS prod
-# Runs as root on purpose: it needs the Docker socket (stage 1). Stage 2 swaps the
-# socket for a restricted docker-socket-proxy and this can drop to a normal user.
+# Runs as root (stage 1 mounts the raw socket in dev). In prod (docker-compose.prod.yml) it uses
+# a restricted docker-socket-proxy through DOCKER_HOST instead (DD169).
 EXPOSE 8090
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=2).status == 200 else 1)"
