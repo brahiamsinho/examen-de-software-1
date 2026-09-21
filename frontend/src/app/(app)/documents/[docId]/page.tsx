@@ -6,11 +6,13 @@ import { use, useEffect, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
 import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
+import { DeploymentActions, DeploymentNotices } from "@/components/workspace/DeploymentControls";
 import { DownloadBackendButton } from "@/components/workspace/DownloadBackendButton";
 import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeControl";
 import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
@@ -21,6 +23,7 @@ import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { exportXmi, takeImportWarnings } from "@/lib/xmi_interop";
+import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
 import { activeOrgSlugAtom } from "@/state/organizations";
 
@@ -51,6 +54,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     sendPosition,
     sendRelease,
   } = useDocument(orgSlug, docId);
+  const deployment = useBackendDeployment(orgSlug, docId);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
   // Read after mount (sessionStorage does not exist during SSR); consumed once.
@@ -134,15 +138,46 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border px-6 py-4">
-        <h1 className="font-heading text-xl font-semibold text-foreground">
-          {document.metadata.name}
-        </h1>
-        <div className="flex gap-4 text-sm text-muted-foreground">
-          <p>Clases: {document.model.classes.length}</p>
-          <p>Relaciones: {document.model.relationships.length}</p>
+      <header className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="font-heading truncate text-xl font-semibold text-foreground">
+              {document.metadata.name}
+            </h1>
+            <div className="flex gap-4 text-sm text-muted-foreground">
+              <p>Clases: {document.model.classes.length}</p>
+              <p>Relaciones: {document.model.relationships.length}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <DeploymentActions
+              deployment={deployment.deployment}
+              busy={deployment.busy || deployment.loading}
+              actionError={deployment.actionError}
+              onStart={deployment.start}
+              onStop={deployment.stop}
+            />
+            <span className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden />
+            <DownloadBackendButton
+              size="lg"
+              className="relative"
+              errorClassName="absolute top-full right-0 z-20 mt-2 w-72 shadow-md"
+              label="Descargar backend (.zip)"
+              onDownload={() => downloadGeneratedBackend(orgSlug, docId)}
+            />
+            <DownloadBackendButton
+              size="lg"
+              className="relative"
+              errorClassName="absolute top-full right-0 z-20 mt-2 w-72 shadow-md"
+              onDownload={() => exportXmi(orgSlug, docId)}
+              label="Exportar XML"
+              pendingLabel="Exportando..."
+            />
+          </div>
         </div>
-      </div>
+        <DeploymentNotices deployment={deployment.deployment} actionError={deployment.actionError} />
+      </header>
 
       <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -183,140 +218,146 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
           ) : null}
         </div>
 
-        <aside className="flex w-full flex-col gap-6 lg:w-96 lg:shrink-0">
+        <aside className="flex w-full flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
           <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
-
-          <div className="flex flex-wrap gap-2">
-            <DownloadBackendButton onDownload={() => downloadGeneratedBackend(orgSlug, docId)} />
-            <DownloadBackendButton
-              onDownload={() => exportXmi(orgSlug, docId)}
-              label="Exportar XML"
-              pendingLabel="Exportando..."
-            />
-          </div>
 
           <ValidationPanel lastValidation={lastValidation} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Perfil de generación</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <GenerationProfilePanel
-                classes={document.model.classes}
-                generationMetadata={document.model.generation_metadata}
-                onSubmit={submitCommand}
-                disabled={isSubmitting}
-              />
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="agregar">
+            <TabsList>
+              <TabsTab value="agregar">Agregar</TabsTab>
+              <TabsTab value="eliminar">Eliminar</TabsTab>
+              <TabsTab value="generacion">Generación</TabsTab>
+            </TabsList>
 
-          <div className="flex flex-col gap-3">
-            <h2 className="font-heading text-sm font-semibold text-foreground">Agregar</h2>
+            <TabsPanel value="agregar">
+              <div className="flex flex-col gap-3">
+                <h2 className="sr-only">Agregar</h2>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Clase</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AddClassForm onSubmit={submitCommand} disabled={isSubmitting} />
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Clase</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <AddClassForm onSubmit={submitCommand} disabled={isSubmitting} />
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Atributo</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AddAttributeForm
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Atributo</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <AddAttributeForm
+                      classes={document.model.classes}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Operación</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <AddOperationForm
+                      classes={document.model.classes}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
+
+                <AddRelationshipControl
+                  pendingSourceId={effectiveSourceId}
+                  pendingTargetId={effectiveTargetId}
                   classes={document.model.classes}
                   onSubmit={submitCommand}
+                  onCancel={handleCancelRelationship}
+                  onSelectSelf={handleSelfRelationship}
                   disabled={isSubmitting}
                 />
-              </CardContent>
-            </Card>
+              </div>
+            </TabsPanel>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Operación</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <AddOperationForm
-                  classes={document.model.classes}
-                  onSubmit={submitCommand}
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
+            <TabsPanel value="eliminar">
+              <div className="flex flex-col gap-3">
+                <h2 className="sr-only">Eliminar</h2>
 
-            <AddRelationshipControl
-              pendingSourceId={effectiveSourceId}
-              pendingTargetId={effectiveTargetId}
-              classes={document.model.classes}
-              onSubmit={submitCommand}
-              onCancel={handleCancelRelationship}
-              onSelectSelf={handleSelfRelationship}
-              disabled={isSubmitting}
-            />
-          </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Clase</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <RemoveClassControl
+                      classes={document.model.classes}
+                      relationships={document.model.relationships}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
 
-          <div className="flex flex-col gap-3">
-            <h2 className="font-heading text-sm font-semibold text-foreground">Eliminar</h2>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Atributo</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <RemoveAttributeControl
+                      classes={document.model.classes}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Clase</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RemoveClassControl
-                  classes={document.model.classes}
-                  relationships={document.model.relationships}
-                  onSubmit={submitCommand}
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Operación</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <RemoveOperationControl
+                      classes={document.model.classes}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Atributo</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RemoveAttributeControl
-                  classes={document.model.classes}
-                  onSubmit={submitCommand}
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Relación</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <RemoveRelationshipControl
+                      classes={document.model.classes}
+                      relationships={document.model.relationships}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Operación</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RemoveOperationControl
-                  classes={document.model.classes}
-                  onSubmit={submitCommand}
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
+            </TabsPanel>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Relación</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RemoveRelationshipControl
-                  classes={document.model.classes}
-                  relationships={document.model.relationships}
-                  onSubmit={submitCommand}
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
-          </div>
+            <TabsPanel value="generacion">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Perfil de generación</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <GenerationProfilePanel
+                    classes={document.model.classes}
+                    generationMetadata={document.model.generation_metadata}
+                    onSubmit={submitCommand}
+                    disabled={isSubmitting}
+                  />
+                </CardContent>
+              </Card>
+            </TabsPanel>
+          </Tabs>
         </aside>
       </div>
     </div>

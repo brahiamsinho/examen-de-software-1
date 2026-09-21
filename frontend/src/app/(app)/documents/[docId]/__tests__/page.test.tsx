@@ -18,6 +18,20 @@ import { activeOrgSlugAtom } from "@/state/organizations";
 const useDocumentMock = vi.fn();
 vi.mock("@/state/document", () => ({ useDocument: (...args: unknown[]) => useDocumentMock(...args) }));
 
+const useDeploymentMock = vi.fn();
+vi.mock("@/state/backend_deployment", () => ({
+  useBackendDeployment: (...args: unknown[]) => useDeploymentMock(...args),
+}));
+
+const idleDeployment = {
+  deployment: null,
+  loading: false,
+  busy: false,
+  actionError: null,
+  start: vi.fn(),
+  stop: vi.fn(),
+};
+
 const downloadMock = vi.fn();
 vi.mock("@/lib/generation_export", () => ({
   downloadGeneratedBackend: (...args: unknown[]) => downloadMock(...args),
@@ -99,6 +113,8 @@ function renderPage(orgSlug: string | null = "acme") {
 describe("DocumentPage", () => {
   beforeEach(() => {
     useDocumentMock.mockReset();
+    useDeploymentMock.mockReset();
+    useDeploymentMock.mockReturnValue(idleDeployment);
   });
 
   it("renders classes and relationships count from document.model", async () => {
@@ -258,12 +274,13 @@ describe("DocumentPage", () => {
     await screen.findByText("Tap Cliente");
 
     expect(screen.getByRole("button", { name: "Agregar operación" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Eliminar" }));
     expect(screen.getByRole("button", { name: "Eliminar operación" })).toBeInTheDocument();
 
     const html = container.innerHTML;
     const addAttributeIndex = html.indexOf("Agregar atributo");
     const addOperationIndex = html.indexOf("Agregar operación");
-    const eliminarHeadingIndex = html.indexOf(">Eliminar<");
+    const eliminarHeadingIndex = html.indexOf(">Eliminar</h2>");
     const removeAttributeIndex = html.indexOf('id="remove-attribute-class"');
     const removeOperationIndex = html.indexOf('id="remove-operation-class"');
 
@@ -285,6 +302,8 @@ describe("DocumentPage", () => {
 
     await screen.findByText("Tap Cliente");
 
+    expect(screen.getByRole("button", { name: "Agregar atributo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Eliminar" }));
     expect(screen.getByRole("heading", { name: "Eliminar", level: 2 })).toBeInTheDocument();
 
     const removeClassButton = screen.getByRole("button", { name: "Eliminar" });
@@ -294,11 +313,10 @@ describe("DocumentPage", () => {
     expect(removeClassButton).toBeInTheDocument();
     expect(removeAttributeButton).toBeInTheDocument();
     expect(removeRelationshipButton).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Agregar atributo" })).toBeInTheDocument();
 
     const html = container.innerHTML;
     const addBlockIndex = html.indexOf("Agregar atributo");
-    const headingIndex = html.indexOf(">Eliminar<");
+    const headingIndex = html.indexOf(">Eliminar</h2>");
     const classControlIndex = html.indexOf('id="remove-class-select"');
     const attributeControlIndex = html.indexOf('id="remove-attribute-class"');
     const relationshipControlIndex = html.indexOf('id="remove-relationship-select"');
@@ -423,9 +441,11 @@ describe("DocumentPage", () => {
 
     expect(screen.getByRole("button", { name: "Agregar clase" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Agregar atributo" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: "Eliminar" }));
     expect(screen.getByRole("button", { name: "Eliminar" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Eliminar atributo" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Eliminar relación" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: "Agregar" }));
 
     fireEvent.click(screen.getByText("Tap Cliente"));
     fireEvent.click(screen.getByText("Tap Pedido"));
@@ -539,8 +559,27 @@ describe("DocumentPage — backend download", () => {
 
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Descargar backend" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Descargar backend (.zip)" }));
 
     expect(downloadMock).toHaveBeenCalledWith("acme", "doc-1");
+  });
+
+  it("starts a backend deployment from the header 'Generar backend' button", async () => {
+    const start = vi.fn();
+    useDocumentMock.mockReturnValue({
+      document,
+      loading: false,
+      error: null,
+      lastValidation: null,
+      submitCommand: vi.fn(),
+    });
+    useDeploymentMock.mockReturnValue({ ...idleDeployment, start });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generar backend" }));
+
+    expect(useDeploymentMock).toHaveBeenCalledWith("acme", "doc-1");
+    expect(start).toHaveBeenCalledTimes(1);
   });
 });

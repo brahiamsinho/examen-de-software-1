@@ -137,6 +137,31 @@ describe("DiagramCanvas — toElements (pure)", () => {
     },
   );
 
+  it("shows the relationship name above the multiplicities when it has one", async () => {
+    const { toElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const model: UmlModel = {
+      classes: [
+        { id: "c1", name: "A", visibility: "public", attributes: [], operations: [] },
+        { id: "c2", name: "B", visibility: "public", attributes: [], operations: [] },
+      ],
+      enumerations: [],
+      relationships: [
+        {
+          id: "r1",
+          kind: "association",
+          source: { class_id: "c1", multiplicity: { lower: 1, upper: 1 }, role: null },
+          target: { class_id: "c2", multiplicity: { lower: 0, upper: null }, role: null },
+          name: "Name A",
+        },
+      ],
+      generation_metadata: {},
+    };
+
+    const edge = toElements(model).find((el) => "source" in el.data)!;
+    expect(edge.data.label).toBe("Name A\n1 → 0..*");
+  });
+
   it("omits the multiplicity label for a generalization edge (UML 2.5 defines none)", async () => {
     const { toElements } = await import("@/components/workspace/DiagramCanvas");
 

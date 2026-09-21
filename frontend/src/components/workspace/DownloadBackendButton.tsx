@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 type DownloadBackendButtonProps = {
   onDownload: () => Promise<void>;
@@ -13,6 +14,10 @@ type DownloadBackendButtonProps = {
   /** Idle/pending captions; default to the backend-download wording, reused for the XML export. */
   label?: string;
   pendingLabel?: string;
+  /** Header placement: same size as the neighbouring actions; the error floats under the button. */
+  size?: "sm" | "lg";
+  className?: string;
+  errorClassName?: string;
 };
 
 /**
@@ -26,6 +31,9 @@ export function DownloadBackendButton({
   disabled = false,
   label = "Descargar backend",
   pendingLabel = "Generando...",
+  size = "sm",
+  className,
+  errorClassName,
 }: DownloadBackendButtonProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,10 +54,10 @@ export function DownloadBackendButton({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={cn("flex flex-col gap-2", className)}>
       <Button
         type="button"
-        size="sm"
+        size={size}
         variant="outline"
         className="self-start"
         onClick={handleClick}
@@ -60,7 +68,7 @@ export function DownloadBackendButton({
       </Button>
 
       {error ? (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className={errorClassName}>
           <AlertCircle />
           <AlertDescription>{error}</AlertDescription>
         </Alert>

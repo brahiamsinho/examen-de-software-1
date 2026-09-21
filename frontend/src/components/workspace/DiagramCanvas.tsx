@@ -178,6 +178,9 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     selector: "edge",
     style: {
       label: "data(label)",
+      // `\n` in the label (relationship name above the multiplicities)
+      // only breaks the line with wrapping enabled.
+      "text-wrap": "wrap",
       "curve-style": "bezier",
       "line-color": EDGE_LINE,
       "target-arrow-color": EDGE_LINE,
@@ -302,10 +305,16 @@ export function toElements(
         // side already forces "1"/"1" as a required-field placeholder
         // (AddRelationshipControl's DD5), but that placeholder must not
         // leak onto the canvas as a rendered label.
-        label:
+        // The relationship's own name (e.g. "Name A" from an Enterprise
+        // Architect import) is shown on the first line when present.
+        label: [
+          r.name?.trim() ? r.name.trim() : null,
           r.kind === "generalization"
-            ? ""
+            ? null
             : `${formatMultiplicity(r.source.multiplicity)} → ${formatMultiplicity(r.target.multiplicity)}`,
+        ]
+          .filter((part): part is string => part !== null)
+          .join("\n"),
       },
       // Recursive/reflexive relationship (a class related to itself):
       // needs explicit loop geometry, see the `edge.self-loop` selector.
