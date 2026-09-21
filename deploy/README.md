@@ -1,7 +1,7 @@
 # Deploying Modelia on one cloud VM
 
 Docker Compose + Caddy (automatic HTTPS) + a free DuckDNS domain. Files:
-`docker-compose.prod.yml` (repo root), `deploy/Caddyfile`, `deploy/env.prod.example`.
+`docker-compose.prod.yml` (repo root), `deploy/Caddyfile`, `env.example` (repository root).
 
 What runs: `caddy` (only ports 80/443 published), `frontend`, `backend`, `runner`,
 `socket-proxy` (the only container with the Docker socket), `db`, `redis`.
@@ -35,24 +35,24 @@ sudo usermod -aG docker $USER   # log out and back in
 
 ```bash
 git clone <your-repo-url> modelia && cd modelia
-cp deploy/env.prod.example deploy/.env.prod
-# edit deploy/.env.prod: APP_DOMAIN, and fill SECRET_KEY / POSTGRES_PASSWORD / RUNNER_TOKEN
-# with `openssl rand -hex 32` (one value each). deploy/.env.prod is git-ignored.
+cp env.example .env
+# edit the root .env: APP_DOMAIN, and fill SECRET_KEY / POSTGRES_PASSWORD / RUNNER_TOKEN
+# with `openssl rand -hex 32` (one value each). .env is git-ignored.
 
 # Optional but saves time on the first "Generate backend" (~1 GB of images):
 docker pull gradle:9.7.1-jdk21 && docker pull eclipse-temurin:21-jre && docker pull postgres:16-alpine
 
-docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Open `https://<APP_DOMAIN>`. The first request may take a few seconds while Caddy gets the
 Let's Encrypt certificate (needs 80/443 reachable and the DNS record already pointing at the VM).
 Register the first user in the app. Verification emails go to `docker compose ... logs backend`
-until you configure SMTP in `deploy/.env.prod`.
+until you configure SMTP in the root `.env`.
 
 ## 5. Operate
 
-Short alias for the commands below: `alias mc='docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml'`
+Short alias for the commands below: `alias mc='docker compose -f docker-compose.prod.yml'`
 
 | Task | Command |
 |---|---|

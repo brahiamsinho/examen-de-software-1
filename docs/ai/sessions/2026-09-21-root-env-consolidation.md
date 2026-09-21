@@ -1,0 +1,3 @@
+# 2026-09-21 — Root environment consolidation
+
+Recorded the consolidation: ignored root `.env` is the sole real configuration file and root `env.example` is its committed template. Dev injects it into backend/frontend; production interpolates it with explicit service environments to avoid broad secret injection. Removed four obsolete templates. Dev and production Compose configuration checks passed (production used temporary shell-only `RUNNER_TOKEN=config-check` because the template token is intentionally blank). VM command: `docker compose -f docker-compose.prod.yml up -d --build`; never use `docker compose down`. No services changed; commit remains pending user approval on `chore/unify-root-env`.

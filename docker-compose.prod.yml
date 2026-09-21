@@ -1,7 +1,7 @@
 # PRODUCTION / single-VM stack. Standalone file (does not extend the dev
 # docker-compose.yml). Run from the repo root:
 #
-#   docker compose --env-file deploy/.env.prod -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml up -d --build
 #
 # Only Caddy publishes host ports (80/443). backend, runner, db, redis and the
 # docker-socket-proxy are reachable only on the private Compose networks.
@@ -17,7 +17,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in deploy/.env.prod}
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in the root .env}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data # certificates: keep this volume or Let's Encrypt rate limits bite
@@ -33,7 +33,7 @@ services:
       target: prod
       args:
         # Same origin as the site: Caddy routes /api and /ws to the backend.
-        NEXT_PUBLIC_API_URL: https://${APP_DOMAIN:?set APP_DOMAIN in deploy/.env.prod}
+        NEXT_PUBLIC_API_URL: https://${APP_DOMAIN:?set APP_DOMAIN in the root .env}
     restart: unless-stopped
     environment:
       HOSTNAME: 0.0.0.0
@@ -49,14 +49,14 @@ services:
       target: prod
     restart: unless-stopped
     environment:
-      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in deploy/.env.prod}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in the root .env}
       DEBUG: "False"
       # `backend` is the Host the frontend's server-side session check sends.
       ALLOWED_HOSTS: ${APP_DOMAIN},backend
       TRUST_X_FORWARDED_PROTO: "True"
       POSTGRES_DB: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the root .env}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       REDIS_HOST: redis
@@ -78,7 +78,7 @@ services:
       EMAIL_USE_TLS: ${EMAIL_USE_TLS:-False}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-no-reply@localhost}
       RUNNER_URL: http://runner:8090
-      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in deploy/.env.prod}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in the root .env}
       PUBLIC_BASE_URL: https://${APP_DOMAIN}
       DEPLOYMENT_MAX_ACTIVE_PER_ORG: ${DEPLOYMENT_MAX_ACTIVE_PER_ORG:-2}
     depends_on:
@@ -96,7 +96,7 @@ services:
     restart: unless-stopped
     environment:
       DOCKER_HOST: tcp://socket-proxy:2375
-      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in deploy/.env.prod}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in the root .env}
       PUBLIC_BASE_URL: https://${APP_DOMAIN}
       RUNNER_BUILD_IMAGE:
       RUNNER_RUNTIME_IMAGE:
@@ -139,7 +139,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the root .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
