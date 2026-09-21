@@ -54,3 +54,22 @@ def test_pascal_case_illegal_name_raises(illegal):
 def test_camel_case_illegal_name_raises(illegal):
     with pytest.raises(InvalidJavaIdentifierError):
         camel_case(illegal)
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [("In Progress", "IN_PROGRESS"), ("En Camión", "EN_CAMION"), ("Pago-Rápido", "PAGO_RAPIDO")],
+)
+def test_screaming_snake_case_strips_accents(label, expected):
+    from apps.spring_generator.emit.naming import screaming_snake_case
+
+    assert screaming_snake_case(label) == expected
+
+
+def test_names_normalized_by_the_mapper_yield_valid_java_and_rest_names():
+    from apps.spring_generator.emit.naming import resource_path_segment
+
+    assert pascal_case("class_b") == "ClassB"
+    assert camel_case("fecha_de_nacimiento") == "fechaDeNacimiento"
+    assert resource_path_segment("class_b") == "class-bs"
+    assert pascal_case("n_2fa_code") == "N2faCode"

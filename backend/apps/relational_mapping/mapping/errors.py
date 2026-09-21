@@ -58,3 +58,12 @@ class InvalidGenerationProfileError(UnmappableModelError):
             super().__init__(
                 f"Invalid generation profile for element {element_id!r}, key {key!r}: {reason}"
             )
+
+
+class InvalidElementNameError(UnmappableModelError):
+    """A class/attribute/role name has no character usable in a DB
+    identifier (e.g. only symbols or non-Latin letters)."""
+
+    def __init__(self, name: str):
+        self.name = name
+        super().__init__(f"Name {name!r} has no usable letters or digits to build a database identifier")

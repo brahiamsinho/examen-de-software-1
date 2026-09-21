@@ -73,8 +73,8 @@ class TestBuildProjectArchive:
         with pytest.raises(NothingToGenerateError):
             build_project_archive(_document(classes=()))
 
-    def test_unmappable_class_name_raises_a_generation_error(self):
-        document = _document(classes=(a_class(name="Order Item"),))
+    def test_class_name_without_usable_characters_raises_a_generation_error(self):
+        document = _document(classes=(a_class(name="日本"),))
 
         with pytest.raises((UnmappableModelError, UngeneratableSourceError, ValueError)):
             build_project_archive(document)

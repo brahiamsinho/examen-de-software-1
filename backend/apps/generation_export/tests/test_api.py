@@ -104,10 +104,10 @@ class TestGenerateBackend:
         assert body["code"] == "nothing_to_generate"
         assert body["detail"]
 
-    def test_class_name_with_spaces_gets_422_generation_failed(self, auth_client):
+    def test_class_name_without_usable_characters_gets_422_generation_failed(self, auth_client):
         organization, owner, *_rest = make_org_with_roles()
         doc_id = _create_document(auth_client, organization, owner)
-        _add_class(auth_client, organization, doc_id, name="Order Item")
+        _add_class(auth_client, organization, doc_id, name="日本")
 
         response = auth_client.get(_url(organization, doc_id))
 

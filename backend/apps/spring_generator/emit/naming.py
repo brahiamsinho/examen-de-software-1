@@ -12,6 +12,7 @@ regex substitution), never manual `+`/`.join`/`%`/f-string
 concatenation of the generator's own Python source.
 """
 import re
+import unicodedata
 
 from apps.spring_generator.emit.errors import InvalidJavaIdentifierError, InvalidResourcePathError
 
@@ -21,6 +22,7 @@ _LEADING_CHAR = re.compile(r"^[A-Za-z]")
 _TRAILING_ID_SUFFIX = re.compile(r"_id$")
 _CAMEL_PASCAL_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
 _NON_ALNUM_RUN = re.compile(r"[^A-Za-z0-9]+")
+_COMBINING_MARKS = re.compile(r"[̀-ͯ]")
 _PLURAL_SIBILANT_SUFFIX = re.compile(r"(s|x|z|ch|sh)$")
 _PLURAL_CONSONANT_Y_SUFFIX = re.compile(r"[^aeiou]y$")
 _RESOURCE_PATH_SEGMENT = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -93,7 +95,8 @@ def screaming_snake_case(label: str) -> str:
     through the same `naming._validate` used by `pascal_case`/
     `camel_case` (DD16).
     """
-    split_boundaries = _CAMEL_PASCAL_BOUNDARY.sub(r"\1_\2", label)
+    unaccented = _COMBINING_MARKS.sub("", unicodedata.normalize("NFKD", label))
+    split_boundaries = _CAMEL_PASCAL_BOUNDARY.sub(r"\1_\2", unaccented)
     collapsed = _NON_ALNUM_RUN.sub("_", split_boundaries)
     converted = collapsed.upper()
     return _validate(label, converted)

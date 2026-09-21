@@ -1,6 +1,8 @@
 # Next Steps
 
-**Update 2026-09-20 (newest):** XMI import/export is in (`apps.xmi_interop`, `Importar XML` / `Exportar XML`). Next candidates: open the exported file in the user's real EA and report what it rejects (enumerations, generalizations, aggregation ends and connector geometry are unverified); get one real EA XMI 2.1 export to harden the 2.x reader; fix generation for class names with spaces (imported EA models commonly have them); browser smoke test of the two new controls (only the API and Vitest were exercised).
+**Update 2026-09-20 (newest):** names with spaces/accents/dashes now generate a compilable project (see `CURRENT_STATE.md`). Next candidates: boot-check the EA-imported project against Postgres (the N:M `0..*`/`0..*` join entity compiled but was not booted), and decide whether a name that only differs by case/accents from another (`class_a_2` disambiguation) should warn the user in the editor.
+
+**Update 2026-09-20 (previous):** XMI import/export is in (`apps.xmi_interop`, `Importar XML` / `Exportar XML`). Next candidates: open the exported file in the user's real EA and report what it rejects (enumerations, generalizations, aggregation ends and connector geometry are unverified); get one real EA XMI 2.1 export to harden the 2.x reader; fix generation for class names with spaces (imported EA models commonly have them); browser smoke test of the two new controls (only the API and Vitest were exercised).
 
 **Update 2026-09-20 (newest):** generated-backend download is in (`apps.generation_export`, `GET /api/orgs/{org_slug}/documents/{doc_id}/generate`, `DownloadBackendButton` on the document page). Next candidates: humanize/relax class-name validation so names with spaces produce a usable identifier instead of 422 `generation_failed`; let the user choose the base package; optionally include the Postman collection (not the manifest) in the zip; browser smoke test of the button (only the API was exercised end to end).
 

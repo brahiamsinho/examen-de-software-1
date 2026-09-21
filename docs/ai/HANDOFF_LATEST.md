@@ -1,6 +1,8 @@
 # Handoff — Latest
 
-- **Newest work (2026-09-20, small direct change, uncommitted):** EA XMI import/export in `apps.xmi_interop` + `Importar XML` / `Exportar XML` UI (backend 1308 passed, frontend 369 passed; details in `CURRENT_STATE.md`). Class names with spaces still fail generation.
+- **Newest work (2026-09-20, small direct change, uncommitted):** class/attribute names with spaces, accents, dashes or leading digits are normalized in `relational_mapping/mapping/naming.py::snake_case`, so EA-imported models (`Class A`/`Class B`) generate and `gradle build` passes (backend 1325 passed; details in `CURRENT_STATE.md`).
+
+- **Previous work (2026-09-20, small direct change, uncommitted):** EA XMI import/export in `apps.xmi_interop` + `Importar XML` / `Exportar XML` UI (backend 1308 passed, frontend 369 passed; details in `CURRENT_STATE.md`). (The spaced-name generation failure noted here was fixed right after; see the newest entry.)
 
 - **Previous work (2026-09-20, small direct change, uncommitted):** "Descargar backend" button + `apps.generation_export` (`GET /api/orgs/{org_slug}/documents/{doc_id}/generate` returns the deterministic Spring Boot zip of a stored document; backend 1285 passed, frontend 363 passed; details in `CURRENT_STATE.md`).
 
