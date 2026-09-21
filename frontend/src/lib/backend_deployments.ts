@@ -18,6 +18,7 @@ export type Deployment = {
   public_path: string;
   public_url: string | null;
   openapi_url: string | null;
+  docs_url: string | null;
   created_at: string;
   updated_at: string;
 };

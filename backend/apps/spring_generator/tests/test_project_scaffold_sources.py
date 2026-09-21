@@ -48,7 +48,7 @@ dependencies {{
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:{springdoc_version}'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:{springdoc_version}'
     runtimeOnly 'org.postgresql:postgresql'
 }}
 """
@@ -165,7 +165,6 @@ def test_application_package_equals_build_group():
         "gradlew",
         "gradle/wrapper",
         "Dockerfile",
-        "springdoc-openapi-starter-webmvc-ui",
         "spring-boot-starter-actuator",
         "io.spring.dependency-management",
         "build.gradle.kts",
@@ -180,7 +179,7 @@ def test_excluded_artifacts_are_absent_from_paths_and_contents(excluded):
 
 def test_build_gradle_declares_the_springdoc_starter_at_the_pinned_version():
     contents = _by_path(_scaffold())["build.gradle"]
-    starter = f"    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:{SPRINGDOC_VERSION}'\n"
+    starter = f"    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:{SPRINGDOC_VERSION}'\n"
 
     assert starter in contents
     assert SPRINGDOC_VERSION == "3.1.1"

@@ -25,6 +25,7 @@ function dep(status: Deployment["status"]): Deployment {
     public_path: "",
     public_url: null,
     openapi_url: null,
+    docs_url: null,
     created_at: "2026-09-20T10:00:00Z",
     updated_at: "2026-09-20T10:00:00Z",
   };

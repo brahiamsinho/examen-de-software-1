@@ -54,7 +54,7 @@ def test_controller_is_mounted_on_api_customers():
 def test_build_gradle_declares_the_springdoc_starter_behind_v3_api_docs():
     build_gradle = _files()["build.gradle"]
 
-    assert "org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1'" in build_gradle
+    assert "org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'" in build_gradle
 
 
 def test_count_endpoint_exists_for_the_readiness_probe():

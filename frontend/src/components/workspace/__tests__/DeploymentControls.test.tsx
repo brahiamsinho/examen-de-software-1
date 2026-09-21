@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { DeploymentActions, DeploymentNotices } from "@/components/workspace/DeploymentControls";
+import { DeploymentActions, DeploymentNotices, DeploymentUrl } from "@/components/workspace/DeploymentControls";
 import type { Deployment } from "@/lib/backend_deployments";
 
 function deployment(overrides: Partial<Deployment>): Deployment {
@@ -14,6 +14,7 @@ function deployment(overrides: Partial<Deployment>): Deployment {
     public_path: "/api/run/d1/",
     public_url: "http://localhost:8000/api/run/d1/",
     openapi_url: "http://localhost:8000/api/run/d1/v3/api-docs",
+    docs_url: "http://localhost:8000/api/run/d1/swagger-ui/index.html",
     created_at: "2026-09-20T10:00:00Z",
     updated_at: "2026-09-20T10:00:00Z",
     ...overrides,
@@ -44,7 +45,7 @@ describe("DeploymentActions", () => {
 
     expect(screen.getByText("En ejecución")).toBeInTheDocument();
     const docs = screen.getByRole("link", { name: "Documentación API" });
-    expect(docs).toHaveAttribute("href", "http://localhost:8000/api/run/d1/v3/api-docs");
+    expect(docs).toHaveAttribute("href", "http://localhost:8000/api/run/d1/swagger-ui/index.html");
     expect(docs).toHaveAttribute("target", "_blank");
     expect(screen.queryByRole("link", { name: "Abrir API" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Regenerar" })).toBeInTheDocument();
@@ -83,5 +84,19 @@ describe("DeploymentNotices", () => {
 
     rerender(<DeploymentNotices deployment={deployment({})} actionError={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("DeploymentUrl", () => {
+  it("shows the backend URL linking to the docs only while running", () => {
+    const { rerender } = render(<DeploymentUrl deployment={deployment({})} />);
+
+    expect(screen.getByRole("link", { name: "http://localhost:8000/api/run/d1/" })).toHaveAttribute(
+      "href",
+      "http://localhost:8000/api/run/d1/swagger-ui/index.html",
+    );
+
+    rerender(<DeploymentUrl deployment={deployment({ status: "stopped" })} />);
+    expect(screen.queryByText("URL del backend:")).toBeNull();
   });
 });

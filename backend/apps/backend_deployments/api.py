@@ -33,6 +33,7 @@ class DeploymentOut(Schema):
     public_path: str
     public_url: str | None
     openapi_url: str | None
+    docs_url: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -48,8 +49,9 @@ def _out(deployment: Deployment) -> DeploymentOut:
         log_tail=deployment.log_tail,
         public_path=deployment.public_path,
         public_url=public_url,
-        # The generated project ships springdoc's API docs only (no Swagger UI).
+        # The generated project serves Swagger UI (docs) and the raw OpenAPI JSON.
         openapi_url=f"{public_url}v3/api-docs" if public_url else None,
+        docs_url=f"{public_url}swagger-ui/index.html" if public_url else None,
         created_at=deployment.created_at,
         updated_at=deployment.updated_at,
     )

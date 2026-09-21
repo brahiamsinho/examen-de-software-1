@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertCircle, FileText, Loader2, Play, RotateCw, Square } from "lucide-react";
+import { AlertCircle, Check, Copy, FileText, Loader2, Play, RotateCw, Square } from "lucide-react";
+import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -48,8 +49,8 @@ export function DeploymentActions({ deployment, busy, onStart, onStop }: Deploym
           En ejecución
         </span>
         {/* The generated API has no page at its root (404); the OpenAPI document is the useful, always-200 entry point. */}
-        {deployment?.openapi_url ? (
-          <a className={linkClass} href={deployment.openapi_url} target="_blank" rel="noreferrer">
+        {deployment?.docs_url ? (
+          <a className={linkClass} href={deployment.docs_url} target="_blank" rel="noreferrer">
             <FileText />
             Documentación API
           </a>
@@ -114,6 +115,44 @@ export function DeploymentNotices({ deployment, actionError, className }: Pick<D
           </pre>
         </details>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Base URL of the running backend, shown under the title so it can be copied
+ * (Postman base URL) or opened in the Swagger page without hunting for it.
+ */
+export function DeploymentUrl({ deployment }: { deployment: Deployment | null }) {
+  const [copied, setCopied] = useState(false);
+  if (deployment?.status !== "running" || !deployment.public_url) return null;
+  const url = deployment.public_url;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be blocked (non-secure origin); the URL stays selectable.
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted-foreground">URL del backend:</span>
+      <a
+        className="font-mono text-foreground underline-offset-4 hover:underline"
+        href={deployment.docs_url ?? url}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {url}
+      </a>
+      <Button type="button" size="sm" variant="outline" onClick={copy}>
+        {copied ? <Check /> : <Copy />}
+        {copied ? "Copiada" : "Copiar"}
+      </Button>
     </div>
   );
 }
