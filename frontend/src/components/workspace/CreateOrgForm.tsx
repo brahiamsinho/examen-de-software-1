@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import type { Organization } from "@/lib/organizations";
 
@@ -59,20 +61,21 @@ export function CreateOrgForm({ onCreate }: CreateOrgFormProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="create-org-name">Nombre de la organización</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="create-org-name">Nombre de la organización</Label>
+        <Input
           id="create-org-name"
           type="text"
           value={name}
           onChange={(event) => handleNameChange(event.target.value)}
           required
+          autoFocus
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="create-org-slug">Identificador (slug)</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="create-org-slug">Identificador (slug)</Label>
+        <Input
           id="create-org-slug"
           type="text"
           value={slug}
@@ -82,6 +85,9 @@ export function CreateOrgForm({ onCreate }: CreateOrgFormProps) {
           }}
           required
         />
+        <p className="text-xs text-muted-foreground">
+          Se usa en las direcciones internas. Se completa solo a partir del nombre.
+        </p>
       </div>
 
       {error ? (

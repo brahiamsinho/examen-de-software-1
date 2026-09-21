@@ -26,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SessionGuard>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen flex-col md:flex-row">
         <AppSidebar />
         <main className="min-w-0 flex-1">{children}</main>
       </div>

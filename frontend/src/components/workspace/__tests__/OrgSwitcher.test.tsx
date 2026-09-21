@@ -1,52 +1,83 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { OrgSwitcher } from "@/components/workspace/OrgSwitcher";
 
 /**
- * Purely presentational (design.md "components/workspace ... presentational,
- * no fetch"): `OrgSwitcher` receives `organizations`/`activeSlug`/`onSelect`
- * as props instead of calling `useOrganizations()` itself. Persistence to
- * localStorage and the stale-slug fallback are owned by `useOrganizations()`
- * and already covered by `state/__tests__/organizations.test.ts` (Phase 3);
- * this component only needs to prove it renders the given state and forwards
- * a selection. The real container wiring (which is what actually persists a
- * selection) is exercised by `AppTopbar.test.tsx`.
+ * Presentational: `OrgSwitcher` receives `organizations`/`activeSlug`/
+ * `onSelect`/`onCreate` as props (persistence and the stale-slug fallback
+ * belong to `useOrganizations()`, covered in `state/__tests__`). The trigger
+ * shows the current org; the menu switches or opens the create dialog.
  */
 const orgA = { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const };
 const orgB = { id: "2", name: "Beta", slug: "beta", plan: "free", my_role: "EDITOR" as const };
 
-describe("OrgSwitcher", () => {
-  it("lists every organization with its role", () => {
-    render(<OrgSwitcher organizations={[orgA, orgB]} activeSlug="acme" onSelect={vi.fn()} />);
+function open() {
+  const trigger = screen.getByRole("button", { name: /Acme|Sin organización/ });
+  act(() => {
+    fireEvent.pointerDown(trigger, { button: 0 });
+    fireEvent.mouseDown(trigger, { button: 0 });
+    fireEvent.click(trigger, { button: 0 });
+  });
+}
 
-    expect(screen.getByRole("button", { name: /Acme/ })).toBeInTheDocument();
-    expect(screen.getByText("Propietario")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Beta/ })).toBeInTheDocument();
-    expect(screen.getByText("Editor")).toBeInTheDocument();
+describe("OrgSwitcher", () => {
+  it("shows the current organization's name and role on the trigger", () => {
+    render(
+      <OrgSwitcher organizations={[orgA, orgB]} activeSlug="acme" onSelect={vi.fn()} onCreate={vi.fn()} />,
+    );
+
+    const trigger = screen.getByRole("button", { name: /Acme/ });
+    expect(trigger).toHaveTextContent("Propietario");
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
   });
 
-  it("marks the active organization and calls onSelect with the clicked slug", () => {
+  it("lists every organization in the menu and switches on selection", async () => {
     const onSelect = vi.fn();
-    render(<OrgSwitcher organizations={[orgA, orgB]} activeSlug="acme" onSelect={onSelect} />);
+    render(
+      <OrgSwitcher organizations={[orgA, orgB]} activeSlug="acme" onSelect={onSelect} onCreate={vi.fn()} />,
+    );
+    open();
 
-    expect(screen.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: /Beta/ }));
+    expect(await screen.findByRole("menuitemradio", { name: /Acme/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    const beta = screen.getByRole("menuitemradio", { name: /Beta/ });
+    expect(beta).toHaveAttribute("aria-checked", "false");
+    expect(beta).toHaveTextContent("Editor");
+
+    fireEvent.click(beta);
     expect(onSelect).toHaveBeenCalledWith("beta");
   });
 
-  it("renders no active button when activeSlug matches no membership", () => {
-    render(<OrgSwitcher organizations={[orgA, orgB]} activeSlug="ghost" onSelect={vi.fn()} />);
+  it('"Crear organización" opens a dialog with the creation form and submits through onCreate', async () => {
+    const created = { id: "3", name: "Gamma", slug: "gamma", plan: "free", my_role: "OWNER" as const };
+    const onCreate = vi.fn().mockResolvedValue(created);
+    render(
+      <OrgSwitcher organizations={[orgA]} activeSlug="acme" onSelect={vi.fn()} onCreate={onCreate} />,
+    );
+    open();
 
-    expect(screen.getByRole("button", { name: /Acme/ })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: /Beta/ })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Crear organización" }));
+
+    expect(await screen.findByRole("dialog", { name: "Crear organización" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Nombre de la organización"), {
+      target: { value: "Gamma" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Crear organización" }));
+
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: "Gamma", slug: "gamma" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("renders nothing when there are no organizations", () => {
-    const { container } = render(
-      <OrgSwitcher organizations={[]} activeSlug={null} onSelect={vi.fn()} />,
-    );
+  it("with no organizations it still renders, offering only creation", async () => {
+    render(<OrgSwitcher organizations={[]} activeSlug={null} onSelect={vi.fn()} onCreate={vi.fn()} />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole("button", { name: /Sin organización/ })).toBeInTheDocument();
+    open();
+
+    expect(await screen.findByRole("menuitem", { name: "Crear organización" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemradio")).not.toBeInTheDocument();
   });
 });

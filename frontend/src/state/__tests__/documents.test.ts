@@ -1,20 +1,27 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as docsLib from "@/lib/uml_documents";
-import { useDocuments } from "@/state/documents";
+import * as xmiLib from "@/lib/xmi_interop";
+import { useDocumentActions, useDocuments, useInvalidateDocuments } from "@/state/documents";
 
 /**
  * `useDocuments` owns local `useState` + a render-time tracked-slug reset
- * (design.md DD5), cloned from `useMembers`'s shape — a document list has
- * exactly one consumer (the dashboard container), so a shared Jotai atom
- * would only risk painting the previous org's documents for a frame after
- * switching. Read-only: no mutators, since `handleCreateDocument`
- * navigates away on success.
+ * (design.md DD5) plus a shared invalidation counter: the sidebar and the
+ * dashboard both mount it, so a create/import elsewhere refetches every
+ * instance (see `useInvalidateDocuments`/`useDocumentActions`).
  */
 vi.mock("@/lib/uml_documents", async () => {
   const actual = await vi.importActual<typeof import("@/lib/uml_documents")>("@/lib/uml_documents");
-  return { ...actual, listDocuments: vi.fn() };
+  return { ...actual, listDocuments: vi.fn(), createDocument: vi.fn() };
+});
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+
+vi.mock("@/lib/xmi_interop", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/xmi_interop")>("@/lib/xmi_interop");
+  return { ...actual, importXmi: vi.fn(), stashImportWarnings: vi.fn() };
 });
 
 const docA = { id: "doc-1", name: "Ventas", revision: 4, updated_at: "2026-09-12T10:05:00Z" };
@@ -67,5 +74,67 @@ describe("state/documents useDocuments()", () => {
     await waitFor(() => expect(result.current.error).toBe("boom"));
     expect(result.current.documents).toEqual([]);
     expect(result.current.loading).toBe(false);
+  });
+
+  // The sidebar and the dashboard both mount this hook; a mutation elsewhere
+  // must refresh every instance, without flashing the loading state.
+  it("invalidating refetches the list and keeps the current one on screen meanwhile", async () => {
+    vi.mocked(docsLib.listDocuments).mockResolvedValueOnce([docA]);
+    const { result } = renderHook(() => ({
+      list: useDocuments("acme"),
+      invalidate: useInvalidateDocuments(),
+    }));
+    await waitFor(() => expect(result.current.list.documents).toEqual([docA]));
+
+    vi.mocked(docsLib.listDocuments).mockResolvedValueOnce([docA, docB]);
+    act(() => result.current.invalidate());
+
+    expect(result.current.list.loading).toBe(false);
+    expect(result.current.list.documents).toEqual([docA]);
+    await waitFor(() => expect(result.current.list.documents).toEqual([docA, docB]));
+  });
+});
+
+describe("state/documents useDocumentActions()", () => {
+  beforeEach(() => {
+    push.mockReset();
+    vi.mocked(docsLib.listDocuments).mockReset().mockResolvedValue([]);
+    vi.mocked(docsLib.createDocument).mockReset();
+    vi.mocked(xmiLib.importXmi).mockReset();
+  });
+
+  it("createDiagram creates, refreshes mounted lists and navigates to the new document", async () => {
+    vi.mocked(docsLib.createDocument).mockResolvedValueOnce({ id: "doc-7" } as never);
+    const { result } = renderHook(() => ({
+      list: useDocuments("acme"),
+      actions: useDocumentActions("acme"),
+    }));
+    await waitFor(() => expect(docsLib.listDocuments).toHaveBeenCalledTimes(1));
+
+    await act(() => result.current.actions.createDiagram({ name: "Nuevo" }));
+
+    expect(docsLib.createDocument).toHaveBeenCalledWith("acme", { name: "Nuevo" });
+    expect(push).toHaveBeenCalledWith("/documents/doc-7");
+    await waitFor(() => expect(docsLib.listDocuments).toHaveBeenCalledTimes(2));
+  });
+
+  it("createDiagram rethrows a failure without navigating", async () => {
+    vi.mocked(docsLib.createDocument).mockRejectedValueOnce(new Error("403"));
+    const { result } = renderHook(() => useDocumentActions("acme"));
+
+    await expect(result.current.createDiagram({ name: "x" })).rejects.toThrow("403");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("importDiagram stashes the warnings and navigates to the imported document", async () => {
+    vi.mocked(xmiLib.importXmi).mockResolvedValueOnce({ id: "doc-8", warnings: ["w"] } as never);
+    const { result } = renderHook(() => useDocumentActions("acme"));
+    const file = new File(["<xmi/>"], "m.xml");
+
+    await act(() => result.current.importDiagram(file));
+
+    expect(xmiLib.importXmi).toHaveBeenCalledWith("acme", file);
+    expect(xmiLib.stashImportWarnings).toHaveBeenCalledWith("doc-8", ["w"]);
+    expect(push).toHaveBeenCalledWith("/documents/doc-8");
   });
 });

@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import type { UmlDocument } from "@/lib/uml_documents";
 
@@ -39,14 +41,15 @@ export function CreateDocumentForm({ onCreate }: CreateDocumentFormProps) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <label htmlFor="create-document-name">Nombre del diagrama</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="create-document-name">Nombre del diagrama</Label>
+        <Input
           id="create-document-name"
           type="text"
           value={name}
           onChange={(event) => setName(event.target.value)}
           required
+          autoFocus
         />
       </div>
 
