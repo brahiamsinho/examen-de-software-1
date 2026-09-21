@@ -24,7 +24,7 @@ from apps.uml_documents import services
 
 generation_router = Router(auth=django_auth)
 
-_GENERATION_ERRORS = (UnmappableModelError, UngeneratableSourceError, ValueError)
+GENERATION_ERRORS = (UnmappableModelError, UngeneratableSourceError, ValueError)
 
 
 def _unprocessable(message: str, code: str) -> Status:
@@ -39,7 +39,7 @@ def generate_backend_view(request: HttpRequest, org_slug: Path[str], doc_id: UUI
         archive = build_project_archive(document)
     except NothingToGenerateError as exc:
         return _unprocessable(str(exc), "nothing_to_generate")
-    except _GENERATION_ERRORS as exc:
+    except GENERATION_ERRORS as exc:
         return _unprocessable(str(exc), "generation_failed")
 
     filename = f"{slugify_document_name(document.metadata.name)}-backend.zip"

@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.generation_export",
+    "apps.backend_deployments",
     "apps.xmi_interop",
     "apps.users",
     "apps.organizations",
@@ -193,3 +194,14 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="webmaster@localhost")
 # Base URL the frontend is served from, used to build verification/reset
 # links in outgoing emails (design.md DD5).
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
+
+# --- Running generated backends (apps.backend_deployments) ----------------------
+# Django never talks to Docker: it calls the `runner` service over the compose
+# network. `runner` is the Compose service name, never localhost.
+RUNNER_URL = env("RUNNER_URL", default="http://runner:8090")
+RUNNER_TOKEN = env("RUNNER_TOKEN", default="")  # must equal the runner's RUNNER_TOKEN
+RUNNER_TIMEOUT_SECONDS = env.float("RUNNER_TIMEOUT_SECONDS", default=15.0)
+# Browser-facing origin of the runner's reverse proxy (`/gen/<id>/...`); the
+# runner reads the same variable. In the cloud: the Caddy / DuckDNS https URL.
+PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default="http://localhost:8090")
+DEPLOYMENT_MAX_ACTIVE_PER_ORG = env.int("DEPLOYMENT_MAX_ACTIVE_PER_ORG", default=2)

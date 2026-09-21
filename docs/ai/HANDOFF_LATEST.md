@@ -1,6 +1,8 @@
 # Handoff — Latest
 
-- **Newest work (2026-09-20, small direct change, uncommitted):** class/attribute names with spaces, accents, dashes or leading digits are normalized in `relational_mapping/mapping/naming.py::snake_case`, so EA-imported models (`Class A`/`Class B`) generate and `gradle build` passes (backend 1325 passed; details in `CURRENT_STATE.md`).
+- **Newest work (2026-09-21, small direct change, uncommitted):** "Generate backend and leave it running", backend only. `apps.backend_deployments` (POST/GET latest/DELETE under `/api/orgs/{org_slug}/documents/{doc_id}/deployments`) + new `runner/` service (Docker socket holder, builds with Gradle, runs Postgres + JRE per deployment, reverse-proxies `/gen/<id>/...`). Requires `RUNNER_TOKEN` in the root `.env` (already appended locally, git-ignored) and `docker compose up -d --build runner`; then `docker compose up -d backend` and `migrate`. Backend 1337 passed, runner 15 passed; verified with a real deployment (details in `CURRENT_STATE.md`, decision DD168). Frontend button/polling is the next slice. Never run `docker compose down` casually: stopped runner containers are cleaned by the runner's startup sweep.
+
+- **Previous work (2026-09-20, small direct change, uncommitted):** class/attribute names with spaces, accents, dashes or leading digits are normalized in `relational_mapping/mapping/naming.py::snake_case`, so EA-imported models (`Class A`/`Class B`) generate and `gradle build` passes (backend 1325 passed; details in `CURRENT_STATE.md`).
 
 - **Previous work (2026-09-20, small direct change, uncommitted):** EA XMI import/export in `apps.xmi_interop` + `Importar XML` / `Exportar XML` UI (backend 1308 passed, frontend 369 passed; details in `CURRENT_STATE.md`). (The spaced-name generation failure noted here was fixed right after; see the newest entry.)
 

@@ -46,6 +46,12 @@ services:
       # not in ALLOWED_HOSTS, so the Compose service name must be included
       # alongside whatever backend/.env sets for browser-facing access.
       ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      # Running generated backends (apps.backend_deployments): Django only ever
+      # calls the runner over this compose network; it never touches Docker.
+      RUNNER_URL: ${RUNNER_URL:-http://runner:8090}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8090}
+      DEPLOYMENT_MAX_ACTIVE_PER_ORG: ${DEPLOYMENT_MAX_ACTIVE_PER_ORG:-2}
     depends_on:
       db:
         condition: service_healthy
@@ -53,6 +59,45 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+
+  # Builds and RUNS the Spring backend generated from a document (one Gradle
+  # build container + one Postgres + one JRE container per deployment, on a
+  # private network) and reverse-proxies /gen/<deployment-id>/... to it.
+  #
+  # SECURITY: this is the ONLY service with the Docker socket. Stage 1 mounts the
+  # raw socket; stage 2 replaces it with a restricted docker-socket-proxy that only
+  # allows the calls runner/app/docker_ops.py makes. The port is published to
+  # loopback only (RUNNER_BIND); in the cloud keep it that way and route only
+  # `/gen/*` to `runner:8090` from the reverse proxy (Caddy). The management API
+  # (/deployments) additionally requires the bearer token and refuses to start
+  # without RUNNER_TOKEN. Set RUNNER_TOKEN in the root .env (see runner/env.example).
+  runner:
+    build:
+      context: ./runner
+    restart: unless-stopped
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8090}
+      # Optional knobs (unset = the defaults in runner/app/config.py); the image
+      # names form the fixed allowlist and can only be changed here, never per request.
+      RUNNER_BUILD_IMAGE:
+      RUNNER_RUNTIME_IMAGE:
+      RUNNER_POSTGRES_IMAGE:
+      RUNNER_BUILD_MEM:
+      RUNNER_APP_MEM:
+      RUNNER_DB_MEM:
+      RUNNER_BUILD_CPUS:
+      RUNNER_APP_CPUS:
+      RUNNER_DB_CPUS:
+      RUNNER_MAX_LIFETIME_SECONDS:
+      RUNNER_BUILD_TIMEOUT:
+      RUNNER_START_TIMEOUT:
+      RUNNER_MAX_ZIP_BYTES:
+      RUNNER_JPA_DDL_AUTO:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "${RUNNER_BIND:-127.0.0.1:8090}:8090"
 
   # Dev-only SMTP catcher for verification/reset emails (transactional-email
   # spec § "Dev-Only Mailpit Wiring"). Never referenced by any production

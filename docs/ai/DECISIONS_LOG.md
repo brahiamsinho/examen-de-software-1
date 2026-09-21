@@ -1,5 +1,9 @@
 # Decisions Log
 
+## 2026-09-21 — Running generated backends: runner service (DD168, small direct change, no SDD)
+
+- **DD168** Generated backends run through a separate `runner` service, never through Django: Django stores `Deployment` rows and calls the runner over HTTP with a bearer token; only the runner mounts the Docker socket (stage 2: restricted docker-socket-proxy). Deviations from the first design, all to stay simple and safe: (a) no Django background thread, because the runner builds asynchronously (202) and `GET .../deployments/latest` pulls its state into the row; (b) the zip is sent as the raw `PUT` body (`application/zip`, id in the URL, org slug in the query) and repacked in memory to a tar streamed into a per-deployment named volume with `put_archive`, so no host path is ever bind-mounted; (c) the build image is runner env (`RUNNER_BUILD_IMAGE`, default equal to `gradle_runner_image()`), never sent by Django, because the runner cannot import `versions.py`; (d) per-deployment network is `internal` (the app and its Postgres have no internet route); (e) the runner keeps deployment state in memory and sweeps every labelled resource at startup, so a restart cannot orphan anything (Django maps a runner 404 to `stopped`). The runner is also the reverse proxy (`/gen/{id}/...`), so the cloud reverse proxy only needs to route `/gen/*` to it.
+
 ## 2026-09-20 — XMI interop dialect (small direct change, no DD number)
 
 - Export dialect is XMI 1.1 / UML 1.3 exactly as Enterprise Architect exports it (mirrored from a real sample), windows-1252, deterministic. Import reads that dialect (verified) plus a basic XMI 2.1 (hand-written fixture only, unverified against real EA).
