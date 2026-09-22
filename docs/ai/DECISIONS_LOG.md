@@ -1,5 +1,13 @@
 # Decisions Log
 
+## 2026-09-21 — Flutter connects to a generated backend by URL (DD173, SDD hybrid/automatic, apply run inline)
+
+- **DD173** `mobile/lib/features/api_connection/` (domain: `openapi_url.dart` normalizes user input to `<origin>[/prefix]/v3/api-docs`, `connection_failure.dart`; data: `openapi_parser.dart` pure-parses an OpenAPI 3 document into groups sorted by tag/segment, `openapi_client.dart` wraps `http.Client` with a timeout; presentation: `connect_controller.dart` a `ChangeNotifier` with a sealed `ConnectState` and a request-id guard so a stale response or a second submission while loading can never override newer state, `connect_page.dart` + `discovery_page.dart`). No new dependency beyond `http` (already added) — `MockClient` from `http/testing.dart` covers every test network-free. `GENERATED_API_URL` (`--dart-define`, defaults empty) optionally pre-fills the URL field; the backend base is never hardcoded. Android needs `INTERNET` in the main manifest (a release build had none before this) and `usesCleartextTraffic="true"` only in the debug manifest, for a LAN IP or the emulator's `10.0.2.2` alias over plain http — production expects HTTPS behind Caddy.
+
+## 2026-09-21 — Export XML sizes each class box to its feature count (DD172, small direct change, no SDD)
+
+- **DD172** The exported EA class box height was a fixed constant regardless of attribute/operation count, mirrored from one real EA sample. A real Enterprise Architect import confirmed the actual bug was a per-diagram "Visible Class Members" filter defaulting private attributes to hidden (unrelated to this exporter), but the fixed height was still a real, separate risk for a class with many features — EA has no obligation to auto-grow an undersized box, so height now scales with `attributes + operations`, floored at the sample's original size so an empty/small class is byte-for-byte unchanged.
+
 ## 2026-09-21 — Edit a relationship on the canvas (DD171, small direct change, no SDD)
 
 - **DD171** `UpdateRelationship` is a partial-update command in the existing bus. Multiplicities travel as UML strings (same wire shape as `AddRelationship`), `name` uses a sentinel so "omitted" (leave) differs from null/blank (clear), the handler stays a pure never-raising transform, and the semantic rejections (unknown relationship, multiplicities on a generalization) live in `services._validate_relationship_update` like `SetGenerationProfile`'s gate. Range errors are not rejected server-side (always-apply policy: `INVALID_MULTIPLICITY` diagnostic); the dialog validates first. The canvas stays presentational (`onEdgeEdit` callback); the page owns the dialog and only passes the callback when the role is OWNER/EDITOR.

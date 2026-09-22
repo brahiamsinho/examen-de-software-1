@@ -4,4 +4,10 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Debug-only (design.md D8): lets the connect screen reach a
+         generated backend over plain http on a LAN IP or the emulator's
+         10.0.2.2 alias. Production expects HTTPS behind Caddy, so this
+         never merges into a release build. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

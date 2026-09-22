@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Needed in every build variant, not just debug: the app's core
+         feature is downloading a generated backend's OpenAPI document. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="mobile"
         android:name="${applicationName}"

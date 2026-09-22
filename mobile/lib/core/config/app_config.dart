@@ -15,4 +15,10 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000',
   );
+
+  /// Optional URL of a generated backend to pre-fill on the connect screen,
+  /// e.g. `flutter run --dart-define=GENERATED_API_URL=http://10.0.2.2:8090/gen/<id>`.
+  /// Defaults to empty (spec: Configuration) — a fresh app never assumes a
+  /// specific deployment.
+  static const String generatedApiUrl = String.fromEnvironment('GENERATED_API_URL');
 }
