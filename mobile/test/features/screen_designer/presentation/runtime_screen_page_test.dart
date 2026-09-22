@@ -1,14 +1,18 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mobile/features/api_connection/domain/api_discovery.dart';
+import 'package:mobile/features/screen_designer/data/pending_action_store.dart';
+import 'package:mobile/features/screen_designer/data/pending_action_sync_service.dart';
 import 'package:mobile/features/screen_designer/data/screen_action_client.dart';
 import 'package:mobile/features/screen_designer/domain/screen_layout.dart';
 import 'package:mobile/features/screen_designer/domain/screen_widget_config.dart';
 import 'package:mobile/features/screen_designer/presentation/runtime_screen_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _classA = EndpointGroup(
   name: 'class-a-controller',
@@ -30,6 +34,8 @@ Future<void> _pump(
   required List<Object> widgets,
   List<EndpointGroup> groups = const [_classA],
   required Future<http.Response> Function(http.Request) handler,
+  PendingActionStore? pendingActionStore,
+  PendingActionSyncService? pendingActionSyncService,
 }) => tester.pumpWidget(
   MaterialApp(
     home: RuntimeScreenPage(
@@ -37,11 +43,17 @@ Future<void> _pump(
       groups: groups,
       deploymentBase: Uri.parse('http://h/gen/abc/'),
       actionClient: ScreenActionClient(httpClient: MockClient(handler), timeout: const Duration(seconds: 1)),
+      pendingActionStore: pendingActionStore,
+      pendingActionSyncService: pendingActionSyncService,
     ),
   ),
 );
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   group('RuntimeScreenPage', () {
     testWidgets('renders a label, a field and a button as designed', (tester) async {
       await _pump(
@@ -140,6 +152,118 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('500'), findsOneWidget);
+    });
+
+    testWidgets('an unreachable create failure queues the mutation and shows the pending indicator', (tester) async {
+      const store = PendingActionStore();
+      final syncService = PendingActionSyncService(
+        actionClient: ScreenActionClient(httpClient: MockClient((_) async => http.Response('', 201))),
+        store: store,
+        connectivityStream: const Stream.empty(),
+      );
+      await _pump(
+        tester,
+        widgets: const [
+          FieldWidgetConfig(id: 'w1', x: 0, y: 0, groupName: 'class-a-controller', fieldName: 'edad'),
+          ButtonWidgetConfig(id: 'w2', x: 0, y: 40, groupName: 'class-a-controller', action: ScreenAction.create),
+        ],
+        handler: (_) async => throw const SocketException('unreachable'),
+        pendingActionStore: store,
+        pendingActionSyncService: syncService,
+      );
+
+      await tester.enterText(find.widgetWithText(TextField, 'edad'), '30');
+      await tester.tap(find.widgetWithText(FilledButton, 'create'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('queued'), findsOneWidget);
+      final pending = await store.load();
+      expect(pending, hasLength(1));
+      expect(pending.single.kind, PendingActionKind.create);
+      expect(pending.single.collectionPath, '/api/class-as');
+      expect(pending.single.body, {'edad': '30'});
+      expect(find.text('1 pending'), findsOneWidget);
+    });
+
+    testWidgets('a non-network failure (e.g. a server error) is shown as today and never queued', (tester) async {
+      const store = PendingActionStore();
+      final syncService = PendingActionSyncService(
+        actionClient: ScreenActionClient(httpClient: MockClient((_) async => http.Response('', 201))),
+        store: store,
+        connectivityStream: const Stream.empty(),
+      );
+      await _pump(
+        tester,
+        widgets: const [ButtonWidgetConfig(id: 'w1', x: 0, y: 0, groupName: 'class-a-controller', action: ScreenAction.create)],
+        handler: (_) async => http.Response('nope', 500),
+        pendingActionStore: store,
+        pendingActionSyncService: syncService,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'create'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('500'), findsOneWidget);
+      expect(await store.load(), isEmpty);
+      expect(find.textContaining('pending'), findsNothing);
+    });
+
+    testWidgets('a list button never queues, even on an unreachable failure', (tester) async {
+      const store = PendingActionStore();
+      final syncService = PendingActionSyncService(
+        actionClient: ScreenActionClient(httpClient: MockClient((_) async => http.Response('', 201))),
+        store: store,
+        connectivityStream: const Stream.empty(),
+      );
+      await _pump(
+        tester,
+        widgets: const [ButtonWidgetConfig(id: 'w1', x: 0, y: 0, groupName: 'class-a-controller', action: ScreenAction.list)],
+        handler: (_) async => throw const SocketException('unreachable'),
+        pendingActionStore: store,
+        pendingActionSyncService: syncService,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'list'));
+      await tester.pumpAndSettle();
+
+      expect(await store.load(), isEmpty);
+      expect(find.textContaining('Could not reach'), findsOneWidget);
+    });
+
+    testWidgets('tapping the pending indicator syncs queued mutations now', (tester) async {
+      const store = PendingActionStore();
+      await store.add(
+        PendingActionEntry(
+          entryId: 'e1',
+          kind: PendingActionKind.create,
+          deploymentBase: Uri.parse('http://h/gen/abc/'),
+          collectionPath: '/api/class-as',
+          body: const {'edad': '20'},
+          groupName: 'class-a-controller',
+          layoutName: 'My screen',
+          queuedAt: DateTime.utc(2024),
+        ),
+      );
+      final syncService = PendingActionSyncService(
+        actionClient: ScreenActionClient(httpClient: MockClient((_) async => http.Response('', 201))),
+        store: store,
+        connectivityStream: const Stream.empty(),
+      );
+      await _pump(
+        tester,
+        widgets: const [],
+        handler: (_) async => http.Response('', 200),
+        pendingActionStore: store,
+        pendingActionSyncService: syncService,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1 pending'), findsOneWidget);
+
+      await tester.tap(find.text('1 pending'));
+      await tester.pumpAndSettle();
+
+      expect(await store.load(), isEmpty);
+      expect(find.textContaining('pending'), findsNothing);
     });
   });
 }

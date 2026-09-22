@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -82,6 +83,48 @@ void main() {
       final result = await client.list(_base, '/api/class-as');
 
       expect(result, isA<ScreenActionFailure>());
+    });
+
+    test('http.ClientException (never reached the server) is marked queueable', () async {
+      final client = _clientFor((_) async => throw http.ClientException('refused'));
+
+      final result = await client.list(_base, '/api/class-as') as ScreenActionFailure;
+
+      expect(result.isUnreachable, isTrue);
+    });
+
+    test('SocketException (never reached the server) is marked queueable', () async {
+      final client = _clientFor((_) async => throw const SocketException('connection refused'));
+
+      final result = await client.list(_base, '/api/class-as') as ScreenActionFailure;
+
+      expect(result.isUnreachable, isTrue);
+    });
+
+    test('a timeout is never marked queueable, even though it is also a transport failure', () async {
+      final client = _clientFor((_) async {
+        await Future<void>.delayed(const Duration(seconds: 5));
+        return http.Response('', 200);
+      });
+
+      final result = await client.list(_base, '/api/class-as') as ScreenActionFailure;
+
+      expect(result.isUnreachable, isFalse);
+    });
+
+    test('an unrecognized exception fails safe and is not marked queueable', () async {
+      final client = _clientFor((_) async => throw StateError('something else went wrong'));
+
+      final result = await client.list(_base, '/api/class-as') as ScreenActionFailure;
+
+      expect(result.isUnreachable, isFalse);
+    });
+
+    test('existing positional-message construction still works (backward compatible)', () {
+      const failure = ScreenActionFailure('nope');
+
+      expect(failure.message, 'nope');
+      expect(failure.isUnreachable, isFalse);
     });
   });
 }

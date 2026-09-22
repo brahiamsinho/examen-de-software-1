@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -17,9 +18,17 @@ class ScreenActionSuccess extends ScreenActionResult {
 }
 
 class ScreenActionFailure extends ScreenActionResult {
-  const ScreenActionFailure(this.message);
+  const ScreenActionFailure(this.message, {this.isUnreachable = false});
 
   final String message;
+
+  /// True only when the request never actually left the device (e.g. no DNS
+  /// route, connection refused) — never for a timeout or an HTTP error
+  /// response. The generated backend has no idempotency key, so only THIS
+  /// case is safe to queue and retry automatically; anything else (a 4xx/5xx
+  /// that DID reach the server, or an unrecognized failure) must stay a
+  /// plain error to avoid creating duplicate records.
+  final bool isUnreachable;
 }
 
 /// Runs the four CRUD actions a placed button can trigger against a
@@ -58,7 +67,20 @@ class ScreenActionClient {
       response = await http.Response.fromStream(await _httpClient.send(request).timeout(timeout));
     } on TimeoutException {
       return const ScreenActionFailure('The server took too long to respond.');
+    } on SocketException {
+      return const ScreenActionFailure(
+        'Could not reach the server. Check the URL and your network.',
+        isUnreachable: true,
+      );
+    } on http.ClientException {
+      return const ScreenActionFailure(
+        'Could not reach the server. Check the URL and your network.',
+        isUnreachable: true,
+      );
     } catch (_) {
+      // Fail safe: an exception type we don't specifically recognize is NOT
+      // proof the request never reached the server, so it must never be
+      // queued for an automatic retry.
       return const ScreenActionFailure('Could not reach the server. Check the URL and your network.');
     }
 

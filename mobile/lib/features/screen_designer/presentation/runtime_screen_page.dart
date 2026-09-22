@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../api_connection/domain/api_discovery.dart';
+import '../data/pending_action_store.dart';
+import '../data/pending_action_sync_service.dart';
 import '../data/screen_action_client.dart';
 import '../domain/screen_layout.dart';
 import '../domain/screen_widget_config.dart';
@@ -21,12 +23,16 @@ class RuntimeScreenPage extends StatefulWidget {
     required this.groups,
     required this.deploymentBase,
     this.actionClient,
+    this.pendingActionStore,
+    this.pendingActionSyncService,
   });
 
   final ScreenLayout layout;
   final List<EndpointGroup> groups;
   final Uri deploymentBase;
   final ScreenActionClient? actionClient;
+  final PendingActionStore? pendingActionStore;
+  final PendingActionSyncService? pendingActionSyncService;
 
   @override
   State<RuntimeScreenPage> createState() => _RuntimeScreenPageState();
@@ -34,15 +40,27 @@ class RuntimeScreenPage extends StatefulWidget {
 
 class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
   late final ScreenActionClient _client = widget.actionClient ?? ScreenActionClient();
+  late final PendingActionStore _pendingActionStore = widget.pendingActionStore ?? const PendingActionStore();
+  late final PendingActionSyncService _pendingActionSyncService =
+      widget.pendingActionSyncService ??
+      PendingActionSyncService(actionClient: _client, store: _pendingActionStore);
   final Map<String, TextEditingController> _controllers = {};
   String? _resultText;
   bool _busy = false;
+  int _pendingEntrySeq = 0;
 
   TextEditingController _controllerFor(String fieldName) =>
       _controllers.putIfAbsent(fieldName, () => TextEditingController());
 
   @override
+  void initState() {
+    super.initState();
+    _pendingActionSyncService.startListening();
+  }
+
+  @override
   void dispose() {
+    _pendingActionSyncService.stopListening();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -96,28 +114,50 @@ class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
 
     setState(() => _busy = true);
     ScreenActionResult result;
+    String? recordId;
+    Map<String, Object?>? requestBody;
     switch (button.action) {
       case ScreenAction.list:
         result = await _client.list(widget.deploymentBase, path);
       case ScreenAction.create:
-        result = await _client.create(widget.deploymentBase, path, _fieldValuesFor(button.groupName));
+        requestBody = _fieldValuesFor(button.groupName);
+        result = await _client.create(widget.deploymentBase, path, requestBody);
       case ScreenAction.update:
         final id = await _promptId('Update');
         if (id == null || id.trim().isEmpty) {
           setState(() => _busy = false);
           return;
         }
-        result = await _client.update(widget.deploymentBase, path, id.trim(), _fieldValuesFor(button.groupName));
+        recordId = id.trim();
+        requestBody = _fieldValuesFor(button.groupName);
+        result = await _client.update(widget.deploymentBase, path, recordId, requestBody);
       case ScreenAction.delete:
         final id = await _promptId('Delete');
         if (id == null || id.trim().isEmpty) {
           setState(() => _busy = false);
           return;
         }
-        result = await _client.delete(widget.deploymentBase, path, id.trim());
+        recordId = id.trim();
+        result = await _client.delete(widget.deploymentBase, path, recordId);
     }
 
     if (!mounted) return;
+
+    // Only create/update/delete ever get queued — a read has no "pending"
+    // semantics — and only when the request never actually left the device.
+    // Anything else (timeout, 4xx/5xx, bad response) is surfaced exactly as
+    // before and is NEVER auto-queued: the generated backend has no
+    // idempotency key, so blindly retrying those risks duplicate records.
+    if (button.action != ScreenAction.list && result is ScreenActionFailure && result.isUnreachable) {
+      await _queue(button, path, recordId, requestBody);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _resultText = 'No connection — queued, will sync automatically.';
+      });
+      return;
+    }
+
     setState(() {
       _busy = false;
       _resultText = switch (result) {
@@ -127,10 +167,55 @@ class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
     });
   }
 
+  Future<void> _queue(
+    ButtonWidgetConfig button,
+    String collectionPath,
+    String? recordId,
+    Map<String, Object?>? requestBody,
+  ) async {
+    final kind = switch (button.action) {
+      ScreenAction.create => PendingActionKind.create,
+      ScreenAction.update => PendingActionKind.update,
+      ScreenAction.delete => PendingActionKind.delete,
+      ScreenAction.list => throw StateError('list is never queued'),
+    };
+    await _pendingActionStore.add(
+      PendingActionEntry(
+        entryId: '${DateTime.now().microsecondsSinceEpoch}-${_pendingEntrySeq++}',
+        kind: kind,
+        deploymentBase: widget.deploymentBase,
+        collectionPath: collectionPath,
+        recordId: recordId,
+        body: requestBody,
+        groupName: button.groupName,
+        layoutName: widget.layout.name,
+        queuedAt: DateTime.now(),
+      ),
+    );
+    await _pendingActionSyncService.refreshPendingCount();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.layout.name)),
+      appBar: AppBar(
+        title: Text(widget.layout.name),
+        actions: [
+          ValueListenableBuilder<int>(
+            valueListenable: _pendingActionSyncService.pendingCount,
+            builder: (context, count, _) {
+              if (count == 0) return const SizedBox.shrink();
+              return Center(
+                child: TextButton.icon(
+                  onPressed: _pendingActionSyncService.syncNow,
+                  icon: const Icon(Icons.sync),
+                  label: Text('$count pending'),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           for (final config in widget.layout.widgets)
