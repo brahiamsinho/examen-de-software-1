@@ -1,6 +1,7 @@
 """Exporter output shape and the import -> export -> import round trip."""
 import datetime
 import pathlib
+import re
 import uuid
 from xml.etree.ElementTree import fromstring
 
@@ -17,7 +18,7 @@ from apps.uml_modeling.domain.elements import (
 )
 from apps.uml_modeling.domain.model import CanonicalUmlModel
 from apps.uml_modeling.domain.types import EnumerationRef, Multiplicity, PrimitiveType
-from apps.xmi_interop.exporter import export_xmi
+from apps.xmi_interop.exporter import _ea_id, export_xmi
 from apps.xmi_interop.importer import import_xmi
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "ea-basico.xml"
@@ -94,7 +95,9 @@ class TestExportShape:
         assert root.tag == "XMI" and root.get("xmi.version") == "1.1"
         text = data.decode("cp1252")
         assert "xmlns:UML=\"omg.org/UML1.3\"" in text
-        assert 'geometry="Left=100;Top=100;Right=217;Bottom=171;"' in text
+        # c1 ("Órdenes de compra") has 3 attributes + 1 operation, so its box
+        # grows past the 71px floor to fit all four feature rows (DD172).
+        assert 'geometry="Left=100;Top=88;Right=217;Bottom=184;"' in text
         assert 'diagramType="ClassDiagram"' in text and 'name="My Diagram"' in text
         assert 'aggregation="composite"' in text and 'aggregation="shared"' in text
         assert "subtype=" in text and "supertype=" in text
@@ -103,6 +106,22 @@ class TestExportShape:
         document = _document(_rich_model())
         assert export_xmi(document) == export_xmi(document)
 
+    def test_box_height_grows_with_feature_count_but_never_shrinks_below_the_floor(self):
+        # A class with no attributes/operations keeps the original fixed
+        # height (DD172); c2 ("Line") has a single attribute, still under the
+        # floor. c1 has 4 feature rows and must be taller than both.
+        model = _rich_model()
+        text = export_xmi(_document(model)).decode("cp1252")
+
+        def bottom_minus_top(class_id: str) -> int:
+            xid = _ea_id("EAID", class_id)
+            match = re.search(rf'geometry="Left=\d+;Top=(\d+);Right=\d+;Bottom=(\d+);" subject="{xid}"', text)
+            top, bottom = int(match.group(1)), int(match.group(2))
+            return bottom - top
+
+        assert bottom_minus_top("c2") == 71  # 1 feature row: floor applies
+        assert bottom_minus_top("c1") > 71  # 4 feature rows: grows past the floor
+
 
 class TestRoundTrip:
     def test_real_ea_sample_survives_import_export_import(self):
@@ -110,7 +129,16 @@ class TestRoundTrip:
         exported = export_xmi(_document(first.model, first.layout, name=first.name))
         second = import_xmi(exported)
 
-        assert _signature(second.model, second.layout) == _signature(first.model, first.layout)
+        first_signature, second_signature = _signature(first.model, first.layout), _signature(second.model, second.layout)
+        assert {**first_signature, "positions": None} == {**second_signature, "positions": None}
+        # EA's geometry is integer pixels; centering an odd total (box
+        # height + 2*top) over 2 can round either way, so only whole-pixel
+        # fidelity is guaranteed, never sub-pixel (DD172).
+        for (name, x, y), (name2, x2, y2) in zip(
+            sorted(first_signature["positions"]), sorted(second_signature["positions"])
+        ):
+            assert name == name2
+            assert abs(x - x2) <= 1 and abs(y - y2) <= 1
         assert second.name == first.name
         assert [w for w in second.warnings if not w.startswith("Validación")] == []
 

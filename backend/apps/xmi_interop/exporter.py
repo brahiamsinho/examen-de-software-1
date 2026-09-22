@@ -34,6 +34,13 @@ _EA_TYPE_NAMES = {
     PrimitiveType.DATETIME: "datetime",
 }
 _BOX_WIDTH, _BOX_HEIGHT = 117, 71  # size of an EA class box in the sample
+# The sample's fixed 71px height (a class with 2-3 attributes) is only tall
+# enough for the name compartment plus a couple of rows; a class with more
+# attributes/operations than that gets a box too short for EA to render its
+# feature compartments, silently hiding them (not verified against a real EA
+# row-height constant — generously sized so a too-tall box is the only risk).
+_ROW_HEIGHT = 14
+_HEADER_HEIGHT = 40  # name compartment + its divider
 _GRID_COLUMNS, _GRID_STEP_X, _GRID_STEP_Y = 4, 200, 150
 _ILLEGAL_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
 
@@ -236,6 +243,12 @@ def _write_relationship(parent, relationship, model, class_ids, local_ids) -> No
         _tags(node, [("containment", "Unspecified"), ("ea_end", ea_end)])
 
 
+def _box_height(feature_rows: int) -> int:
+    """Enough room for the name compartment plus one row per attribute/operation
+    (never below the sample's floor, so a featureless class keeps its old size)."""
+    return max(_BOX_HEIGHT, _HEADER_HEIGHT + feature_rows * _ROW_HEIGHT)
+
+
 def _write_diagram(content, document, package_id, package_name, class_ids, enum_ids) -> None:
     diagram = SubElement(
         content,
@@ -247,16 +260,21 @@ def _write_diagram(content, document, package_id, package_name, class_ids, enum_
     elements = SubElement(diagram, "UML:Diagram.element")
     seqno = 0
     node_ids = {**class_ids, **enum_ids}
+    feature_rows: dict[str, int] = {
+        **{c.id: len(c.attributes) + len(c.operations) for c in document.model.classes},
+        **{e.id: len(e.literals) for e in document.model.enumerations},
+    }
     for index, (element_id, xid) in enumerate(node_ids.items()):
         seqno += 1
         position = document.layout.positions.get(element_id)
+        height = _box_height(feature_rows.get(element_id, 0))
         x = position.x if position else 100 + _BOX_WIDTH / 2 + (index % _GRID_COLUMNS) * _GRID_STEP_X
-        y = position.y if position else 100 + _BOX_HEIGHT / 2 + (index // _GRID_COLUMNS) * _GRID_STEP_Y
-        left, top = round(x - _BOX_WIDTH / 2), round(y - _BOX_HEIGHT / 2)
+        y = position.y if position else 100 + height / 2 + (index // _GRID_COLUMNS) * _GRID_STEP_Y
+        left, top = round(x - _BOX_WIDTH / 2), round(y - height / 2)
         SubElement(
             elements,
             "UML:DiagramElement",
-            {"geometry": f"Left={left};Top={top};Right={left + _BOX_WIDTH};Bottom={top + _BOX_HEIGHT};",
+            {"geometry": f"Left={left};Top={top};Right={left + _BOX_WIDTH};Bottom={top + height};",
              "subject": xid, "seqno": str(seqno), "style": "ImageID=0;"},
         )
     for relationship in document.model.relationships:
