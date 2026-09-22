@@ -22,6 +22,14 @@ const _classB = EndpointGroup(
     ApiEndpoint(method: 'POST', path: '/api/class-bs'),
   ],
 );
+const _classAWithAttributes = EndpointGroup(
+  name: 'class-a-controller',
+  endpoints: [
+    ApiEndpoint(method: 'GET', path: '/api/class-as'),
+    ApiEndpoint(method: 'POST', path: '/api/class-as'),
+  ],
+  attributeNames: ['edad', 'name'],
+);
 
 Future<void> _pump(WidgetTester tester, {List<EndpointGroup> groups = const [_classA]}) => tester.pumpWidget(
   MaterialApp(
@@ -149,6 +157,25 @@ void main() {
       final saved = (await const ScreenLayoutStore().load('My screen'))!.widgets.single as FieldWidgetConfig;
       expect(saved.groupName, 'class-b-controller');
       expect(saved.fieldName, 'name');
+    });
+
+    testWidgets('a class with known attributes offers a picker instead of free text', (tester) async {
+      await _pump(tester, groups: const [_classAWithAttributes, _classB]);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ActionChip, 'Field'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('class-a-controller'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Attribute'), findsOneWidget); // the attribute picker, not "Add field"
+      expect(find.text('edad'), findsOneWidget);
+      expect(find.text('name'), findsOneWidget);
+
+      await tester.tap(find.text('edad'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Field: edad'), findsWidgets);
     });
   });
 }

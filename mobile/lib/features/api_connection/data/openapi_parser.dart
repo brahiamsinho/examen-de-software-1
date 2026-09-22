@@ -37,10 +37,13 @@ ApiDiscovery parseOpenApi(Object? json) {
   final title = (info is Map && info['title'] is String) ? info['title'] as String : 'Untitled API';
   final version = (info is Map && info['version'] is String) ? info['version'] as String : '';
 
+  final schemas = json['components'] is Map ? (json['components'] as Map)['schemas'] : null;
+
   // Insertion order == document order (jsonDecode preserves it), and it is
   // preserved into each group's endpoint list, matching the spec's "keeps
   // document order" requirement.
   final endpointsByGroup = <String, List<ApiEndpoint>>{};
+  final attributesByGroup = <String, List<String>>{};
   for (final pathEntry in pathsRaw.entries) {
     final path = pathEntry.key.toString();
     final pathItem = pathEntry.value;
@@ -60,6 +63,14 @@ ApiDiscovery parseOpenApi(Object? json) {
       endpointsByGroup
           .putIfAbsent(groupName, () => <ApiEndpoint>[])
           .add(ApiEndpoint(method: method.toUpperCase(), path: path, summary: summary));
+
+      // The `create` (POST) operation's request body is this class's own
+      // shape; a group with no POST (e.g. read-only/join tables) simply
+      // keeps no attribute list, and the designer falls back to free text.
+      if (method == 'post' && !attributesByGroup.containsKey(groupName)) {
+        final fields = _requestBodyFields(operation, schemas);
+        if (fields.isNotEmpty) attributesByGroup[groupName] = fields;
+      }
     }
   }
 
@@ -68,8 +79,42 @@ ApiDiscovery parseOpenApi(Object? json) {
     title: title,
     version: version,
     openApiVersion: openApiVersion,
-    groups: [for (final name in groupNames) EndpointGroup(name: name, endpoints: endpointsByGroup[name]!)],
+    groups: [
+      for (final name in groupNames)
+        EndpointGroup(
+          name: name,
+          endpoints: endpointsByGroup[name]!,
+          attributeNames: attributesByGroup[name] ?? const [],
+        ),
+    ],
   );
+}
+
+const _schemaRefPrefix = '#/components/schemas/';
+
+/// Resolves `operation.requestBody.content['application/json'].schema.$ref`
+/// against `components.schemas` and returns that schema's property names —
+/// deliberately tolerant (returns `[]`, never throws) of anything
+/// unexpected, since a missing/inline/oddly-shaped schema must degrade to
+/// the free-text fallback, not break discovery.
+List<String> _requestBodyFields(Object? operation, Object? schemas) {
+  if (operation is! Map || schemas is! Map) return const [];
+  final requestBody = operation['requestBody'];
+  if (requestBody is! Map) return const [];
+  final content = requestBody['content'];
+  if (content is! Map) return const [];
+  final jsonMediaType = content['application/json'];
+  if (jsonMediaType is! Map) return const [];
+  final schema = jsonMediaType['schema'];
+  if (schema is! Map) return const [];
+  final ref = schema[r'$ref'];
+  if (ref is! String || !ref.startsWith(_schemaRefPrefix)) return const [];
+
+  final resolved = schemas[ref.substring(_schemaRefPrefix.length)];
+  if (resolved is! Map) return const [];
+  final properties = resolved['properties'];
+  if (properties is! Map) return const [];
+  return [for (final key in properties.keys) key.toString()];
 }
 
 /// An untagged endpoint groups by the segment after `/api/`, else its own

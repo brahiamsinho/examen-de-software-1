@@ -6,10 +6,12 @@ Map<String, Object?> _doc({
   String openapi = '3.1.0',
   Object? paths,
   Object? info = const {'title': 'Demo API', 'version': '1.2.3'},
+  Object? components,
 }) => {
   'openapi': openapi,
   'info': ?info,
   'paths': ?paths,
+  'components': ?components,
 };
 
 Matcher _invalidOpenApi() => throwsA(
@@ -102,6 +104,64 @@ void main() {
       );
 
       expect(result.groups.map((g) => g.name), ['health', 'untagged']);
+    });
+
+    test('resolves a group\'s attribute names from its POST request body schema', () {
+      final result = parseOpenApi(
+        _doc(
+          paths: {
+            '/api/class-as': {
+              'post': {
+                'tags': ['class-a-controller'],
+                'requestBody': {
+                  'content': {
+                    'application/json': {
+                      'schema': {r'$ref': '#/components/schemas/ClassARequestDto'},
+                    },
+                  },
+                },
+              },
+            },
+          },
+          components: {
+            'schemas': {
+              'ClassARequestDto': {
+                'properties': {'edad': {}, 'name': {}},
+              },
+            },
+          },
+        ),
+      );
+
+      expect(result.groups.single.attributeNames, ['edad', 'name']);
+    });
+
+    test('a group with no POST, or an unresolvable schema, has no attribute names', () {
+      final result = parseOpenApi(
+        _doc(
+          paths: {
+            '/api/class-as': {
+              'get': {
+                'tags': ['class-a-controller'],
+              },
+            },
+            '/api/orders': {
+              'post': {
+                'tags': ['orders'],
+                'requestBody': {
+                  'content': {
+                    'application/json': {
+                      'schema': {r'$ref': '#/components/schemas/Missing'},
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ),
+      );
+
+      expect(result.groups.map((g) => g.attributeNames), [[], []]);
     });
 
     test('sorts groups by name', () {

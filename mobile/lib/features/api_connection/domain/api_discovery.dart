@@ -10,10 +10,17 @@ class ApiEndpoint {
 
 /// Endpoints sharing a tag (or the fallback grouping, design.md D4).
 class EndpointGroup {
-  const EndpointGroup({required this.name, required this.endpoints});
+  const EndpointGroup({required this.name, required this.endpoints, this.attributeNames = const []});
 
   final String name;
   final List<ApiEndpoint> endpoints;
+
+  /// The class's own attribute names, resolved from its `POST` operation's
+  /// request body schema (`components.schemas`) when the document declares
+  /// one; empty for a group with no create endpoint (e.g. a read-only or
+  /// join table) or when schema resolution fails. Lets the screen designer
+  /// offer a picker instead of the user typing a name by hand.
+  final List<String> attributeNames;
 }
 
 /// What `parseOpenApi` extracts from a generated backend's OpenAPI document:

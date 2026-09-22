@@ -89,11 +89,30 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
     });
   }
 
+  /// Offers a picker built from the class's real attribute names
+  /// ([EndpointGroup.attributeNames], resolved from its OpenAPI request
+  /// body schema) instead of the user typing one by hand, whenever the
+  /// document exposed that shape; a class with no known attributes (e.g.
+  /// read-only, or schema resolution failed) falls back to free text.
+  Future<String?> _pickFieldName(String groupName, {String? initial, VoidCallback? onRemove}) {
+    final attributes = widget.groups.firstWhere((g) => g.name == groupName).attributeNames;
+    if (attributes.isEmpty) {
+      return _promptText(
+        context,
+        title: initial == null ? 'Add field' : 'Edit field',
+        label: 'Bound attribute name',
+        initial: initial ?? '',
+        onRemove: onRemove,
+      );
+    }
+    return _promptAttribute(context, attributes: attributes, initial: initial, onRemove: onRemove);
+  }
+
   Future<void> _addField() async {
     final groupName = await _pickGroup();
     if (groupName == null) return;
     if (!mounted) return;
-    final fieldName = await _promptText(context, title: 'Add field', label: 'Bound attribute name', initial: '');
+    final fieldName = await _pickFieldName(groupName);
     if (fieldName == null || fieldName.trim().isEmpty) return;
     final position = _nextPosition();
     setState(() {
@@ -147,13 +166,7 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
         final newGroup = await _pickGroup(initial: groupName);
         if (newGroup == null) return;
         if (!mounted) return;
-        final newName = await _promptText(
-          context,
-          title: 'Edit field',
-          label: 'Bound attribute name',
-          initial: fieldName,
-          onRemove: () => removed = true,
-        );
+        final newName = await _pickFieldName(newGroup, initial: fieldName, onRemove: () => removed = true);
         edited = newName == null ? null : target.copyWith(groupName: newGroup, fieldName: newName.trim());
       case ButtonWidgetConfig(:final groupName):
         final newGroup = await _pickGroup(initial: groupName);
@@ -366,6 +379,38 @@ Future<String?> _promptGroup(BuildContext context, {required List<EndpointGroup>
           SimpleDialogOption(
             onPressed: () => Navigator.of(dialogContext).pop(group.name),
             child: Text(group.name == initial ? '${group.name} (current)' : group.name),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Which of the class's real attributes a Field binds to
+/// ([EndpointGroup.attributeNames]) — used instead of free text whenever
+/// the document exposed that class's request body shape.
+Future<String?> _promptAttribute(
+  BuildContext context, {
+  required List<String> attributes,
+  String? initial,
+  VoidCallback? onRemove,
+}) {
+  return showDialog<String>(
+    context: context,
+    builder: (dialogContext) => SimpleDialog(
+      title: const Text('Attribute'),
+      children: [
+        for (final attribute in attributes)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(dialogContext).pop(attribute),
+            child: Text(attribute == initial ? '$attribute (current)' : attribute),
+          ),
+        if (onRemove != null)
+          SimpleDialogOption(
+            onPressed: () {
+              onRemove();
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Remove'),
           ),
       ],
     ),
