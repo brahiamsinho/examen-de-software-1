@@ -25,3 +25,7 @@ skills-lock.json
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Personal working files, not part of the project
+/*.pdf
+opencode.jsonc
