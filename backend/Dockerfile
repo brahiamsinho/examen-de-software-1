@@ -38,6 +38,10 @@ COPY requirements/prod.txt requirements/prod.txt
 RUN pip install --no-cache-dir -r requirements/prod.txt
 
 COPY . /app
+# The base stage's `chmod +x` above only applied to that layer's copy of the
+# file; this later `COPY . /app` re-copies entrypoint.sh straight from the
+# build context (not executable on disk), silently undoing it.
+RUN chmod +x /app/entrypoint.sh
 
 # Settings read required vars at import time; these are throwaway build-only values.
 RUN SECRET_KEY=build-only POSTGRES_DB=build POSTGRES_USER=build POSTGRES_PASSWORD=build \
