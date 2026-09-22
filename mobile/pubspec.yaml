@@ -41,6 +41,12 @@ dependencies:
   # Local storage for saved screen designs (screen_designer feature).
   shared_preferences: ^2.3.0
 
+  # On-device LLM (Gemma) inference and model download/install (local_assistant feature).
+  flutter_gemma: ^1.9.0
+  # LiteRT-LM engine for flutter_gemma: runs .litertlm model files (required —
+  # flutter_gemma's core package ships no inference engine on its own).
+  flutter_gemma_litertlm: ^1.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
