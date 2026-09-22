@@ -170,7 +170,9 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     // A join-table hint (design.md DD177): not a real class, just a
     // preview of the intermediate table a both-ends-many association
     // implies — dashed border reads as "derived", never confusable with a
-    // solid-bordered, editable class box.
+    // solid-bordered, editable class box. Draggable (design.md DD178) so
+    // the user can move it clear of other boxes; still never claims a
+    // collaboration lock (see `applyLocks`).
     selector: "node.join-table-hint",
     style: { "border-width": 1.5, "border-color": EDGE_LINE, "border-style": "dashed" },
   },
@@ -217,6 +219,17 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     // prefixes default to `'none'`, so a plain `association` edge needs no
     // selector of its own — "no terminator" is the floor, and each kind
     // rule below can only *add* one for its own edges.
+  },
+  {
+    // Two thin connector lines from a both-ends-many association's two
+    // endpoint classes to its join-table hint (design.md DD178): dashed,
+    // no terminator, no label of their own — the real association edge
+    // (with its own name/multiplicities, still double-tap-editable) is the
+    // only line that carries a label. These exist purely so the hint reads
+    // as "attached to" the relationship it came from, the way the source
+    // asked for, instead of floating unconnected.
+    selector: "edge.join-table-edge",
+    style: { "line-style": "dashed", "line-color": EDGE_LINE, width: 1, "curve-style": "bezier" },
   },
   {
     // A recursive/reflexive relationship (source === target, tagged in
@@ -336,20 +349,25 @@ export function toElements(
 const JOIN_TABLE_ROW_PREFIX = "  "; // visually sets each column apart from the table name, like an attribute line
 
 /**
- * Builds (or repositions) one visual-only box per join-table hint, at the
- * midpoint between its relationship's two endpoint classes, nudged
- * perpendicular so it never sits directly on top of the relationship's own
- * line/label. Never added to `toElements`'s output (design.md DD177): fcose
- * would otherwise treat it as a real node to place, and its position only
- * makes sense once the two real classes already have one — computed here
- * from Cytoscape's OWN current positions, not from the persisted layout, so
- * it still works before either class has ever been dragged (fcose's
- * auto-placement is available even when nothing was saved yet).
+ * Builds (or repositions) one visual-only box per join-table hint, plus two
+ * connector edges from its relationship's endpoint classes to that box
+ * (design.md DD178). Default position is the midpoint between the two
+ * endpoint classes, nudged perpendicular so it never sits directly on top
+ * of the relationship's own line/label — but `overridePositionOf` wins
+ * when the user has manually dragged this hint (see `syncJoinTableHints`),
+ * so a drag survives the next resync instead of snapping back. Never added
+ * to `toElements`'s output (design.md DD177): fcose would otherwise treat
+ * the hint as a real node to place, and its position only makes sense once
+ * the two real classes already have one — computed here from Cytoscape's
+ * OWN current positions, not from the persisted layout, so it still works
+ * before either class has ever been dragged (fcose's auto-placement is
+ * available even when nothing was saved yet).
  */
 export function joinTableHintElements(
   model: UmlModel,
   hints: JoinTableHint[],
   positionOf: (classId: string) => { x: number; y: number } | null,
+  overridePositionOf: (hintId: string) => { x: number; y: number } | null = () => null,
 ): ElementDefinition[] {
   const relationshipById = new Map(model.relationships.map((r) => [r.id, r]));
   const elements: ElementDefinition[] = [];
@@ -361,26 +379,46 @@ export function joinTableHintElements(
     const targetPos = positionOf(relationship.target.class_id);
     if (!sourcePos || !targetPos) continue;
 
-    const midX = (sourcePos.x + targetPos.x) / 2;
-    const midY = (sourcePos.y + targetPos.y) / 2;
-    // Perpendicular to the source->target line, so the hint sits beside
-    // the relationship's line/labels instead of on top of them.
-    const dx = targetPos.x - sourcePos.x;
-    const dy = targetPos.y - sourcePos.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const offset = 70;
-    const offsetX = (-dy / length) * offset;
-    const offsetY = (dx / length) * offset;
+    const hintId = `join-table:${hint.relationship_id}`;
+    const override = overridePositionOf(hintId);
+    let hintPosition: { x: number; y: number };
+    if (override) {
+      hintPosition = override;
+    } else {
+      const midX = (sourcePos.x + targetPos.x) / 2;
+      const midY = (sourcePos.y + targetPos.y) / 2;
+      // Perpendicular to the source->target line, so the hint sits beside
+      // the relationship's line/labels instead of on top of them.
+      const dx = targetPos.x - sourcePos.x;
+      const dy = targetPos.y - sourcePos.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const offset = 70;
+      const offsetX = (-dy / length) * offset;
+      const offsetY = (dx / length) * offset;
+      hintPosition = { x: midX + offsetX, y: midY + offsetY };
+    }
 
     const box = classBoxSvgDataUri(
       hint.table_name,
       hint.columns.map((c) => `${JOIN_TABLE_ROW_PREFIX}${c}`),
     );
     elements.push({
-      data: { id: `join-table:${hint.relationship_id}`, label: "", bgImage: box.uri, width: box.width, height: box.height, synthetic: true },
-      position: { x: midX + offsetX, y: midY + offsetY },
+      data: { id: hintId, label: "", bgImage: box.uri, width: box.width, height: box.height, synthetic: true },
+      position: hintPosition,
       classes: "join-table-hint",
-      grabbable: false,
+    } as ElementDefinition);
+    // Two connector edges (design.md DD178), source-class -> hint and
+    // hint -> target-class, so the hint reads as attached to its
+    // relationship instead of floating unconnected. For a recursive
+    // relationship (source === target) these become a visual loop through
+    // the hint, which Cytoscape auto-bends apart as parallel edges.
+    elements.push({
+      data: { id: `join-table-edge:${hint.relationship_id}:source`, source: relationship.source.class_id, target: hintId, synthetic: true },
+      classes: "join-table-edge",
+    } as ElementDefinition);
+    elements.push({
+      data: { id: `join-table-edge:${hint.relationship_id}:target`, source: hintId, target: relationship.target.class_id, synthetic: true },
+      classes: "join-table-edge",
     } as ElementDefinition);
   }
 
@@ -479,6 +517,13 @@ export function DiagramCanvas({
   // neither of which may capture a stale closure.
   const modelRef = useRef(model);
   const joinTableHintsRef = useRef(joinTableHints);
+  // Session-only (design.md DD178): a join-table hint the user manually
+  // dragged, keyed by its `join-table:<relationshipId>` id. Consulted by
+  // `syncJoinTableHints` so a later resync (a class move, a model edit)
+  // doesn't snap the hint back to the auto-computed midpoint. Never
+  // persisted or broadcast — lost on reload/remount, and not shared with
+  // other collaborators, same as any other purely-visual preview.
+  const hintPositionOverridesRef = useRef<Record<string, { x: number; y: number }>>({});
 
   useEffect(() => {
     // Keeps the refs current after every render (not during render, which
@@ -500,11 +545,16 @@ export function DiagramCanvas({
   // always reflects the latest props regardless of which effect/handler
   // triggered it.
   const syncJoinTableHints = (cy: Core) => {
-    cy.$(".join-table-hint").remove();
-    const elements = joinTableHintElements(modelRef.current, joinTableHintsRef.current, (classId) => {
-      const node = cy.getElementById(classId);
-      return node.length > 0 ? node.position() : null;
-    });
+    cy.$(".join-table-hint, .join-table-edge").remove();
+    const elements = joinTableHintElements(
+      modelRef.current,
+      joinTableHintsRef.current,
+      (classId) => {
+        const node = cy.getElementById(classId);
+        return node.length > 0 ? node.position() : null;
+      },
+      (hintId) => hintPositionOverridesRef.current[hintId] ?? null,
+    );
     if (elements.length > 0) cy.add(elements);
   };
 
@@ -515,7 +565,7 @@ export function DiagramCanvas({
   // connection may freely start a drag on that node.
   const applyLocks = (cy: Core) => {
     cy.nodes().forEach((node) => {
-      if (node.data("synthetic")) return; // a join-table hint: never grabbable, no lock of its own
+      if (node.data("synthetic")) return; // a join-table hint: locally draggable (DD178), no lock of its own
       const lock = locksRef.current[node.id()];
       if (lock && !lock.mine) {
         node.ungrabify();
@@ -578,6 +628,7 @@ export function DiagramCanvas({
       onNodeTapRef.current?.(e.target.id());
     });
     cy.on("tap", "edge", (e) => {
+      if (e.target.data("synthetic")) return; // a join-table hint's connector line, not a real relationship
       const id: string = e.target.id();
       const now = Date.now();
       const last = lastEdgeTapRef.current;
@@ -589,7 +640,9 @@ export function DiagramCanvas({
       }
     });
     cy.on("grab", "node", (e) => {
-      if (e.target.data("synthetic")) return; // `grabbable: false` already blocks this; defensive
+      // A join-table hint is locally draggable (design.md DD178) but never
+      // claims a collaboration lock — it isn't a real class in the model.
+      if (e.target.data("synthetic")) return;
       draggingRef.current = true;
       const node = e.target;
       const classId = node.id();
@@ -597,15 +650,22 @@ export function DiagramCanvas({
       onClaimRef.current?.(classId);
     });
     cy.on("drag", "node", (e) => {
-      if (e.target.data("synthetic")) return;
+      if (e.target.data("synthetic")) return; // no live-position broadcast for a local-only hint
       const node = e.target;
       const pos = node.position();
       onLivePositionRef.current?.(node.id(), pos.x, pos.y);
     });
     cy.on("free", "node", (e) => {
-      if (e.target.data("synthetic")) return;
-      draggingRef.current = false;
       const node = e.target;
+      if (node.data("synthetic")) {
+        // Manually repositioned join-table hint (design.md DD178): keep it
+        // so a later resync (a class move, a model edit) doesn't snap it
+        // back to the auto-computed midpoint. No `syncJoinTableHints` call
+        // here — the hint/edges are already exactly where the user put them.
+        hintPositionOverridesRef.current[node.id()] = { ...node.position() };
+        return;
+      }
+      draggingRef.current = false;
       const pos = node.position();
       onReleaseRef.current?.(node.id(), pos.x, pos.y);
       // A dropped class may be a join-table hint's endpoint: snap the hint

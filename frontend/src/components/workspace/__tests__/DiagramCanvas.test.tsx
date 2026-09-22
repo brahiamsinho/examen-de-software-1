@@ -297,7 +297,7 @@ describe("DiagramCanvas — joinTableHintElements (pure)", () => {
     generation_metadata: {},
   };
 
-  it("places one node per hint, off the straight line between its two classes", async () => {
+  it("places one node plus two connector edges per hint, off the straight line between its two classes", async () => {
     const { joinTableHintElements } = await import("@/components/workspace/DiagramCanvas");
     const positions: Record<string, { x: number; y: number }> = { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } };
 
@@ -307,13 +307,33 @@ describe("DiagramCanvas — joinTableHintElements (pure)", () => {
       (classId) => positions[classId] ?? null,
     );
 
-    expect(elements).toHaveLength(1);
-    const [hint] = elements;
+    expect(elements).toHaveLength(3);
+    const [hint, sourceEdge, targetEdge] = elements;
     expect(hint!.data.id).toBe("join-table:r1");
     expect(hint!.classes).toBe("join-table-hint");
     // Perpendicular to a horizontal a->b line: x stays at the midpoint, y moves off it.
     expect(hint!.position!.x).toBeCloseTo(50);
     expect(hint!.position!.y).not.toBe(0);
+
+    expect(sourceEdge!.data).toMatchObject({ source: "a", target: "join-table:r1", synthetic: true });
+    expect(sourceEdge!.classes).toBe("join-table-edge");
+    expect(targetEdge!.data).toMatchObject({ source: "join-table:r1", target: "b", synthetic: true });
+    expect(targetEdge!.classes).toBe("join-table-edge");
+  });
+
+  it("uses the override position instead of the computed midpoint when the hint was manually dragged", async () => {
+    const { joinTableHintElements } = await import("@/components/workspace/DiagramCanvas");
+    const positions: Record<string, { x: number; y: number }> = { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } };
+
+    const elements = joinTableHintElements(
+      model,
+      [{ relationship_id: "r1", table_name: "class_a_class_b", columns: ["id"] }],
+      (classId) => positions[classId] ?? null,
+      (hintId) => (hintId === "join-table:r1" ? { x: 999, y: 888 } : null),
+    );
+
+    const [hint] = elements;
+    expect(hint!.position).toEqual({ x: 999, y: 888 });
   });
 
   it("skips a hint whose relationship id is not in the model", async () => {
@@ -694,9 +714,9 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     const onEdgeEdit = vi.fn();
     render(<DiagramCanvas model={emptyModel} revision={1} onEdgeEdit={onEdgeEdit} />);
     const edgeTap = cyMock.on.mock.calls.find(([event, selector]) => event === "tap" && selector === "edge")![2] as (e: {
-      target: { id: () => string };
+      target: { id: () => string; data: (key: string) => unknown };
     }) => void;
-    const tap = (id: string) => edgeTap({ target: { id: () => id } });
+    const tap = (id: string) => edgeTap({ target: { id: () => id, data: () => undefined } });
 
     vi.useFakeTimers();
     try {
