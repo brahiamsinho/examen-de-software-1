@@ -1,26 +1,27 @@
 import 'screen_widget_config.dart';
 
-/// A saved screen design: every widget the user placed for one endpoint
-/// group (e.g. `class-a-controller`). Round-trips through JSON so it can be
-/// stored locally (data/screen_layout_store.dart) and reloaded on the next
-/// visit to the same group.
+/// A saved screen design: a user-named screen (not tied to any single
+/// class — each [FieldWidgetConfig]/[ButtonWidgetConfig] carries its own
+/// `groupName`, so one screen can mix widgets from several classes).
+/// Round-trips through JSON so it can be stored locally
+/// (data/screen_layout_store.dart) and reloaded on the next visit.
 class ScreenLayout {
-  const ScreenLayout({required this.groupName, required this.widgets});
+  const ScreenLayout({required this.name, required this.widgets});
 
-  final String groupName;
+  final String name;
   final List<ScreenWidgetConfig> widgets;
 
-  factory ScreenLayout.empty(String groupName) => ScreenLayout(groupName: groupName, widgets: const []);
+  factory ScreenLayout.empty(String name) => ScreenLayout(name: name, widgets: const []);
 
-  ScreenLayout withWidgets(List<ScreenWidgetConfig> widgets) => ScreenLayout(groupName: groupName, widgets: widgets);
+  ScreenLayout withWidgets(List<ScreenWidgetConfig> widgets) => ScreenLayout(name: name, widgets: widgets);
 
   Map<String, Object?> toJson() => {
-    'groupName': groupName,
+    'name': name,
     'widgets': [for (final widget in widgets) widget.toJson()],
   };
 
   factory ScreenLayout.fromJson(Map<String, Object?> json) => ScreenLayout(
-    groupName: json['groupName'] as String,
+    name: json['name'] as String,
     widgets: [
       for (final raw in (json['widgets'] as List<Object?>))
         ScreenWidgetConfig.fromJson(raw as Map<String, Object?>),

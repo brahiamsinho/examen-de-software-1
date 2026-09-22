@@ -8,17 +8,24 @@ import 'package:mobile/features/screen_designer/presentation/designer_page.dart'
 import 'package:mobile/features/screen_designer/presentation/runtime_screen_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _group = EndpointGroup(
+const _classA = EndpointGroup(
   name: 'class-a-controller',
   endpoints: [
     ApiEndpoint(method: 'GET', path: '/api/class-as'),
     ApiEndpoint(method: 'POST', path: '/api/class-as'),
   ],
 );
+const _classB = EndpointGroup(
+  name: 'class-b-controller',
+  endpoints: [
+    ApiEndpoint(method: 'GET', path: '/api/class-bs'),
+    ApiEndpoint(method: 'POST', path: '/api/class-bs'),
+  ],
+);
 
-Future<void> _pump(WidgetTester tester) => tester.pumpWidget(
+Future<void> _pump(WidgetTester tester, {List<EndpointGroup> groups = const [_classA]}) => tester.pumpWidget(
   MaterialApp(
-    home: ScreenDesignerPage(group: _group, deploymentBase: Uri.parse('http://h/gen/abc/')),
+    home: ScreenDesignerPage(name: 'My screen', groups: groups, deploymentBase: Uri.parse('http://h/gen/abc/')),
   ),
 );
 
@@ -27,8 +34,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  group('ScreenDesignerPage', () {
-    testWidgets('tapping "Label" in the palette places one on the canvas', (tester) async {
+  group('ScreenDesignerPage, one class available', () {
+    testWidgets('tapping "Label" in the palette places one on the canvas without asking which class', (tester) async {
       await _pump(tester);
       await tester.pumpAndSettle();
 
@@ -38,6 +45,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Label'), findsWidgets); // the palette chip AND the placed widget's default text
+      expect(find.text('Class'), findsNothing); // no class picker with only one group
     });
 
     testWidgets('dragging a placed widget moves it, and the new position is what gets saved', (tester) async {
@@ -63,7 +71,7 @@ void main() {
       await tester.tap(find.byTooltip('Save'));
       await tester.pumpAndSettle();
 
-      final saved = (await const ScreenLayoutStore().load('class-a-controller'))!.widgets.single;
+      final saved = (await const ScreenLayoutStore().load('My screen'))!.widgets.single;
       // The exact total depends on how the test harness delivers the
       // simulated pointer events; what matters is that it moved, clearly
       // and in the requested direction, not the touch-slop-sensitive exact
@@ -72,7 +80,7 @@ void main() {
       expect(saved.y, greaterThan(16));
     });
 
-    testWidgets('Save persists the layout, reloaded by a fresh instance for the same group', (tester) async {
+    testWidgets('Save persists the layout, reloaded by a fresh instance for the same screen name', (tester) async {
       await _pump(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ActionChip, 'Label'));
@@ -83,7 +91,7 @@ void main() {
       await tester.tap(find.byTooltip('Save'));
       await tester.pumpAndSettle();
 
-      final loaded = await const ScreenLayoutStore().load('class-a-controller');
+      final loaded = await const ScreenLayoutStore().load('My screen');
       expect(loaded, isNotNull);
       expect(loaded!.widgets, hasLength(1));
       expect(loaded.widgets.single, isA<LabelWidgetConfig>());
@@ -92,7 +100,7 @@ void main() {
     testWidgets('a saved layout loads back into the canvas', (tester) async {
       await const ScreenLayoutStore().save(
         ScreenLayout(
-          groupName: 'class-a-controller',
+          name: 'My screen',
           widgets: const [LabelWidgetConfig(id: 'w1', x: 12, y: 12, text: 'Preloaded')],
         ),
       );
@@ -115,6 +123,32 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RuntimeScreenPage), findsOneWidget);
+    });
+  });
+
+  group('ScreenDesignerPage, several classes available', () {
+    testWidgets('adding a field asks which class it binds to, and the chip shows it', (tester) async {
+      await _pump(tester, groups: const [_classA, _classB]);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ActionChip, 'Field'));
+      await tester.pumpAndSettle();
+      expect(find.text('Class'), findsOneWidget); // the class picker, since there are 2 groups
+
+      await tester.tap(find.text('class-b-controller'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'name');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save')); // confirm the add-field dialog
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('class-b-controller'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Save')); // persist the whole screen
+      await tester.pumpAndSettle();
+
+      final saved = (await const ScreenLayoutStore().load('My screen'))!.widgets.single as FieldWidgetConfig;
+      expect(saved.groupName, 'class-b-controller');
+      expect(saved.fieldName, 'name');
     });
   });
 }

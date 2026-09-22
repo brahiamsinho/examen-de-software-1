@@ -7,22 +7,24 @@ import '../domain/screen_widget_config.dart';
 import 'autofocus_text_field.dart';
 
 /// Runs a saved [ScreenLayout] for real: renders each placed widget at its
-/// designed position and wires buttons to the group's actual collection
-/// endpoint (spec MVP — update/delete additionally ask for a record id,
-/// since there is no data grid yet to pick one from). Field widgets are
-/// plain `TextField`s the user types into; their current text feeds
-/// create/update request bodies.
+/// designed position and wires each Button to its OWN class's (`groupName`)
+/// actual collection endpoint — a screen may mix widgets from several
+/// classes, so every Button/Field resolves independently rather than
+/// assuming one shared class (spec MVP — update/delete additionally ask for
+/// a record id, since there is no data grid yet to pick one from). Field
+/// widgets are plain `TextField`s the user types into; their current text
+/// feeds only the create/update calls of buttons bound to the SAME class.
 class RuntimeScreenPage extends StatefulWidget {
   const RuntimeScreenPage({
     super.key,
     required this.layout,
-    required this.group,
+    required this.groups,
     required this.deploymentBase,
     this.actionClient,
   });
 
   final ScreenLayout layout;
-  final EndpointGroup group;
+  final List<EndpointGroup> groups;
   final Uri deploymentBase;
   final ScreenActionClient? actionClient;
 
@@ -47,22 +49,27 @@ class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
     super.dispose();
   }
 
-  /// The path a `POST` lands on, per this project's Spring generator
-  /// convention: the collection path, with `/{id}` appended for a specific
-  /// record (design.md `screen_designer` MVP note).
-  String? get _collectionPath {
-    for (final endpoint in widget.group.endpoints) {
+  /// The path a `POST` for `groupName` lands on, per this project's Spring
+  /// generator convention: the collection path, with `/{id}` appended for a
+  /// specific record (design.md `screen_designer` MVP note).
+  String? _collectionPathFor(String groupName) {
+    final endpoints = widget.groups.where((g) => g.name == groupName).firstOrNull?.endpoints ?? const [];
+    for (final endpoint in endpoints) {
       if (endpoint.method == 'POST') return endpoint.path;
     }
-    for (final endpoint in widget.group.endpoints) {
+    for (final endpoint in endpoints) {
       if (endpoint.method == 'GET' && !endpoint.path.contains('{')) return endpoint.path;
     }
     return null;
   }
 
-  Map<String, Object?> _fieldValues() => {
+  /// Only the Field widgets bound to the SAME class as the button that is
+  /// running — a screen mixing several classes must never leak one class's
+  /// typed values into another's request body.
+  Map<String, Object?> _fieldValuesFor(String groupName) => {
     for (final placed in widget.layout.widgets)
-      if (placed is FieldWidgetConfig) placed.fieldName: _controllerFor(placed.fieldName).text,
+      if (placed is FieldWidgetConfig && placed.groupName == groupName)
+        placed.fieldName: _controllerFor('${placed.groupName}.${placed.fieldName}').text,
   };
 
   Future<String?> _promptId(String verb) => showDialog<String>(
@@ -80,27 +87,27 @@ class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
     },
   );
 
-  Future<void> _run(ScreenAction action) async {
-    final path = _collectionPath;
+  Future<void> _run(ButtonWidgetConfig button) async {
+    final path = _collectionPathFor(button.groupName);
     if (path == null) {
-      setState(() => _resultText = 'This group has no collection endpoint to call.');
+      setState(() => _resultText = '${button.groupName} has no collection endpoint to call.');
       return;
     }
 
     setState(() => _busy = true);
     ScreenActionResult result;
-    switch (action) {
+    switch (button.action) {
       case ScreenAction.list:
         result = await _client.list(widget.deploymentBase, path);
       case ScreenAction.create:
-        result = await _client.create(widget.deploymentBase, path, _fieldValues());
+        result = await _client.create(widget.deploymentBase, path, _fieldValuesFor(button.groupName));
       case ScreenAction.update:
         final id = await _promptId('Update');
         if (id == null || id.trim().isEmpty) {
           setState(() => _busy = false);
           return;
         }
-        result = await _client.update(widget.deploymentBase, path, id.trim(), _fieldValues());
+        result = await _client.update(widget.deploymentBase, path, id.trim(), _fieldValuesFor(button.groupName));
       case ScreenAction.delete:
         final id = await _promptId('Delete');
         if (id == null || id.trim().isEmpty) {
@@ -123,7 +130,7 @@ class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.group.name)),
+      appBar: AppBar(title: Text(widget.layout.name)),
       body: Stack(
         children: [
           for (final config in widget.layout.widgets)
@@ -149,16 +156,16 @@ class _RuntimeScreenPageState extends State<RuntimeScreenPage> {
   Widget _runtimeWidgetFor(ScreenWidgetConfig config) {
     return switch (config) {
       LabelWidgetConfig(:final text) => Text(text, style: Theme.of(context).textTheme.titleMedium),
-      FieldWidgetConfig(:final fieldName) => SizedBox(
+      FieldWidgetConfig(:final groupName, :final fieldName) => SizedBox(
         width: 160,
         child: TextField(
-          controller: _controllerFor(fieldName),
+          controller: _controllerFor('$groupName.$fieldName'),
           decoration: InputDecoration(labelText: fieldName),
         ),
       ),
-      ButtonWidgetConfig(:final action) => FilledButton(
-        onPressed: _busy ? null : () => _run(action),
-        child: Text(action.name),
+      ButtonWidgetConfig() => FilledButton(
+        onPressed: _busy ? null : () => _run(config),
+        child: Text(config.action.name),
       ),
     };
   }

@@ -26,12 +26,19 @@ sealed class ScreenWidgetConfig {
       case 'label':
         return LabelWidgetConfig(id: id, x: x, y: y, text: json['text'] as String? ?? 'Label');
       case 'field':
-        return FieldWidgetConfig(id: id, x: x, y: y, fieldName: json['fieldName'] as String? ?? '');
+        return FieldWidgetConfig(
+          id: id,
+          x: x,
+          y: y,
+          groupName: json['groupName'] as String? ?? '',
+          fieldName: json['fieldName'] as String? ?? '',
+        );
       case 'button':
         return ButtonWidgetConfig(
           id: id,
           x: x,
           y: y,
+          groupName: json['groupName'] as String? ?? '',
           action: ScreenAction.values.byName(json['action'] as String? ?? 'list'),
         );
       default:
@@ -54,31 +61,73 @@ class LabelWidgetConfig extends ScreenWidgetConfig {
   Map<String, Object?> toJson() => {'type': 'label', 'id': id, 'x': x, 'y': y, 'text': text};
 }
 
-/// A text input bound to one attribute of the connected class, e.g. `edad`.
-/// Its typed value feeds `create`/`update` request bodies at run time.
+/// A text input bound to one attribute of one connected class (`groupName`
+/// — a screen can now mix widgets from several classes at once). Its typed
+/// value feeds the `create`/`update` request body of a button bound to the
+/// SAME `groupName`, never a different class's.
 class FieldWidgetConfig extends ScreenWidgetConfig {
-  const FieldWidgetConfig({required super.id, required super.x, required super.y, required this.fieldName});
+  const FieldWidgetConfig({
+    required super.id,
+    required super.x,
+    required super.y,
+    required this.groupName,
+    required this.fieldName,
+  });
 
+  final String groupName;
   final String fieldName;
 
   @override
-  FieldWidgetConfig copyWith({double? x, double? y, String? fieldName}) =>
-      FieldWidgetConfig(id: id, x: x ?? this.x, y: y ?? this.y, fieldName: fieldName ?? this.fieldName);
+  FieldWidgetConfig copyWith({double? x, double? y, String? groupName, String? fieldName}) => FieldWidgetConfig(
+    id: id,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    groupName: groupName ?? this.groupName,
+    fieldName: fieldName ?? this.fieldName,
+  );
 
   @override
-  Map<String, Object?> toJson() => {'type': 'field', 'id': id, 'x': x, 'y': y, 'fieldName': fieldName};
+  Map<String, Object?> toJson() => {
+    'type': 'field',
+    'id': id,
+    'x': x,
+    'y': y,
+    'groupName': groupName,
+    'fieldName': fieldName,
+  };
 }
 
-/// Triggers one CRUD action against the connected class's endpoints.
+/// Triggers one CRUD action against one connected class's endpoints
+/// (`groupName`), gathering the body only from same-`groupName` Field
+/// widgets on the same screen.
 class ButtonWidgetConfig extends ScreenWidgetConfig {
-  const ButtonWidgetConfig({required super.id, required super.x, required super.y, required this.action});
+  const ButtonWidgetConfig({
+    required super.id,
+    required super.x,
+    required super.y,
+    required this.groupName,
+    required this.action,
+  });
 
+  final String groupName;
   final ScreenAction action;
 
   @override
-  ButtonWidgetConfig copyWith({double? x, double? y, ScreenAction? action}) =>
-      ButtonWidgetConfig(id: id, x: x ?? this.x, y: y ?? this.y, action: action ?? this.action);
+  ButtonWidgetConfig copyWith({double? x, double? y, String? groupName, ScreenAction? action}) => ButtonWidgetConfig(
+    id: id,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    groupName: groupName ?? this.groupName,
+    action: action ?? this.action,
+  );
 
   @override
-  Map<String, Object?> toJson() => {'type': 'button', 'id': id, 'x': x, 'y': y, 'action': action.name};
+  Map<String, Object?> toJson() => {
+    'type': 'button',
+    'id': id,
+    'x': x,
+    'y': y,
+    'groupName': groupName,
+    'action': action.name,
+  };
 }

@@ -12,23 +12,28 @@ const _canvasHeight = 480.0;
 const _defaultStep = 56.0;
 
 /// A touch-driven, RAD-style screen designer (the user's own reference:
-/// Delphi/RAD Studio's form designer) for one endpoint group. Tapping the
-/// palette places a widget (already configured through a small dialog,
-/// rather than a separate blank-placeholder step); dragging a placed widget
-/// repositions it; tapping a placed widget reopens that dialog to rebind,
-/// retype or remove it. "Save" persists the layout locally (`ScreenLayoutStore`)
-/// keyed by the group's name; "Preview" runs it for real against the
-/// connected backend (`RuntimeScreenPage`).
+/// Delphi/RAD Studio's form designer) for one named screen. A screen is no
+/// longer scoped to a single class — every `groups` entry is available, and
+/// adding a Field or Button asks which class it binds to whenever there is
+/// more than one, so one screen can mix widgets from several classes at
+/// once. Tapping the palette places a widget (already configured through a
+/// small dialog, rather than a separate blank-placeholder step); dragging a
+/// placed widget repositions it; tapping a placed widget reopens that
+/// dialog to rebind, retype or remove it. "Save" persists the layout
+/// locally (`ScreenLayoutStore`) keyed by the screen's name; "Preview" runs
+/// it for real against the connected backend (`RuntimeScreenPage`).
 class ScreenDesignerPage extends StatefulWidget {
   const ScreenDesignerPage({
     super.key,
-    required this.group,
+    required this.name,
+    required this.groups,
     required this.deploymentBase,
     this.store = const ScreenLayoutStore(),
     this.actionClient,
   });
 
-  final EndpointGroup group;
+  final String name;
+  final List<EndpointGroup> groups;
   final Uri deploymentBase;
   final ScreenLayoutStore store;
   final ScreenActionClient? actionClient;
@@ -43,10 +48,12 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
   bool _loaded = false;
   bool _saving = false;
 
+  bool get _multiClass => widget.groups.length > 1;
+
   @override
   void initState() {
     super.initState();
-    widget.store.load(widget.group.name).then((layout) {
+    widget.store.load(widget.name).then((layout) {
       if (!mounted) return;
       setState(() {
         _widgets = layout?.widgets ?? const [];
@@ -60,6 +67,13 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
     final row = _placedCount ~/ 3;
     final col = _placedCount % 3;
     return Offset(16 + col * 130, 16 + row * _defaultStep);
+  }
+
+  /// Only asks when there is more than one class to choose from, so a
+  /// single-class screen keeps its original, simpler add flow.
+  Future<String?> _pickGroup({String? initial}) {
+    if (!_multiClass) return Future.value(widget.groups.single.name);
+    return _promptGroup(context, groups: widget.groups, initial: initial);
   }
 
   Future<void> _addLabel() async {
@@ -76,6 +90,9 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
   }
 
   Future<void> _addField() async {
+    final groupName = await _pickGroup();
+    if (groupName == null) return;
+    if (!mounted) return;
     final fieldName = await _promptText(context, title: 'Add field', label: 'Bound attribute name', initial: '');
     if (fieldName == null || fieldName.trim().isEmpty) return;
     final position = _nextPosition();
@@ -83,12 +100,15 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
       _placedCount++;
       _widgets = [
         ..._widgets,
-        FieldWidgetConfig(id: _newId(), x: position.dx, y: position.dy, fieldName: fieldName.trim()),
+        FieldWidgetConfig(id: _newId(), x: position.dx, y: position.dy, groupName: groupName, fieldName: fieldName.trim()),
       ];
     });
   }
 
   Future<void> _addButton() async {
+    final groupName = await _pickGroup();
+    if (groupName == null) return;
+    if (!mounted) return;
     final action = await _promptAction(context);
     if (action == null) return;
     final position = _nextPosition();
@@ -96,7 +116,7 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
       _placedCount++;
       _widgets = [
         ..._widgets,
-        ButtonWidgetConfig(id: _newId(), x: position.dx, y: position.dy, action: action),
+        ButtonWidgetConfig(id: _newId(), x: position.dx, y: position.dy, groupName: groupName, action: action),
       ];
     });
   }
@@ -123,7 +143,10 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
           onRemove: () => removed = true,
         );
         edited = newText == null ? null : target.copyWith(text: newText);
-      case FieldWidgetConfig(:final fieldName):
+      case FieldWidgetConfig(:final groupName, :final fieldName):
+        final newGroup = await _pickGroup(initial: groupName);
+        if (newGroup == null) return;
+        if (!mounted) return;
         final newName = await _promptText(
           context,
           title: 'Edit field',
@@ -131,10 +154,13 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
           initial: fieldName,
           onRemove: () => removed = true,
         );
-        edited = newName == null ? null : target.copyWith(fieldName: newName.trim());
-      case ButtonWidgetConfig():
+        edited = newName == null ? null : target.copyWith(groupName: newGroup, fieldName: newName.trim());
+      case ButtonWidgetConfig(:final groupName):
+        final newGroup = await _pickGroup(initial: groupName);
+        if (newGroup == null) return;
+        if (!mounted) return;
         final newAction = await _promptAction(context, initial: target.action, onRemove: () => removed = true);
-        edited = newAction == null ? null : target.copyWith(action: newAction);
+        edited = newAction == null ? null : target.copyWith(groupName: newGroup, action: newAction);
     }
     if (!mounted) return;
     if (removed) {
@@ -157,7 +183,7 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    await widget.store.save(ScreenLayout(groupName: widget.group.name, widgets: _widgets));
+    await widget.store.save(ScreenLayout(name: widget.name, widgets: _widgets));
     if (!mounted) return;
     setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Screen saved')));
@@ -167,8 +193,8 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RuntimeScreenPage(
-          layout: ScreenLayout(groupName: widget.group.name, widgets: _widgets),
-          group: widget.group,
+          layout: ScreenLayout(name: widget.name, widgets: _widgets),
+          groups: widget.groups,
           deploymentBase: widget.deploymentBase,
           actionClient: widget.actionClient,
         ),
@@ -180,7 +206,7 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Design: ${widget.group.name}'),
+        title: Text('Design: ${widget.name}'),
         actions: [
           IconButton(
             icon: const Icon(Icons.play_arrow),
@@ -226,7 +252,7 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
                             child: GestureDetector(
                               onPanUpdate: (details) => _move(w.id, details.delta),
                               onTap: () => _editOrRemove(w),
-                              child: _PlacedWidgetChip(config: w),
+                              child: _PlacedWidgetChip(config: w, showGroup: _multiClass),
                             ),
                           ),
                       ],
@@ -240,9 +266,10 @@ class _ScreenDesignerPageState extends State<ScreenDesignerPage> {
 }
 
 class _PlacedWidgetChip extends StatelessWidget {
-  const _PlacedWidgetChip({required this.config});
+  const _PlacedWidgetChip({required this.config, required this.showGroup});
 
   final ScreenWidgetConfig config;
+  final bool showGroup;
 
   @override
   Widget build(BuildContext context) {
@@ -252,11 +279,11 @@ class _PlacedWidgetChip extends StatelessWidget {
       case LabelWidgetConfig(text: final labelText):
         text = labelText;
         icon = Icons.text_fields;
-      case FieldWidgetConfig(fieldName: final fieldName):
-        text = 'Field: $fieldName';
+      case FieldWidgetConfig(groupName: final groupName, fieldName: final fieldName):
+        text = showGroup ? 'Field: $fieldName ($groupName)' : 'Field: $fieldName';
         icon = Icons.input;
-      case ButtonWidgetConfig(action: final action):
-        text = action.name;
+      case ButtonWidgetConfig(groupName: final groupName, action: final action):
+        text = showGroup ? '${action.name} ($groupName)' : action.name;
         icon = Icons.smart_button;
     }
     return Card(
@@ -321,6 +348,24 @@ Future<ScreenAction?> _promptAction(BuildContext context, {ScreenAction? initial
               Navigator.of(dialogContext).pop();
             },
             child: const Text('Remove'),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Which class a Field/Button belongs to. Only shown when the screen has
+/// more than one class available ([ScreenDesignerPage._multiClass]).
+Future<String?> _promptGroup(BuildContext context, {required List<EndpointGroup> groups, String? initial}) {
+  return showDialog<String>(
+    context: context,
+    builder: (dialogContext) => SimpleDialog(
+      title: const Text('Class'),
+      children: [
+        for (final group in groups)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(dialogContext).pop(group.name),
+            child: Text(group.name == initial ? '${group.name} (current)' : group.name),
           ),
       ],
     ),
