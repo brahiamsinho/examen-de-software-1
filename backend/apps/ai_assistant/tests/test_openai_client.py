@@ -4,6 +4,7 @@ tested directly; `OpenAiClient.generate_function_calls`'s response-parsing
 logic is tested by monkeypatching `sys.modules["openai"]` with a fake SDK
 module — never a real network call.
 """
+import base64
 import json
 import sys
 import types as python_types
@@ -151,3 +152,114 @@ class TestGenerateFunctionCalls:
         create_call = fake_client_class.return_value.chat.completions.create
         _, kwargs = create_call.call_args
         assert kwargs["tools"] == [{"type": "function", "function": one_tool}]
+
+
+class TestGenerateFunctionCallsFromImage:
+    def test_extracts_every_tool_call_from_the_response(self, monkeypatch):
+        response = _fake_response(
+            [_fake_tool_call("add_class", json.dumps({"name": "Persona"}))]
+        )
+        _install_fake_openai_module(monkeypatch, create=mock.Mock(return_value=response))
+        client = OpenAiClient("a-key", "a-model")
+
+        calls = client.generate_function_calls_from_image(
+            system_instruction="system",
+            image_bytes=b"fake-bytes",
+            image_mime_type="image/png",
+            tools=[],
+        )
+
+        assert [c.name for c in calls] == ["add_class"]
+        assert calls[0].args == {"name": "Persona"}
+
+    def test_no_tool_calls_returns_an_empty_list(self, monkeypatch):
+        response = _fake_response(None)
+        _install_fake_openai_module(monkeypatch, create=mock.Mock(return_value=response))
+        client = OpenAiClient("a-key", "a-model")
+
+        calls = client.generate_function_calls_from_image(
+            system_instruction="system",
+            image_bytes=b"fake-bytes",
+            image_mime_type="image/png",
+            tools=[],
+        )
+
+        assert calls == []
+
+    def test_a_sdk_failure_is_wrapped_as_a_gemini_request_error(self, monkeypatch):
+        _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(side_effect=RuntimeError("boom"))
+        )
+        client = OpenAiClient("a-key", "a-model")
+
+        with pytest.raises(GeminiRequestError):
+            client.generate_function_calls_from_image(
+                system_instruction="system",
+                image_bytes=b"fake-bytes",
+                image_mime_type="image/png",
+                tools=[],
+            )
+
+    def test_constructs_the_sdk_client_with_a_request_timeout(self, monkeypatch):
+        response = _fake_response(None)
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=response)
+        )
+        client = OpenAiClient("a-key", "a-model")
+
+        client.generate_function_calls_from_image(
+            system_instruction="system",
+            image_bytes=b"fake-bytes",
+            image_mime_type="image/png",
+            tools=[],
+        )
+
+        _, kwargs = fake_client_class.call_args
+        assert kwargs["timeout"] == REQUEST_TIMEOUT_MS / 1000
+
+    def test_wraps_each_tool_in_the_openai_function_envelope(self, monkeypatch):
+        response = _fake_response(None)
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=response)
+        )
+        client = OpenAiClient("a-key", "a-model")
+        one_tool = {"name": "add_class", "description": "...", "parameters": {"type": "object"}}
+
+        client.generate_function_calls_from_image(
+            system_instruction="system",
+            image_bytes=b"fake-bytes",
+            image_mime_type="image/png",
+            tools=[one_tool],
+        )
+
+        create_call = fake_client_class.return_value.chat.completions.create
+        _, kwargs = create_call.call_args
+        assert kwargs["tools"] == [{"type": "function", "function": one_tool}]
+
+    def test_sends_a_multimodal_message_with_the_system_instruction_and_image_data_uri(
+        self, monkeypatch
+    ):
+        response = _fake_response(None)
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=response)
+        )
+        client = OpenAiClient("a-key", "a-model")
+
+        client.generate_function_calls_from_image(
+            system_instruction="system prompt",
+            image_bytes=b"fake-bytes",
+            image_mime_type="image/png",
+            tools=[],
+        )
+
+        create_call = fake_client_class.return_value.chat.completions.create
+        _, kwargs = create_call.call_args
+        messages = kwargs["messages"]
+        assert messages[0] == {"role": "system", "content": "system prompt"}
+        assert messages[1]["role"] == "user"
+        content = messages[1]["content"]
+        assert content[0]["type"] == "text"
+        image_part = content[1]
+        assert image_part["type"] == "image_url"
+        expected_b64 = base64.b64encode(b"fake-bytes").decode("ascii")
+        assert image_part["image_url"]["url"] == f"data:image/png;base64,{expected_b64}"

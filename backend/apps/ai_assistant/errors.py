@@ -23,6 +23,12 @@ class GeminiRequestError(AiAssistantError):
     whole voice command before any translation/submission is attempted."""
 
 
+class InvalidImageError(AiAssistantError):
+    """The uploaded diagram image failed a pre-flight check in `api.py`
+    (unsupported content type or over the size limit) before any LLM call
+    was attempted. Handled by `api.py`'s exception handler -> 400."""
+
+
 class TranslationError(AiAssistantError):
     """One Gemini function call could not be translated into a `CommandIn`
     payload. Caught per-command in `service.py`, never lets one bad

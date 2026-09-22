@@ -26,8 +26,10 @@ import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelation
 import { GenerationProfilePanel } from "@/components/workspace/GenerationProfilePanel";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
+import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
+import { postImageCommand } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
 import { postVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
 import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_interop";
@@ -151,6 +153,14 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
    */
   async function handleVoiceCommand(transcript: string): Promise<VoiceCommandResult> {
     const result = await postVoiceCommand(orgSlug!, docId, transcript);
+    await refreshDocument();
+    return result;
+  }
+
+  /** Same POST-then-refresh shape as `handleVoiceCommand`, against the
+   * image-import endpoint instead. */
+  async function handleImageCommand(file: File): Promise<VoiceCommandResult> {
+    const result = await postImageCommand(orgSlug!, docId, file);
     await refreshDocument();
     return result;
   }
@@ -336,6 +346,17 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                     </CardHeader>
                     <CardContent>
                       <VoiceCommandButton onSubmit={handleVoiceCommand} disabled={isSubmitting} />
+                    </CardContent>
+                  </Card>
+                ) : null}
+
+                {canEdit ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Importar desde imagen</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ImageImportButton onSubmit={handleImageCommand} disabled={isSubmitting} />
                     </CardContent>
                   </Card>
                 ) : null}

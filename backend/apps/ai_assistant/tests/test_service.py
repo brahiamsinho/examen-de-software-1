@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from apps.ai_assistant.errors import MissingApiKeyError
 from apps.ai_assistant.gemini_client import GeminiFunctionCall
-from apps.ai_assistant.service import apply_voice_command
+from apps.ai_assistant.service import apply_image_command, apply_voice_command
 from apps.organizations.tests.factories import make_organization
 from apps.uml_documents import services
 
@@ -31,6 +31,26 @@ class FakeGeminiClient:
         self.received = {
             "system_instruction": system_instruction,
             "transcript": transcript,
+            "tools": tools,
+        }
+        return self._calls
+
+
+class FakeImageGeminiClient:
+    """Same double as `FakeGeminiClient`, for the image-import seam
+    (`generate_function_calls_from_image`)."""
+
+    def __init__(self, calls: list[GeminiFunctionCall]):
+        self._calls = calls
+        self.received = None
+
+    def generate_function_calls_from_image(
+        self, *, system_instruction, image_bytes, image_mime_type, tools
+    ):
+        self.received = {
+            "system_instruction": system_instruction,
+            "image_bytes": image_bytes,
+            "image_mime_type": image_mime_type,
             "tools": tools,
         }
         return self._calls
@@ -214,6 +234,156 @@ class TestApplyVoiceCommand:
                 organization=organization,
                 doc_id="00000000-0000-0000-0000-000000000000",
                 transcript="creá una clase Persona",
+                now=timezone.now(),
+                gemini=gemini,
+            )
+
+
+@pytest.mark.django_db
+class TestApplyImageCommand:
+    """Reuses the exact same per-command translate/submit pipeline and
+    partial-failure policy as `apply_voice_command` — only the LLM seam
+    (`generate_function_calls_from_image`) and the system instruction
+    differ. See `TestApplyVoiceCommand` above for the equivalent transcript
+    coverage this mirrors."""
+
+    def test_a_single_command_is_applied_through_the_real_pipeline(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        gemini = FakeImageGeminiClient(
+            [GeminiFunctionCall(name="add_class", args={"name": "Persona"})]
+        )
+
+        result = apply_image_command(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            now=timezone.now(),
+            gemini=gemini,
+        )
+
+        assert result.revision == document.revision + 1
+        assert result.applied == [
+            type(result.applied[0])(ok=True, message="Created class 'Persona'")
+        ]
+        reloaded = services.get_document(organization=organization, doc_id=document.id)
+        assert [c.name for c in reloaded.model.classes] == ["Persona"]
+
+    def test_forwards_the_image_bytes_mime_type_and_tool_schema(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        gemini = FakeImageGeminiClient([])
+
+        apply_image_command(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            now=timezone.now(),
+            gemini=gemini,
+        )
+
+        assert gemini.received["image_bytes"] == b"fake-png-bytes"
+        assert gemini.received["image_mime_type"] == "image/png"
+        assert len(gemini.received["tools"]) == 9
+
+    def test_a_multi_command_image_applies_every_command_in_order(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        gemini = FakeImageGeminiClient(
+            [
+                GeminiFunctionCall(name="add_class", args={"name": "Persona"}),
+                GeminiFunctionCall(
+                    name="add_attribute",
+                    args={
+                        "class_name": "Persona",
+                        "attribute_name": "edad",
+                        "attribute_type": "Integer",
+                    },
+                ),
+            ]
+        )
+
+        result = apply_image_command(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            now=timezone.now(),
+            gemini=gemini,
+        )
+
+        assert result.revision == document.revision + 2
+        assert [item.ok for item in result.applied] == [True, True]
+        reloaded = services.get_document(organization=organization, doc_id=document.id)
+        [persona] = reloaded.model.classes
+        assert persona.name == "Persona"
+        assert [a.name for a in persona.attributes] == ["edad"]
+
+    def test_a_failing_command_does_not_roll_back_earlier_successes_or_block_later_ones(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        gemini = FakeImageGeminiClient(
+            [
+                GeminiFunctionCall(name="add_class", args={"name": "Persona"}),
+                GeminiFunctionCall(
+                    name="add_attribute",
+                    args={
+                        "class_name": "Ghost",
+                        "attribute_name": "edad",
+                        "attribute_type": "Integer",
+                    },
+                ),
+                GeminiFunctionCall(name="add_class", args={"name": "Mascota"}),
+            ]
+        )
+
+        result = apply_image_command(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            now=timezone.now(),
+            gemini=gemini,
+        )
+
+        assert [item.ok for item in result.applied] == [True, False, True]
+        reloaded = services.get_document(organization=organization, doc_id=document.id)
+        assert sorted(c.name for c in reloaded.model.classes) == ["Mascota", "Persona"]
+
+    def test_missing_api_key_raises_when_no_gemini_client_is_injected(self, settings):
+        settings.LLM_PROVIDER = "gemini"
+        settings.GEMINI_API_KEY = ""
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+
+        with pytest.raises(MissingApiKeyError):
+            apply_image_command(
+                organization=organization,
+                doc_id=document.id,
+                image_bytes=b"fake-png-bytes",
+                image_mime_type="image/png",
+                now=timezone.now(),
+            )
+
+    def test_an_unknown_document_raises_http404(self):
+        from django.http import Http404
+
+        organization = make_organization()
+        gemini = FakeImageGeminiClient([])
+
+        with pytest.raises(Http404):
+            apply_image_command(
+                organization=organization,
+                doc_id="00000000-0000-0000-0000-000000000000",
+                image_bytes=b"fake-png-bytes",
+                image_mime_type="image/png",
                 now=timezone.now(),
                 gemini=gemini,
             )

@@ -65,6 +65,53 @@ class OpenAiClient:
 
         return _extract_function_calls(response)
 
+    def generate_function_calls_from_image(
+        self,
+        *,
+        system_instruction: str,
+        image_bytes: bytes,
+        image_mime_type: str,
+        tools: Sequence[Mapping[str, object]],
+    ) -> list[GeminiFunctionCall]:
+        """Real vision support (confirmed against the currently installed
+        `openai` SDK: `gpt-4o-mini`, this project's default
+        `settings.OPENAI_MODEL`, accepts multimodal Chat Completions
+        content). The image is base64-embedded as a `data:` URI rather than
+        uploaded separately — no file-upload/Assistants API round trip
+        needed for a single inline image.
+        """
+        import base64
+
+        from openai import OpenAI
+
+        client = OpenAI(api_key=self._api_key, timeout=REQUEST_TIMEOUT_MS / 1000)
+        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+        try:
+            response = client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Replicate the UML class diagram shown in this image.",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{image_mime_type};base64,{image_b64}"},
+                            },
+                        ],
+                    },
+                ],
+                tools=_as_openai_tools(tools),
+            )
+        except Exception as exc:  # same one-domain-error mapping as the text path
+            raise GeminiRequestError(f"OpenAI request failed: {exc}") from exc
+
+        return _extract_function_calls(response)
+
 
 def _extract_function_calls(response: object) -> list[GeminiFunctionCall]:
     import json

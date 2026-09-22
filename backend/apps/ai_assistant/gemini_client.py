@@ -38,6 +38,15 @@ class GeminiClientProtocol(Protocol):
         tools: Sequence[Mapping[str, object]],
     ) -> list[GeminiFunctionCall]: ...
 
+    def generate_function_calls_from_image(
+        self,
+        *,
+        system_instruction: str,
+        image_bytes: bytes,
+        image_mime_type: str,
+        tools: Sequence[Mapping[str, object]],
+    ) -> list[GeminiFunctionCall]: ...
+
 
 class GeminiClient:
     """Real `google-genai`-backed implementation. Constructed only by
@@ -87,6 +96,25 @@ class GeminiClient:
             raise GeminiRequestError(f"Gemini request failed: {exc}") from exc
 
         return _extract_function_calls(response)
+
+    def generate_function_calls_from_image(
+        self,
+        *,
+        system_instruction: str,
+        image_bytes: bytes,
+        image_mime_type: str,
+        tools: Sequence[Mapping[str, object]],
+    ) -> list[GeminiFunctionCall]:
+        # Image import is explicitly scoped to OpenAI only for now (design.md
+        # DD180 follow-up): rather than let this fall through to a confusing
+        # `AttributeError` for a deployment configured with
+        # `LLM_PROVIDER=gemini`, fail with the same clean, already-handled
+        # `GeminiRequestError` (-> 502) every other whole-request failure
+        # uses, with a message that tells the operator exactly what to do.
+        raise GeminiRequestError(
+            "Image import is not supported with the Gemini provider yet; set "
+            "LLM_PROVIDER=openai."
+        )
 
 
 def _extract_function_calls(response: object) -> list[GeminiFunctionCall]:

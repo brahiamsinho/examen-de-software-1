@@ -139,3 +139,19 @@ class TestGenerateFunctionCalls:
 
         with pytest.raises(GeminiRequestError):
             client.generate_function_calls(system_instruction="system", transcript="hola", tools=[])
+
+
+class TestGenerateFunctionCallsFromImage:
+    def test_raises_a_clean_not_supported_error_without_touching_the_sdk(self):
+        # No fake `google.genai` module installed at all: this must raise
+        # before ever importing the SDK, proving image import is genuinely
+        # unimplemented for Gemini rather than crashing with an AttributeError.
+        client = GeminiClient("a-key", "a-model")
+
+        with pytest.raises(GeminiRequestError, match="LLM_PROVIDER=openai"):
+            client.generate_function_calls_from_image(
+                system_instruction="system",
+                image_bytes=b"fake-bytes",
+                image_mime_type="image/png",
+                tools=[],
+            )

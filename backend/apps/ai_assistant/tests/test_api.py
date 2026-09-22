@@ -9,6 +9,7 @@ from unittest import mock
 from uuid import uuid4
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.ai_assistant.errors import GeminiRequestError
 from apps.ai_assistant.gemini_client import GeminiFunctionCall
@@ -40,6 +41,42 @@ def _patched_gemini(calls):
     return mock.patch(
         "apps.ai_assistant.service.get_active_llm_client",
         return_value=_FakeGeminiClient(calls),
+    )
+
+
+class _FakeImageGeminiClient:
+    def __init__(self, calls):
+        self._calls = calls
+
+    def generate_function_calls_from_image(
+        self, *, system_instruction, image_bytes, image_mime_type, tools
+    ):
+        return self._calls
+
+
+def _patched_image_gemini(calls):
+    return mock.patch(
+        "apps.ai_assistant.service.get_active_llm_client",
+        return_value=_FakeImageGeminiClient(calls),
+    )
+
+
+def _image_url(organization, doc_id) -> str:
+    return f"/api/orgs/{organization.slug}/documents/{doc_id}/image-command"
+
+
+def _upload(
+    client,
+    organization,
+    doc_id,
+    *,
+    content: bytes = b"fake-png-bytes",
+    content_type: str = "image/png",
+    filename: str = "diagram.png",
+):
+    return client.post(
+        _image_url(organization, doc_id),
+        {"file": SimpleUploadedFile(filename, content, content_type=content_type)},
     )
 
 
@@ -190,3 +227,145 @@ class TestVoiceCommandView:
         body = response.json()
         assert body["applied"][0] == {"ok": True, "message": "Created class 'Persona'"}
         assert body["applied"][1]["ok"] is False
+
+
+@pytest.mark.django_db
+class TestImageCommandView:
+    """HTTP tests for `POST .../documents/{doc_id}/image-command`. Mirrors
+    `TestVoiceCommandView` (same role gating, same 503/502 wiring, same
+    output shape) plus the two upload-specific pre-flight checks."""
+
+    def test_editor_applies_an_image_command(self, auth_client):
+        organization, owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(editor)
+
+        with _patched_image_gemini([GeminiFunctionCall(name="add_class", args={"name": "Persona"})]):
+            response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["revision"] == 2
+        assert body["applied"] == [{"ok": True, "message": "Created class 'Persona'"}]
+
+    def test_owner_applies_an_image_command(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+
+        with _patched_image_gemini([]):
+            response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 200
+        assert response.json() == {"revision": 1, "applied": []}
+
+    def test_viewer_is_denied(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(viewer)
+
+        with _patched_image_gemini([]):
+            response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 403
+
+    def test_anonymous_user_gets_401(self, auth_client):
+        organization, *_rest = make_org_with_roles()
+
+        response = _upload(auth_client, organization, uuid4())
+
+        assert response.status_code == 401
+
+    def test_non_member_gets_404(self, auth_client):
+        organization, owner, _editor, _viewer, outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(outsider)
+
+        with _patched_image_gemini([]):
+            response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 404
+
+    def test_unknown_document_gets_404(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        auth_client.force_login(owner)
+
+        with _patched_image_gemini([]):
+            response = _upload(auth_client, organization, uuid4())
+
+        assert response.status_code == 404
+
+    def test_missing_api_key_answers_503(self, auth_client, settings):
+        settings.LLM_PROVIDER = "gemini"
+        settings.GEMINI_API_KEY = ""
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+
+        response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 503
+        assert response.json()["code"] == "gemini_api_key_missing"
+
+    def test_a_gemini_failure_answers_502(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+
+        failing_client = mock.Mock()
+        failing_client.generate_function_calls_from_image.side_effect = GeminiRequestError("boom")
+        with mock.patch(
+            "apps.ai_assistant.service.get_active_llm_client", return_value=failing_client
+        ):
+            response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 502
+        assert response.json()["code"] == "gemini_request_failed"
+
+    def test_a_multi_command_image_with_a_partial_failure(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+        calls = [
+            GeminiFunctionCall(name="add_class", args={"name": "Persona"}),
+            GeminiFunctionCall(
+                name="add_attribute",
+                args={"class_name": "Ghost", "attribute_name": "edad", "attribute_type": "Integer"},
+            ),
+        ]
+
+        with _patched_image_gemini(calls):
+            response = _upload(auth_client, organization, doc_id)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["applied"][0] == {"ok": True, "message": "Created class 'Persona'"}
+        assert body["applied"][1]["ok"] is False
+
+    def test_an_unsupported_content_type_answers_400(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+
+        response = _upload(
+            auth_client,
+            organization,
+            doc_id,
+            content=b"not an image",
+            content_type="application/pdf",
+            filename="diagram.pdf",
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "invalid_image"
+
+    def test_an_oversized_image_answers_400(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+        oversized = b"a" * (10 * 1024 * 1024 + 1)
+
+        response = _upload(auth_client, organization, doc_id, content=oversized)
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "invalid_image"
