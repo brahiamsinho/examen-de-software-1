@@ -4,6 +4,7 @@ import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useEffect, useRef, type RefObject } from "react";
 
+import { type JoinTableHint } from "@/lib/join_tables";
 import {
   attributeTypeLabel,
   formatMultiplicity,
@@ -166,6 +167,14 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     style: { "border-width": 3, "border-color": SELECTED_BORDER, "border-style": "solid" },
   },
   {
+    // A join-table hint (design.md DD177): not a real class, just a
+    // preview of the intermediate table a both-ends-many association
+    // implies — dashed border reads as "derived", never confusable with a
+    // solid-bordered, editable class box.
+    selector: "node.join-table-hint",
+    style: { "border-width": 1.5, "border-color": EDGE_LINE, "border-style": "dashed" },
+  },
+  {
     // Foreign-held node (design.md DD12): `ungrabify()` on the same node
     // is what actually prevents a local drag (no `grab` event fires at
     // all) — this class is purely the visual affordance identifying it as
@@ -324,6 +333,60 @@ export function toElements(
   return [...nodes, ...edges];
 }
 
+const JOIN_TABLE_ROW_PREFIX = "  "; // visually sets each column apart from the table name, like an attribute line
+
+/**
+ * Builds (or repositions) one visual-only box per join-table hint, at the
+ * midpoint between its relationship's two endpoint classes, nudged
+ * perpendicular so it never sits directly on top of the relationship's own
+ * line/label. Never added to `toElements`'s output (design.md DD177): fcose
+ * would otherwise treat it as a real node to place, and its position only
+ * makes sense once the two real classes already have one — computed here
+ * from Cytoscape's OWN current positions, not from the persisted layout, so
+ * it still works before either class has ever been dragged (fcose's
+ * auto-placement is available even when nothing was saved yet).
+ */
+export function joinTableHintElements(
+  model: UmlModel,
+  hints: JoinTableHint[],
+  positionOf: (classId: string) => { x: number; y: number } | null,
+): ElementDefinition[] {
+  const relationshipById = new Map(model.relationships.map((r) => [r.id, r]));
+  const elements: ElementDefinition[] = [];
+
+  for (const hint of hints) {
+    const relationship = relationshipById.get(hint.relationship_id);
+    if (!relationship) continue;
+    const sourcePos = positionOf(relationship.source.class_id);
+    const targetPos = positionOf(relationship.target.class_id);
+    if (!sourcePos || !targetPos) continue;
+
+    const midX = (sourcePos.x + targetPos.x) / 2;
+    const midY = (sourcePos.y + targetPos.y) / 2;
+    // Perpendicular to the source->target line, so the hint sits beside
+    // the relationship's line/labels instead of on top of them.
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const offset = 70;
+    const offsetX = (-dy / length) * offset;
+    const offsetY = (dx / length) * offset;
+
+    const box = classBoxSvgDataUri(
+      hint.table_name,
+      hint.columns.map((c) => `${JOIN_TABLE_ROW_PREFIX}${c}`),
+    );
+    elements.push({
+      data: { id: `join-table:${hint.relationship_id}`, label: "", bgImage: box.uri, width: box.width, height: box.height, synthetic: true },
+      position: { x: midX + offsetX, y: midY + offsetY },
+      classes: "join-table-hint",
+      grabbable: false,
+    } as ElementDefinition);
+  }
+
+  return elements;
+}
+
 type LockState = { ownerLabel: string; mine: boolean };
 
 type DiagramCanvasProps = {
@@ -340,7 +403,11 @@ type DiagramCanvasProps = {
   onClaim?: (classId: string) => void;
   onLivePosition?: (classId: string, x: number, y: number) => void;
   onRelease?: (classId: string, x: number, y: number) => void;
+  /** Visual-only preview of the join tables both-ends-many associations imply. */
+  joinTableHints?: JoinTableHint[];
 };
+
+const EMPTY_JOIN_TABLE_HINTS: JoinTableHint[] = [];
 
 const EDGE_DOUBLE_TAP_MS = 400;
 
@@ -367,6 +434,7 @@ export function DiagramCanvas({
   onClaim,
   onLivePosition,
   onRelease,
+  joinTableHints = EMPTY_JOIN_TABLE_HINTS,
 }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -405,6 +473,12 @@ export function DiagramCanvas({
   const draggingRef = useRef(false);
   const pendingUpdateRef = useRef(false);
   const syncModelRef = useRef<() => void>(() => {});
+  // `model`/`joinTableHints` read through refs, same reason as every other
+  // "latest callback" ref here: `syncJoinTableHints` runs from the `free`
+  // handler (bound once at mount) and from its own hints-keyed effect,
+  // neither of which may capture a stale closure.
+  const modelRef = useRef(model);
+  const joinTableHintsRef = useRef(joinTableHints);
 
   useEffect(() => {
     // Keeps the refs current after every render (not during render, which
@@ -415,7 +489,24 @@ export function DiagramCanvas({
     onClaimRef.current = onClaim;
     onLivePositionRef.current = onLivePosition;
     onReleaseRef.current = onRelease;
+    modelRef.current = model;
+    joinTableHintsRef.current = joinTableHints;
   });
+
+  // Adds/repositions/removes the join-table hint nodes from the CURRENT
+  // rendered positions of their two endpoint classes (never from `layout`
+  // directly — see `joinTableHintElements`'s own doc comment). Safe to call
+  // any time the graph exists: reads `modelRef`/`joinTableHintsRef`, so it
+  // always reflects the latest props regardless of which effect/handler
+  // triggered it.
+  const syncJoinTableHints = (cy: Core) => {
+    cy.$(".join-table-hint").remove();
+    const elements = joinTableHintElements(modelRef.current, joinTableHintsRef.current, (classId) => {
+      const node = cy.getElementById(classId);
+      return node.length > 0 ? node.position() : null;
+    });
+    if (elements.length > 0) cy.add(elements);
+  };
 
   // Ungrabifies + tags every foreign-held node (DD12): `ungrabify()` is
   // what actually PREVENTS a local drag (no `grab` event fires at all),
@@ -424,6 +515,7 @@ export function DiagramCanvas({
   // connection may freely start a drag on that node.
   const applyLocks = (cy: Core) => {
     cy.nodes().forEach((node) => {
+      if (node.data("synthetic")) return; // a join-table hint: never grabbable, no lock of its own
       const lock = locksRef.current[node.id()];
       if (lock && !lock.mine) {
         node.ungrabify();
@@ -481,7 +573,10 @@ export function DiagramCanvas({
     // `grab`/`drag`/`free` (DD11/DD12) stash/flush through refs for the
     // same reason.
     const cy = cytoscape({ container: containerRef.current!, elements: [], style: STYLE });
-    cy.on("tap", "node", (e) => onNodeTapRef.current?.(e.target.id()));
+    cy.on("tap", "node", (e) => {
+      if (e.target.data("synthetic")) return; // a join-table hint, not a class
+      onNodeTapRef.current?.(e.target.id());
+    });
     cy.on("tap", "edge", (e) => {
       const id: string = e.target.id();
       const now = Date.now();
@@ -494,6 +589,7 @@ export function DiagramCanvas({
       }
     });
     cy.on("grab", "node", (e) => {
+      if (e.target.data("synthetic")) return; // `grabbable: false` already blocks this; defensive
       draggingRef.current = true;
       const node = e.target;
       const classId = node.id();
@@ -501,15 +597,21 @@ export function DiagramCanvas({
       onClaimRef.current?.(classId);
     });
     cy.on("drag", "node", (e) => {
+      if (e.target.data("synthetic")) return;
       const node = e.target;
       const pos = node.position();
       onLivePositionRef.current?.(node.id(), pos.x, pos.y);
     });
     cy.on("free", "node", (e) => {
+      if (e.target.data("synthetic")) return;
       draggingRef.current = false;
       const node = e.target;
       const pos = node.position();
       onReleaseRef.current?.(node.id(), pos.x, pos.y);
+      // A dropped class may be a join-table hint's endpoint: snap the hint
+      // to its new midpoint right away, without waiting for a server round
+      // trip to bump `revision`.
+      syncJoinTableHints(cy);
       if (pendingUpdateRef.current) {
         pendingUpdateRef.current = false;
         syncModelRef.current();
@@ -579,6 +681,9 @@ export function DiagramCanvas({
       // lock snapshot so a class that arrives already foreign-held (e.g.
       // added by another client while locked) starts ungrabified too.
       applyLocks(cy);
+      // Real nodes are in their final positions now (including any fcose
+      // placement that just ran) — safe to (re)place the join-table hints.
+      syncJoinTableHints(cy);
     };
 
     // Always point the ref at THIS run's closure (over the current
@@ -596,6 +701,15 @@ export function DiagramCanvas({
     syncModel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision]);
+
+  useEffect(() => {
+    // `joinTableHints` arrives from a separate fetch (the container's own
+    // request), so it can land after `revision`'s sync already ran — this
+    // effect covers that race without forcing a full re-layout.
+    const cy = cyRef.current;
+    if (cy) syncJoinTableHints(cy);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joinTableHints]);
 
   useEffect(() => {
     // Highlight only — no re-layout.

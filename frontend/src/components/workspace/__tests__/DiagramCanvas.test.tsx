@@ -274,6 +274,74 @@ describe("DiagramCanvas — toElements (pure)", () => {
 });
 
 /**
+ * `joinTableHintElements` (design.md DD177): the visual-only preview of a
+ * both-ends-many association's implied join table. Pure like `toElements`,
+ * and deliberately NOT part of it — see its own doc comment for why.
+ */
+describe("DiagramCanvas — joinTableHintElements (pure)", () => {
+  const model: UmlModel = {
+    classes: [
+      { id: "a", name: "Class A", visibility: "public", attributes: [], operations: [] },
+      { id: "b", name: "Class B", visibility: "public", attributes: [], operations: [] },
+    ],
+    enumerations: [],
+    relationships: [
+      {
+        id: "r1",
+        kind: "association",
+        name: null,
+        source: { class_id: "a", multiplicity: { lower: 0, upper: null }, role: null },
+        target: { class_id: "b", multiplicity: { lower: 0, upper: null }, role: null },
+      },
+    ],
+    generation_metadata: {},
+  };
+
+  it("places one node per hint, off the straight line between its two classes", async () => {
+    const { joinTableHintElements } = await import("@/components/workspace/DiagramCanvas");
+    const positions: Record<string, { x: number; y: number }> = { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } };
+
+    const elements = joinTableHintElements(
+      model,
+      [{ relationship_id: "r1", table_name: "class_a_class_b", columns: ["id", "class_a_id", "class_b_id"] }],
+      (classId) => positions[classId] ?? null,
+    );
+
+    expect(elements).toHaveLength(1);
+    const [hint] = elements;
+    expect(hint!.data.id).toBe("join-table:r1");
+    expect(hint!.classes).toBe("join-table-hint");
+    // Perpendicular to a horizontal a->b line: x stays at the midpoint, y moves off it.
+    expect(hint!.position!.x).toBeCloseTo(50);
+    expect(hint!.position!.y).not.toBe(0);
+  });
+
+  it("skips a hint whose relationship id is not in the model", async () => {
+    const { joinTableHintElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const elements = joinTableHintElements(
+      model,
+      [{ relationship_id: "no-such-relationship", table_name: "x", columns: ["id"] }],
+      () => ({ x: 0, y: 0 }),
+    );
+
+    expect(elements).toHaveLength(0);
+  });
+
+  it("skips a hint whose endpoint has no known position yet", async () => {
+    const { joinTableHintElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const elements = joinTableHintElements(
+      model,
+      [{ relationship_id: "r1", table_name: "class_a_class_b", columns: ["id"] }],
+      () => null,
+    );
+
+    expect(elements).toHaveLength(0);
+  });
+});
+
+/**
  * Operations compartment (design.md DD9/DD10, spec "Diagram Rendering"):
  * a second compartment below attributes, separated by a divider, in UML
  * notation `{visibility symbol} {name}({parameters}): {returnType}`. A
@@ -436,6 +504,10 @@ const { cyMock } = vi.hoisted(() => ({
     json: vi.fn(),
     layout: vi.fn(() => ({ run: vi.fn() })),
     nodes: vi.fn(() => ({ removeClass: vi.fn(), forEach: vi.fn() })),
+    // Used by `syncJoinTableHints` (join-table hints, design.md DD177), a
+    // no-op here since none of these lifecycle tests pass `joinTableHints`.
+    $: vi.fn(() => ({ remove: vi.fn() })),
+    add: vi.fn(),
     getElementById: vi.fn(
       (): {
         addClass: ReturnType<typeof vi.fn>;
@@ -461,6 +533,9 @@ function createNodeMock(id: string, initialPosition = { x: 0, y: 0 }) {
   let position = initialPosition;
   return {
     id: () => id,
+    // Every real node here is a class, never a join-table hint (DD177) —
+    // `undefined` matches Cytoscape's own `data(key)` for an unset key.
+    data: vi.fn(() => undefined),
     addClass: vi.fn(),
     removeClass: vi.fn(),
     ungrabify: vi.fn(),
@@ -594,13 +669,13 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     );
 
     const tapHandler = cyMock.on.mock.calls.find(([event]) => event === "tap")![2] as (e: {
-      target: { id: () => string };
+      target: { id: () => string; data: (key: string) => unknown };
     }) => void;
 
     const onNodeTapB = vi.fn();
     rerender(<DiagramCanvas model={emptyModel} revision={1} onNodeTap={onNodeTapB} />);
 
-    tapHandler({ target: { id: () => "c1" } });
+    tapHandler({ target: { id: () => "c1", data: () => undefined } });
 
     expect(onNodeTapA).not.toHaveBeenCalled();
     expect(onNodeTapB).toHaveBeenCalledWith("c1");

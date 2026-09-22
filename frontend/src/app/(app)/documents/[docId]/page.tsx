@@ -27,6 +27,7 @@ import { GenerationProfilePanel } from "@/components/workspace/GenerationProfile
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
+import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
 import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_interop";
 import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
@@ -77,6 +78,28 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   useEffect(() => {
     setImportWarnings(takeImportWarnings(docId));
   }, [docId]);
+
+  // A both-ends-many association's implied join table (design.md DD177) —
+  // fetched separately from the document/websocket state and re-fetched on
+  // every revision change, so it never falls behind an edit. A failure here
+  // (network hiccup, an in-progress edit the backend can't map yet) just
+  // means no hint is drawn; it must never break the diagram itself.
+  const [joinTableHints, setJoinTableHints] = useState<JoinTableHint[]>([]);
+  useEffect(() => {
+    if (orgSlug === null || document === null) return;
+    let cancelled = false;
+    getJoinTables(orgSlug, docId)
+      .then((hints) => {
+        if (!cancelled) setJoinTableHints(hints);
+      })
+      .catch(() => {
+        if (!cancelled) setJoinTableHints([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgSlug, docId, document?.revision]);
 
   if (orgSlug === null) {
     return (
@@ -228,6 +251,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               claimRejectedListenerRef={claimRejectedListenerRef}
               onNodeTap={handleNodeTap}
               onEdgeEdit={canEdit ? setEditingRelationshipId : undefined}
+              joinTableHints={joinTableHints}
               highlightedClassId={effectiveSourceId}
               onClaim={sendClaim}
               onLivePosition={sendPosition}
