@@ -81,6 +81,11 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in the root .env}
       PUBLIC_BASE_URL: https://${APP_DOMAIN}
       DEPLOYMENT_MAX_ACTIVE_PER_ORG: ${DEPLOYMENT_MAX_ACTIVE_PER_ORG:-2}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
     depends_on:
       db:
         condition: service_healthy

@@ -19,3 +19,7 @@ email-validator>=2.1,<3.0
 jinja2>=3.1,<4.0
 # Hardened XML parsing for the XMI import (apps/xmi_interop): blocks XXE and entity expansion.
 defusedxml>=0.7,<1.0
+# Gemini function-calling client for the voice-driven diagram assistant;
+# imported lazily inside apps/ai_assistant/gemini_client.py.
+google-genai>=1.0,<2.0
+openai>=1.0,<2.0

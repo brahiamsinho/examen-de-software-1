@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "corsheaders",
     # Local (future feature apps live under backend/apps/)
     "apps.uml_modeling",
+    "apps.ai_assistant",
     "apps.relational_mapping",
     "apps.spring_generator",
     "apps.generation_runner",
@@ -214,3 +215,17 @@ RUNNER_TIMEOUT_SECONDS = env.float("RUNNER_TIMEOUT_SECONDS", default=15.0)
 # runner reads the same variable. In the cloud: the Caddy / DuckDNS https URL.
 PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default="http://localhost:8090")
 DEPLOYMENT_MAX_ACTIVE_PER_ORG = env.int("DEPLOYMENT_MAX_ACTIVE_PER_ORG", default=2)
+
+# --- Voice-driven diagram assistant (apps.ai_assistant) --------------------
+# Empty by default (design.md): the voice-command endpoint fails with a
+# clear, caught error (MissingApiKeyError -> 503) until a real key is
+# provisioned. Never hardcode a real key here or anywhere else.
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.6-flash")
+# DD180: added as an alternate provider after Gemini showed 19-25s+ latency
+# (sometimes exceeding even a 45s timeout) from one dev machine's network,
+# while OpenAI answered in well under a second for the same request shape.
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+OPENAI_MODEL = env("OPENAI_MODEL", default="gpt-4o-mini")
+# "gemini" or "openai" — see apps/ai_assistant/llm_provider.py.
+LLM_PROVIDER = env("LLM_PROVIDER", default="gemini")

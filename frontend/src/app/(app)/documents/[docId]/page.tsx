@@ -26,8 +26,10 @@ import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelation
 import { GenerationProfilePanel } from "@/components/workspace/GenerationProfilePanel";
 import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
+import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
+import { postVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
 import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_interop";
 import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
@@ -51,6 +53,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const {
     document,
     applyDocument,
+    refreshDocument,
     error,
     lastValidation,
     isSubmitting,
@@ -138,6 +141,18 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   async function handleDelete() {
     await deleteDiagram(docId);
     router.replace("/dashboard");
+  }
+
+  /**
+   * Same POST-then-refresh shape `useDocument.submitCommand` uses for the
+   * manual forms, just against the voice endpoint instead of `/commands`:
+   * `refreshDocument` is the identical GET-and-`setDocument` mechanism,
+   * exposed standalone so this doesn't invent a second refresh path.
+   */
+  async function handleVoiceCommand(transcript: string): Promise<VoiceCommandResult> {
+    const result = await postVoiceCommand(orgSlug!, docId, transcript);
+    await refreshDocument();
+    return result;
   }
 
   const classIds = new Set(document.model.classes.map((c) => c.id));
@@ -313,6 +328,17 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
             <TabsPanel value="agregar">
               <div className="flex flex-col gap-3">
                 <h2 className="sr-only">Agregar</h2>
+
+                {canEdit ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Comando de voz</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <VoiceCommandButton onSubmit={handleVoiceCommand} disabled={isSubmitting} />
+                    </CardContent>
+                  </Card>
+                ) : null}
 
                 <Card>
                   <CardHeader>

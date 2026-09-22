@@ -359,9 +359,27 @@ export function useDocument(orgSlug: string | null, docId: string) {
     setDocument((prev) => (prev !== null && incoming.revision < prev.revision ? prev : incoming));
   }, []);
 
+  /**
+   * The exact same GET-and-`setDocument` refresh `submitCommand` already
+   * runs after its own POST, exposed standalone for a command submitted
+   * through a DIFFERENT endpoint (the voice assistant's `/voice-command`) —
+   * so that caller reuses this mechanism instead of inventing a second one.
+   * A failure here is non-fatal: the open WS connection's own broadcast
+   * (`mergeRemote`) still lands the same update shortly after.
+   */
+  const refreshDocument = useCallback(async () => {
+    if (orgSlug === null) return;
+    try {
+      setDocument(await getDocumentApi(orgSlug, docId));
+    } catch {
+      // The WS broadcast is the backstop — see docstring above.
+    }
+  }, [orgSlug, docId]);
+
   return {
     document,
     applyDocument,
+    refreshDocument,
     loading,
     error,
     lastValidation,
