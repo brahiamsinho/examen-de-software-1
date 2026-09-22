@@ -59,6 +59,10 @@ _command_in_adapter = TypeAdapter(schemas.CommandIn)
             schemas.RemoveRelationshipIn,
         ),
         (
+            {"type": "UpdateRelationship", "relationship_id": "r1", "name": "x", "source_multiplicity": "0..1"},
+            schemas.UpdateRelationshipIn,
+        ),
+        (
             {"type": "SetGenerationProfile", "element_id": "c1", "profile": {"entity": True}},
             schemas.SetGenerationProfileIn,
         ),

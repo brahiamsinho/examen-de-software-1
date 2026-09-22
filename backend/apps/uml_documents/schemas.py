@@ -91,6 +91,16 @@ class RemoveRelationshipIn(Schema):
     relationship_id: str
 
 
+class UpdateRelationshipIn(Schema):
+    type: Literal["UpdateRelationship"]
+    relationship_id: str
+    # Omitted = leave unchanged; null or blank = clear (see `model_fields_set`).
+    name: str | None = None
+    # UML strings like "0..1", "1..*", "3" — parsed via domain.types.parse_multiplicity.
+    source_multiplicity: str | None = None
+    target_multiplicity: str | None = None
+
+
 class SetGenerationProfileIn(Schema):
     type: Literal["SetGenerationProfile"]
     element_id: str
@@ -108,6 +118,7 @@ CommandIn = Annotated[
         RemoveOperationIn,
         AddRelationshipIn,
         RemoveRelationshipIn,
+        UpdateRelationshipIn,
         SetGenerationProfileIn,
     ],
     Field(discriminator="type"),

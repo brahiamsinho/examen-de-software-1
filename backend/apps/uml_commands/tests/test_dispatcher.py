@@ -9,7 +9,7 @@ import datetime
 from apps.uml_modeling.domain.elements import UmlAttribute
 from apps.uml_modeling.domain.ids import new_id
 from apps.uml_modeling.domain.model import CanonicalUmlModel
-from apps.uml_modeling.domain.types import PrimitiveType
+from apps.uml_modeling.domain.types import Multiplicity, PrimitiveType
 from apps.uml_modeling.validation.diagnostics import DiagnosticCode
 from apps.uml_modeling.validation.engine import RULES, validate
 from apps.uml_commands import dispatcher
@@ -22,6 +22,7 @@ from apps.uml_commands.commands import (
     RemoveOperation,
     RemoveRelationship,
     SetGenerationProfile,
+    UpdateRelationship,
 )
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_modeling.domain.elements import UmlOperation
@@ -98,8 +99,8 @@ def test_apply_always_populates_validation_result(monkeypatch):
     assert result.validation_result == validate(result.document.model, rules=RULES)
 
 
-def test_handlers_registry_has_exactly_ten_entries():
-    assert len(dispatcher._HANDLERS) == 10
+def test_handlers_registry_has_exactly_eleven_entries():
+    assert len(dispatcher._HANDLERS) == 11
 
 
 def test_apply_set_generation_profile_through_the_real_dispatcher():
@@ -220,3 +221,25 @@ def test_apply_remove_operation_unknown_ids_is_a_no_op_through_the_real_dispatch
 
     assert result.document.model.classes == original_model.classes
     assert result.document.revision == original_revision + 1
+
+
+def test_apply_update_relationship_through_the_real_dispatcher_and_flags_bad_ranges():
+    relationship = a_relationship(source=a_relationship_end(), target=a_relationship_end())
+    document = a_document(model=CanonicalUmlModel(relationships=(relationship,)))
+
+    result = apply(
+        document,
+        UpdateRelationship(
+            relationship_id=relationship.id,
+            name="places",
+            source_multiplicity=Multiplicity(3, 1),
+        ),
+        now=_NOW,
+    )
+
+    updated = result.document.model.relationships[0]
+    assert (updated.name, updated.source.multiplicity) == ("places", Multiplicity(3, 1))
+    assert result.document.revision == document.revision + 1
+    assert result.document.model.generation_metadata == document.model.generation_metadata
+    assert DiagnosticCode.INVALID_MULTIPLICITY in {d.code for d in result.validation_result.diagnostics}
+    assert document.model.relationships == (relationship,)

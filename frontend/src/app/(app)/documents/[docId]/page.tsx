@@ -15,6 +15,7 @@ import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
 import { DeploymentActions, DeploymentNotices, DeploymentUrl } from "@/components/workspace/DeploymentControls";
+import { EditRelationshipDialog } from "@/components/workspace/EditRelationshipDialog";
 import { DeleteDiagramDialog } from "@/components/workspace/DeleteDiagramDialog";
 import { DownloadBackendButton } from "@/components/workspace/DownloadBackendButton";
 import { ImportXmiControl } from "@/components/workspace/ImportXmiControl";
@@ -68,6 +69,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const myRole = organizations.find((org) => org.slug === orgSlug)?.my_role ?? null;
   const canEdit = myRole === "OWNER" || myRole === "EDITOR";
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
   // Read after mount (sessionStorage does not exist during SSR); consumed once.
@@ -225,6 +227,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               positionListenerRef={positionListenerRef}
               claimRejectedListenerRef={claimRejectedListenerRef}
               onNodeTap={handleNodeTap}
+              onEdgeEdit={canEdit ? setEditingRelationshipId : undefined}
               highlightedClassId={effectiveSourceId}
               onClaim={sendClaim}
               onLivePosition={sendPosition}
@@ -245,6 +248,10 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               </div>
             ) : null}
           </div>
+
+          {canEdit && document.model.relationships.length > 0 ? (
+            <p className="text-xs text-muted-foreground">Doble clic en una relación para editarla</p>
+          ) : null}
 
           {foreignLocks.length > 0 ? (
             <div className="flex flex-col gap-1 text-sm text-muted-foreground">
@@ -410,6 +417,16 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
         </aside>
       </div>
 
+      <EditRelationshipDialog
+        relationship={
+          editingRelationshipId === null
+            ? null
+            : (document.model.relationships.find((r) => r.id === editingRelationshipId) ?? null)
+        }
+        classes={document.model.classes}
+        onSubmit={submitCommand}
+        onClose={() => setEditingRelationshipId(null)}
+      />
       <DeleteDiagramDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

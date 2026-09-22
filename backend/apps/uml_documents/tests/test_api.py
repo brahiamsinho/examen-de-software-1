@@ -473,3 +473,85 @@ class TestDeleteDocument:
 
         assert response.status_code == 403
         assert UmlDocument.all_objects.filter(id=doc_id).exists()
+
+
+@pytest.mark.django_db
+class TestUpdateRelationship:
+    def _seed(self, auth_client, actor, organization, kind="association"):
+        auth_client.force_login(actor)
+        doc_id = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "My Diagram"},
+            content_type="application/json",
+        ).json()["id"]
+        url = f"/api/orgs/{organization.slug}/documents/{doc_id}/commands"
+        for class_id in ("c1", "c2"):
+            auth_client.post(
+                url,
+                data={"type": "AddClass", "class_id": class_id, "name": class_id.upper()},
+                content_type="application/json",
+            )
+        auth_client.post(
+            url,
+            data={
+                "type": "AddRelationship",
+                "relationship": {
+                    "id": "r1",
+                    "kind": kind,
+                    "name": "old",
+                    "source": {"class_id": "c1", "multiplicity": "1"},
+                    "target": {"class_id": "c2", "multiplicity": "1"},
+                },
+            },
+            content_type="application/json",
+        )
+        return doc_id, url
+
+    def _update(self, auth_client, url, relationship_id="r1", **fields):
+        return auth_client.post(
+            url,
+            data={"type": "UpdateRelationship", "relationship_id": relationship_id, **fields},
+            content_type="application/json",
+        )
+
+    def test_editor_updates_name_and_multiplicities_and_it_persists(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id, url = self._seed(auth_client, editor, organization)
+
+        response = self._update(
+            auth_client, url, name="places", source_multiplicity="0..1", target_multiplicity="1..*"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["revision"] == 5
+        stored = UmlDocument.all_objects.get(id=doc_id).data["model"]["relationships"][0]
+        assert stored["name"] == "places"
+        assert stored["source"]["multiplicity"] == {"lower": 0, "upper": 1}
+        assert stored["target"]["multiplicity"] == {"lower": 1, "upper": None}
+
+    def test_viewer_is_denied(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        _doc_id, url = self._seed(auth_client, owner, organization)
+        auth_client.force_login(viewer)
+
+        assert self._update(auth_client, url, name="x").status_code == 403
+
+    @pytest.mark.parametrize(
+        ("relationship_id", "kind", "fields"),
+        [
+            ("nope", "association", {"name": "x"}),
+            ("r1", "generalization", {"source_multiplicity": "0..1"}),
+            ("r1", "association", {"source_multiplicity": "not-a-multiplicity"}),
+        ],
+    )
+    def test_rejected_updates_return_422_and_write_nothing(
+        self, auth_client, relationship_id, kind, fields
+    ):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        doc_id, url = self._seed(auth_client, editor, organization, kind=kind)
+
+        response = self._update(auth_client, url, relationship_id, **fields)
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_command_payload"
+        assert UmlDocument.all_objects.get(id=doc_id).revision == 4

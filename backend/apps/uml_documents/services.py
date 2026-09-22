@@ -40,7 +40,7 @@ from apps.uml_modeling.domain.elements import (
 )
 from apps.uml_modeling.domain.ids import ElementId
 from apps.uml_modeling.domain.model import CanonicalUmlModel
-from apps.uml_modeling.domain.types import parse_multiplicity
+from apps.uml_modeling.domain.types import Multiplicity, parse_multiplicity
 
 
 def _to_project_document(row: UmlDocument) -> ProjectDocument:
@@ -206,10 +206,30 @@ def submit_command(
     document = _to_project_document(row)
     if isinstance(command, commands.SetGenerationProfile):
         _validate_generation_profile(document.model, command)
+    if isinstance(command, commands.UpdateRelationship):
+        _validate_relationship_update(document.model, command)
     result = apply(document, command, now=now)
     _save(row, result.document)
     transaction.on_commit(lambda: broadcast_document(document=result.document))
     return result
+
+
+def _validate_relationship_update(
+    model: CanonicalUmlModel, command: commands.UpdateRelationship
+) -> None:
+    """Write-time gate for `UpdateRelationship`; the handler itself stays structural (DD6)."""
+    target = next((r for r in model.relationships if r.id == command.relationship_id), None)
+    if target is None:
+        raise InvalidCommandPayloadError(
+            f"Unknown relationship id {command.relationship_id!r}: not a relationship of this document"
+        )
+    changes_multiplicity = (
+        command.source_multiplicity is not None or command.target_multiplicity is not None
+    )
+    if changes_multiplicity and target.kind is RelationshipKind.GENERALIZATION:
+        raise InvalidCommandPayloadError(
+            f"Relationship {command.relationship_id!r} is a generalization and has no multiplicities"
+        )
 
 
 def _attribute_owner(model: CanonicalUmlModel, element_id: ElementId) -> UmlClass | None:
@@ -372,11 +392,23 @@ def _command_from_payload(payload: "schemas.CommandIn") -> UmlCommand:
         return commands.AddRelationship(relationship=_relationship_from_schema(payload.relationship))
     if isinstance(payload, schemas.RemoveRelationshipIn):
         return commands.RemoveRelationship(relationship_id=ElementId(payload.relationship_id))
+    if isinstance(payload, schemas.UpdateRelationshipIn):
+        return commands.UpdateRelationship(
+            relationship_id=ElementId(payload.relationship_id),
+            # Distinguish "omitted" (leave as is) from an explicit null/blank (clear).
+            name=payload.name if "name" in payload.model_fields_set else commands.UNSET,
+            source_multiplicity=_optional_multiplicity(payload.source_multiplicity),
+            target_multiplicity=_optional_multiplicity(payload.target_multiplicity),
+        )
     if isinstance(payload, schemas.SetGenerationProfileIn):
         return commands.SetGenerationProfile(
             element_id=ElementId(payload.element_id), profile=payload.profile
         )
     raise ValueError(f"Unknown command payload type: {payload!r}")
+
+
+def _optional_multiplicity(text: str | None) -> Multiplicity | None:
+    return parse_multiplicity(text) if text is not None else None
 
 
 def _attribute_from_schema(attribute_in: "schemas.UmlAttributeIn") -> UmlAttribute:

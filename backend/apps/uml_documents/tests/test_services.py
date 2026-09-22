@@ -851,3 +851,30 @@ def test_a_rejected_profile_is_validated_before_apply_runs():
             _set_profile(organization, ids, ids.root, {"bogus": True})
 
     spy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_name"),
+    [
+        ({}, commands.UNSET),
+        ({"name": None}, None),
+        ({"name": "places"}, "places"),
+    ],
+)
+def test_command_from_payload_maps_update_relationship(payload, expected_name):
+    command = services.command_from_payload(
+        schemas.UpdateRelationshipIn(
+            type="UpdateRelationship",
+            relationship_id="r1",
+            source_multiplicity="0..1",
+            target_multiplicity="1..*",
+            **payload,
+        )
+    )
+
+    assert command == commands.UpdateRelationship(
+        relationship_id="r1",
+        name=expected_name,
+        source_multiplicity=Multiplicity(0, 1),
+        target_multiplicity=Multiplicity(1, None),
+    )

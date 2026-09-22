@@ -139,6 +139,14 @@ export type UmlCommandIn =
   | { type: "RemoveAttribute"; class_id: string; attribute_id: string }
   | { type: "RemoveOperation"; class_id: string; operation_id: string }
   | { type: "RemoveRelationship"; relationship_id: string }
+  | {
+      type: "UpdateRelationship";
+      relationship_id: string;
+      // Omitted = unchanged; null/blank = clear the name. Multiplicities are UML strings.
+      name?: string | null;
+      source_multiplicity?: string;
+      target_multiplicity?: string;
+    }
   | { type: "SetGenerationProfile"; element_id: string; profile: Record<string, unknown> | null };
 
 const base = (orgSlug: string) => `/api/orgs/${encodeURIComponent(orgSlug)}/documents`;
@@ -194,6 +202,24 @@ export function formatMultiplicity(m: Multiplicity): string {
     return `${m.lower}`;
   }
   return `${m.lower}..${m.upper}`;
+}
+
+/**
+ * Parses what a user types into a multiplicity field ("1", "0..1", "0..*",
+ * "1..*", "*", "n..m") and returns the canonical UML string the backend
+ * accepts, or null when it is malformed or out of range (negative bound,
+ * upper < lower). A lone "*" means "0..*". Whitespace is ignored.
+ */
+export function parseMultiplicityInput(text: string): string | null {
+  const value = text.replace(/\s+/g, "");
+  if (value === "*") return "0..*";
+  const match = /^(\d+)(?:\.\.(\d+|\*))?$/.exec(value);
+  if (match === null) return null;
+  const lower = Number(match[1]);
+  const upperText = match[2];
+  if (upperText === undefined) return `${lower}`;
+  if (upperText === "*") return `${lower}..*`;
+  return Number(upperText) >= lower ? `${lower}..${Number(upperText)}` : null;
 }
 
 /** A primitive string renders as itself; an `EnumerationRef` renders its enum id. */

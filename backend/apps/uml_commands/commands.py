@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from apps.uml_modeling.domain.elements import Relationship, UmlAttribute, UmlOperation
 from apps.uml_modeling.domain.ids import ElementId
+from apps.uml_modeling.domain.types import Multiplicity
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,29 @@ class RemoveRelationship:
     relationship_id: ElementId
 
 
+class _Unset:
+    """Sentinel type: "this field was not supplied" (distinct from `None`)."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET = _Unset()
+
+
+@dataclass(frozen=True)
+class UpdateRelationship:
+    """Partial update of one relationship. `UNSET`/`None` fields are left
+    untouched, except `name`, where `None` clears the name and `UNSET`
+    leaves it as is.
+    """
+
+    relationship_id: ElementId
+    name: str | None | _Unset = UNSET
+    source_multiplicity: Multiplicity | None = None
+    target_multiplicity: Multiplicity | None = None
+
+
 @dataclass(frozen=True)
 class SetGenerationProfile:
     element_id: ElementId
@@ -79,5 +103,6 @@ UmlCommand = (
     | RemoveOperation
     | AddRelationship
     | RemoveRelationship
+    | UpdateRelationship
     | SetGenerationProfile
 )

@@ -1,5 +1,9 @@
 # Decisions Log
 
+## 2026-09-21 — Edit a relationship on the canvas (DD171, small direct change, no SDD)
+
+- **DD171** `UpdateRelationship` is a partial-update command in the existing bus. Multiplicities travel as UML strings (same wire shape as `AddRelationship`), `name` uses a sentinel so "omitted" (leave) differs from null/blank (clear), the handler stays a pure never-raising transform, and the semantic rejections (unknown relationship, multiplicities on a generalization) live in `services._validate_relationship_update` like `SetGenerationProfile`'s gate. Range errors are not rejected server-side (always-apply policy: `INVALID_MULTIPLICITY` diagnostic); the dialog validates first. The canvas stays presentational (`onEdgeEdit` callback); the page owns the dialog and only passes the callback when the role is OWNER/EDITOR.
+
 ## 2026-09-21 — Delete a diagram / XML into a blank diagram (DD170, small direct change, no SDD)
 
 - **DD170** Deleting is a hard delete of the `UmlDocument` row (deployments cascade); the runner stop is orchestrated in the HTTP view, not in `uml_documents.services`, so that app keeps its import boundary and never depends on `backend_deployments`. The stop is best-effort (runner TTL reaper and startup sweep are the backstop): a runner outage must not make a diagram undeletable. Importing XML into an existing diagram is allowed only while it is blank (no classes and no relationships, checked under the same row lock as commands, 409 `document_not_empty` otherwise) so an import can never silently destroy work; it keeps the user's diagram name and bumps the revision once instead of creating a new document.

@@ -63,7 +63,7 @@ describe("DiagramCanvas — toElements (pure)", () => {
     const edges = elements.filter((el) => "source" in el.data);
     expect(edges).toHaveLength(1);
     expect(edges[0]!.data).toMatchObject({ id: "r1", source: "c1", target: "c2", kind: "association" });
-    expect(edges[0]!.data.label).toBe("1 → 0..*");
+    expect(edges[0]!.data).toMatchObject({ label: "", sourceLabel: "1", targetLabel: "0..*" });
   });
 
   it("escapes a class name containing SVG-significant characters instead of breaking the box markup", async () => {
@@ -159,7 +159,7 @@ describe("DiagramCanvas — toElements (pure)", () => {
     };
 
     const edge = toElements(model).find((el) => "source" in el.data)!;
-    expect(edge.data.label).toBe("Name A\n1 → 0..*");
+    expect(edge.data).toMatchObject({ label: "Name A", sourceLabel: "1", targetLabel: "0..*" });
   });
 
   it("omits the multiplicity label for a generalization edge (UML 2.5 defines none)", async () => {
@@ -185,7 +185,7 @@ describe("DiagramCanvas — toElements (pure)", () => {
 
     const elements = toElements(model);
     const edge = elements.find((el) => "source" in el.data)!;
-    expect(edge.data.label).toBe("");
+    expect(edge.data).toMatchObject({ label: "", sourceLabel: "", targetLabel: "" });
   });
 
   it("tags a self-referencing generalization with both self-loop classes and kind data (DD3)", async () => {
@@ -604,14 +604,41 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
 
     expect(onNodeTapA).not.toHaveBeenCalled();
     expect(onNodeTapB).toHaveBeenCalledWith("c1");
-    // Mount binds 4 node-scoped handlers once: tap (DD9), and
+    // Mount binds 5 handlers once: node tap (DD9), edge tap (double-tap edit), and
     // grab/drag/free (DD11/DD12's claim/live-position/release + drag
     // guard) — each registered exactly once.
-    expect(cyMock.on).toHaveBeenCalledTimes(4);
+    expect(cyMock.on).toHaveBeenCalledTimes(5);
     expect(cyMock.on).toHaveBeenCalledWith("tap", "node", expect.any(Function));
     expect(cyMock.on).toHaveBeenCalledWith("grab", "node", expect.any(Function));
     expect(cyMock.on).toHaveBeenCalledWith("drag", "node", expect.any(Function));
     expect(cyMock.on).toHaveBeenCalledWith("free", "node", expect.any(Function));
+  });
+
+  it("a second tap on the same edge within the double-tap window calls onEdgeEdit; taps on different edges or too far apart do not", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    const onEdgeEdit = vi.fn();
+    render(<DiagramCanvas model={emptyModel} revision={1} onEdgeEdit={onEdgeEdit} />);
+    const edgeTap = cyMock.on.mock.calls.find(([event, selector]) => event === "tap" && selector === "edge")![2] as (e: {
+      target: { id: () => string };
+    }) => void;
+    const tap = (id: string) => edgeTap({ target: { id: () => id } });
+
+    vi.useFakeTimers();
+    try {
+      tap("r1");
+      tap("r2"); // different edge: starts a new pair
+      expect(onEdgeEdit).not.toHaveBeenCalled();
+
+      tap("r2");
+      expect(onEdgeEdit).toHaveBeenCalledExactlyOnceWith("r2");
+
+      tap("r1");
+      vi.advanceTimersByTime(1000); // outside the window
+      tap("r1");
+      expect(onEdgeEdit).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("performs no cy.json() while draggingRef is set on a revision bump, and the free event flushes exactly one deferred sync (DD12)", async () => {

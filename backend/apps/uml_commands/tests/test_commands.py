@@ -1,6 +1,6 @@
-"""Unit tests for the 10 `UmlCommand` dataclasses: each constructs with its
+"""Unit tests for the 11 `UmlCommand` dataclasses: each constructs with its
 documented fields, each is frozen, and the `UmlCommand` union covers
-exactly the 10 types.
+exactly the 11 types.
 """
 import dataclasses
 import typing
@@ -29,6 +29,7 @@ from apps.uml_commands.commands import (
     RenameClass,
     SetGenerationProfile,
     UmlCommand,
+    UpdateRelationship,
 )
 
 
@@ -194,7 +195,7 @@ def test_remove_relationship_is_frozen():
         command.relationship_id = new_id()
 
 
-def test_uml_command_union_covers_exactly_the_ten_types():
+def test_uml_command_union_covers_exactly_the_eleven_types():
     members = set(typing.get_args(UmlCommand))
 
     assert members == {
@@ -207,6 +208,7 @@ def test_uml_command_union_covers_exactly_the_ten_types():
         RemoveOperation,
         AddRelationship,
         RemoveRelationship,
+        UpdateRelationship,
         SetGenerationProfile,
     }
 

@@ -178,9 +178,12 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     selector: "edge",
     style: {
       label: "data(label)",
-      // `\n` in the label (relationship name above the multiplicities)
-      // only breaks the line with wrapping enabled.
-      "text-wrap": "wrap",
+      // The relationship name sits at the middle of the line; each end's
+      // multiplicity is drawn next to its own class (UML 2.5 notation).
+      "source-label": "data(sourceLabel)",
+      "target-label": "data(targetLabel)",
+      "source-text-offset": 28,
+      "target-text-offset": 28,
       "curve-style": "bezier",
       "line-color": EDGE_LINE,
       "target-arrow-color": EDGE_LINE,
@@ -194,6 +197,8 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
       "font-family": MONO_FONT_STACK,
       "font-size": 11,
       color: EDGE_TEXT,
+      // Lets a tap on the name/multiplicity labels count as a tap on the edge.
+      "text-events": "yes",
       "text-background-color": CARD_BG,
       "text-background-opacity": 1,
       "text-background-padding": "3px",
@@ -306,15 +311,10 @@ export function toElements(
         // (AddRelationshipControl's DD5), but that placeholder must not
         // leak onto the canvas as a rendered label.
         // The relationship's own name (e.g. "Name A" from an Enterprise
-        // Architect import) is shown on the first line when present.
-        label: [
-          r.name?.trim() ? r.name.trim() : null,
-          r.kind === "generalization"
-            ? null
-            : `${formatMultiplicity(r.source.multiplicity)} → ${formatMultiplicity(r.target.multiplicity)}`,
-        ]
-          .filter((part): part is string => part !== null)
-          .join("\n"),
+        // Architect import) is the centered label; multiplicities go at the ends.
+        label: r.name?.trim() ?? "",
+        sourceLabel: r.kind === "generalization" ? "" : formatMultiplicity(r.source.multiplicity),
+        targetLabel: r.kind === "generalization" ? "" : formatMultiplicity(r.target.multiplicity),
       },
       // Recursive/reflexive relationship (a class related to itself):
       // needs explicit loop geometry, see the `edge.self-loop` selector.
@@ -334,11 +334,15 @@ type DiagramCanvasProps = {
   positionListenerRef?: RefObject<((classId: string, x: number, y: number) => void) | null>;
   claimRejectedListenerRef?: RefObject<((classId: string) => void) | null>;
   onNodeTap?: (classId: string) => void;
+  /** Double-tap on an edge (or one of its labels); the container owns the editing UI. */
+  onEdgeEdit?: (relationshipId: string) => void;
   highlightedClassId?: string | null;
   onClaim?: (classId: string) => void;
   onLivePosition?: (classId: string, x: number, y: number) => void;
   onRelease?: (classId: string, x: number, y: number) => void;
 };
+
+const EDGE_DOUBLE_TAP_MS = 400;
 
 const EMPTY_LAYOUT: DiagramLayout = { positions: {} };
 const EMPTY_LOCKS: Record<string, LockState> = {};
@@ -358,6 +362,7 @@ export function DiagramCanvas({
   positionListenerRef,
   claimRejectedListenerRef,
   onNodeTap,
+  onEdgeEdit,
   highlightedClassId,
   onClaim,
   onLivePosition,
@@ -366,6 +371,10 @@ export function DiagramCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const onNodeTapRef = useRef(onNodeTap);
+  const onEdgeEditRef = useRef(onEdgeEdit);
+  // Cytoscape has no double-tap event: the last edge tap (id + time) is kept
+  // so a second tap on the same edge within EDGE_DOUBLE_TAP_MS counts as one.
+  const lastEdgeTapRef = useRef<{ id: string; at: number } | null>(null);
   const onClaimRef = useRef(onClaim);
   const onLivePositionRef = useRef(onLivePosition);
   const onReleaseRef = useRef(onRelease);
@@ -402,6 +411,7 @@ export function DiagramCanvas({
     // the `react-hooks/refs` rule forbids as a ref mutation outside an
     // effect/event handler) — same "latest callback" intent as DD9.
     onNodeTapRef.current = onNodeTap;
+    onEdgeEditRef.current = onEdgeEdit;
     onClaimRef.current = onClaim;
     onLivePositionRef.current = onLivePosition;
     onReleaseRef.current = onRelease;
@@ -472,6 +482,17 @@ export function DiagramCanvas({
     // same reason.
     const cy = cytoscape({ container: containerRef.current!, elements: [], style: STYLE });
     cy.on("tap", "node", (e) => onNodeTapRef.current?.(e.target.id()));
+    cy.on("tap", "edge", (e) => {
+      const id: string = e.target.id();
+      const now = Date.now();
+      const last = lastEdgeTapRef.current;
+      if (last !== null && last.id === id && now - last.at <= EDGE_DOUBLE_TAP_MS) {
+        lastEdgeTapRef.current = null;
+        onEdgeEditRef.current?.(id);
+      } else {
+        lastEdgeTapRef.current = { id, at: now };
+      }
+    });
     cy.on("grab", "node", (e) => {
       draggingRef.current = true;
       const node = e.target;
