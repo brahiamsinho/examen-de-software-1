@@ -38,6 +38,9 @@ dependencies:
   # HTTP client used to download the OpenAPI document of a generated backend.
   http: ^1.2.0
 
+  # Local storage for saved screen designs (screen_designer feature).
+  shared_preferences: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

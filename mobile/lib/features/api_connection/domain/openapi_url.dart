@@ -52,3 +52,19 @@ Uri normalizeOpenApiUrl(String input) {
     path: finalPath,
   );
 }
+
+/// The deployment's own base URL — origin plus any `/gen/<id>` prefix —
+/// derived from the OpenAPI document URL by dropping its trailing
+/// `/v3/api-docs`. Endpoint paths from the document (e.g. `/api/class-as`)
+/// resolve against this, not against the document's own URL, since the
+/// backend's routes sit one level below where its `/v3/api-docs` is served.
+Uri deploymentBaseFrom(Uri openApiUri) {
+  var path = openApiUri.path;
+  if (path.endsWith(_apiDocsSuffix)) {
+    path = path.substring(0, path.length - _apiDocsSuffix.length);
+  }
+  if (!path.endsWith('/')) {
+    path = '$path/';
+  }
+  return openApiUri.replace(path: path);
+}

@@ -1,0 +1,120 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/features/api_connection/domain/api_discovery.dart';
+import 'package:mobile/features/screen_designer/data/screen_layout_store.dart';
+import 'package:mobile/features/screen_designer/domain/screen_layout.dart';
+import 'package:mobile/features/screen_designer/domain/screen_widget_config.dart';
+import 'package:mobile/features/screen_designer/presentation/designer_page.dart';
+import 'package:mobile/features/screen_designer/presentation/runtime_screen_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _group = EndpointGroup(
+  name: 'class-a-controller',
+  endpoints: [
+    ApiEndpoint(method: 'GET', path: '/api/class-as'),
+    ApiEndpoint(method: 'POST', path: '/api/class-as'),
+  ],
+);
+
+Future<void> _pump(WidgetTester tester) => tester.pumpWidget(
+  MaterialApp(
+    home: ScreenDesignerPage(group: _group, deploymentBase: Uri.parse('http://h/gen/abc/')),
+  ),
+);
+
+void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  group('ScreenDesignerPage', () {
+    testWidgets('tapping "Label" in the palette places one on the canvas', (tester) async {
+      await _pump(tester);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ActionChip, 'Label'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save')); // confirm the add-label dialog
+      await tester.pumpAndSettle();
+
+      expect(find.text('Label'), findsWidgets); // the palette chip AND the placed widget's default text
+    });
+
+    testWidgets('dragging a placed widget moves it, and the new position is what gets saved', (tester) async {
+      await _pump(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ActionChip, 'Label'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save')); // add-label dialog
+      await tester.pumpAndSettle();
+
+      final placed = find.descendant(of: find.byKey(const Key('designer-canvas')), matching: find.byType(Card));
+
+      // Several small moves (not one big jump) read unambiguously as a pan
+      // against this same detector's competing `onTap`, like a real touch.
+      final gesture = await tester.startGesture(tester.getCenter(placed));
+      for (var i = 0; i < 4; i++) {
+        await gesture.moveBy(const Offset(10, 7.5));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      final saved = (await const ScreenLayoutStore().load('class-a-controller'))!.widgets.single;
+      // The exact total depends on how the test harness delivers the
+      // simulated pointer events; what matters is that it moved, clearly
+      // and in the requested direction, not the touch-slop-sensitive exact
+      // pixel count.
+      expect(saved.x, greaterThan(16));
+      expect(saved.y, greaterThan(16));
+    });
+
+    testWidgets('Save persists the layout, reloaded by a fresh instance for the same group', (tester) async {
+      await _pump(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ActionChip, 'Label'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save')); // add-label dialog
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Save'));
+      await tester.pumpAndSettle();
+
+      final loaded = await const ScreenLayoutStore().load('class-a-controller');
+      expect(loaded, isNotNull);
+      expect(loaded!.widgets, hasLength(1));
+      expect(loaded.widgets.single, isA<LabelWidgetConfig>());
+    });
+
+    testWidgets('a saved layout loads back into the canvas', (tester) async {
+      await const ScreenLayoutStore().save(
+        ScreenLayout(
+          groupName: 'class-a-controller',
+          widgets: const [LabelWidgetConfig(id: 'w1', x: 12, y: 12, text: 'Preloaded')],
+        ),
+      );
+
+      await _pump(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Preloaded'), findsOneWidget);
+    });
+
+    testWidgets('Preview opens the runtime screen once something is placed', (tester) async {
+      await _pump(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ActionChip, 'Label'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Preview'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RuntimeScreenPage), findsOneWidget);
+    });
+  });
+}

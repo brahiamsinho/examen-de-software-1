@@ -39,11 +39,15 @@ class _ConnectPageState extends State<ConnectPage> {
     if (state is ConnectSuccess) {
       // Reset back to idle once the user returns from discovery, so a
       // revisited connect screen never shows a stale success/failure.
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => DiscoveryPage(discovery: state.discovery))).then((_) {
-        widget.controller.reset();
-      });
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute(
+              builder: (_) => DiscoveryPage(discovery: state.discovery, openApiUri: state.openApiUri),
+            ),
+          )
+          .then((_) {
+            widget.controller.reset();
+          });
     }
   }
 
