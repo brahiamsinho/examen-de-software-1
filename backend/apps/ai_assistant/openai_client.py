@@ -106,6 +106,7 @@ class OpenAiClient:
                     },
                 ],
                 tools=_as_openai_tools(tools),
+                tool_choice={"type": "function", "function": {"name": "extract_uml_diagram"}},
             )
         except Exception as exc:  # same one-domain-error mapping as the text path
             raise GeminiRequestError(f"OpenAI request failed: {exc}") from exc

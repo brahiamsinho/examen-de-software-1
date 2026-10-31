@@ -114,6 +114,13 @@ def _rename_class(translator: Translator, args: Mapping[str, object]) -> Transla
     return TranslatedCommand(payload, f"Renamed class {class_name!r} to {new_name!r}")
 
 
+def _remove_class(translator: Translator, args: Mapping[str, object]) -> TranslatedCommand:
+    class_name = str(args["class_name"])
+    class_id = translator._resolve_class_id(class_name)
+    payload = schemas.RemoveClassIn(type="RemoveClass", class_id=class_id)
+    return TranslatedCommand(payload, f"Removed class {class_name!r}")
+
+
 def _add_attribute(translator: Translator, args: Mapping[str, object]) -> TranslatedCommand:
     class_name = str(args["class_name"])
     attribute_name = str(args["attribute_name"])
@@ -245,6 +252,7 @@ def _update_relationship(translator: Translator, args: Mapping[str, object]) -> 
 
 _HANDLERS = {
     "add_class": _add_class,
+    "remove_class": _remove_class,
     "rename_class": _rename_class,
     "add_attribute": _add_attribute,
     "remove_attribute": _remove_attribute,

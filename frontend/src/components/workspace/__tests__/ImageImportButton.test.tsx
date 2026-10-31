@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { ApiError } from "@/lib/api";
+import type { ImageImportPreview } from "@/lib/image_command";
 import type { VoiceCommandResult } from "@/lib/voice_command";
 
 const file = new File(["fake-image-bytes"], "diagrama.png", { type: "image/png" });
@@ -13,42 +14,44 @@ const SUCCESS_RESULT: VoiceCommandResult = {
 };
 
 describe("ImageImportButton", () => {
-  it("passes the chosen file to onSubmit and reports what was applied", async () => {
-    const onSubmit = vi.fn().mockResolvedValue(SUCCESS_RESULT);
-    render(<ImageImportButton onSubmit={onSubmit} />);
+  it("passes the chosen file to preview and only applies after confirmation", async () => {
+    const onPreview = vi.fn().mockResolvedValue({ plan_id: "plan-1", base_revision: 1, changes: SUCCESS_RESULT.applied } satisfies ImageImportPreview);
+    const onConfirm = vi.fn().mockResolvedValue(SUCCESS_RESULT);
+    render(<ImageImportButton onPreview={onPreview} onConfirm={onConfirm} />);
 
     fireEvent.change(screen.getByLabelText("Imagen del diagrama UML"), { target: { files: [file] } });
 
-    expect(onSubmit).toHaveBeenCalledWith(file);
+    expect(onPreview).toHaveBeenCalledWith(file);
     await waitFor(() => {
-      expect(screen.getByText("✓ Created class 'Persona'")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toHaveTextContent("Created class 'Persona'");
     });
+    expect(onConfirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar cambios" }));
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith("plan-1"));
+    expect(await screen.findByText("✓ Created class 'Persona'")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Importar imagen" })).toBeEnabled();
   });
 
   it("renders a per-command failure alongside a successful one in the same result", async () => {
-    const onSubmit = vi.fn().mockResolvedValue({
-      revision: 2,
-      applied: [
+    const onPreview = vi.fn().mockResolvedValue({ plan_id: "plan-1", base_revision: 1, changes: [
         { ok: true, message: "Created class 'Persona'" },
         { ok: false, message: "Unknown class 'Ghost'" },
-      ],
-    } satisfies VoiceCommandResult);
-    render(<ImageImportButton onSubmit={onSubmit} />);
+      ] } satisfies ImageImportPreview);
+    render(<ImageImportButton onPreview={onPreview} onConfirm={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Imagen del diagrama UML"), { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(screen.getByText("✓ Created class 'Persona'")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toHaveTextContent("Created class 'Persona'");
     });
-    expect(screen.getByText("✗ Unknown class 'Ghost'")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Unknown class 'Ghost'");
   });
 
   it("shows the server's error detail when the backend call fails", async () => {
-    const onSubmit = vi
+    const onPreview = vi
       .fn()
       .mockRejectedValue(new ApiError({ status: 400, code: "invalid_image", detail: "Unsupported image type." }));
-    render(<ImageImportButton onSubmit={onSubmit} />);
+    render(<ImageImportButton onPreview={onPreview} onConfirm={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Imagen del diagrama UML"), { target: { files: [file] } });
 
@@ -56,7 +59,7 @@ describe("ImageImportButton", () => {
   });
 
   it("is disabled when the disabled prop is set", () => {
-    render(<ImageImportButton onSubmit={vi.fn()} disabled />);
+    render(<ImageImportButton onPreview={vi.fn()} onConfirm={vi.fn()} disabled />);
 
     expect(screen.getByRole("button", { name: "Importar imagen" })).toBeDisabled();
   });

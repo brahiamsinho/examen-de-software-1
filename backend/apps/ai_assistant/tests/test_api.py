@@ -235,7 +235,7 @@ class TestImageCommandView:
     `TestVoiceCommandView` (same role gating, same 503/502 wiring, same
     output shape) plus the two upload-specific pre-flight checks."""
 
-    def test_editor_applies_an_image_command(self, auth_client):
+    def test_editor_receives_a_non_mutating_image_preview(self, auth_client):
         organization, owner, editor, _viewer, _outsider = make_org_with_roles()
         doc_id = _create_document(organization, owner)
         auth_client.force_login(editor)
@@ -245,10 +245,11 @@ class TestImageCommandView:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["revision"] == 2
-        assert body["applied"] == [{"ok": True, "message": "Created class 'Persona'"}]
+        assert body["base_revision"] == 1
+        assert body["changes"] == [{"ok": True, "message": "Created class 'Persona'"}]
+        assert services.get_document(organization=organization, doc_id=doc_id).model.classes == ()
 
-    def test_owner_applies_an_image_command(self, auth_client):
+    def test_owner_receives_an_empty_image_preview(self, auth_client):
         organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
         doc_id = _create_document(organization, owner)
         auth_client.force_login(owner)
@@ -257,7 +258,8 @@ class TestImageCommandView:
             response = _upload(auth_client, organization, doc_id)
 
         assert response.status_code == 200
-        assert response.json() == {"revision": 1, "applied": []}
+        assert response.json()["base_revision"] == 1
+        assert response.json()["changes"] == []
 
     def test_viewer_is_denied(self, auth_client):
         organization, owner, _editor, viewer, _outsider = make_org_with_roles()
@@ -322,7 +324,7 @@ class TestImageCommandView:
         assert response.status_code == 502
         assert response.json()["code"] == "gemini_request_failed"
 
-    def test_a_multi_command_image_with_a_partial_failure(self, auth_client):
+    def test_an_image_preview_reports_untranslatable_changes_without_writing(self, auth_client):
         organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
         doc_id = _create_document(organization, owner)
         auth_client.force_login(owner)
@@ -339,8 +341,9 @@ class TestImageCommandView:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["applied"][0] == {"ok": True, "message": "Created class 'Persona'"}
-        assert body["applied"][1]["ok"] is False
+        assert body["changes"][0] == {"ok": True, "message": "Created class 'Persona'"}
+        assert len(body["changes"]) == 1
+        assert services.get_document(organization=organization, doc_id=doc_id).model.classes == ()
 
     def test_an_unsupported_content_type_answers_400(self, auth_client):
         organization, owner, _editor, _viewer, _outsider = make_org_with_roles()

@@ -235,6 +235,10 @@ class TestGenerateFunctionCallsFromImage:
         create_call = fake_client_class.return_value.chat.completions.create
         _, kwargs = create_call.call_args
         assert kwargs["tools"] == [{"type": "function", "function": one_tool}]
+        assert kwargs["tool_choice"] == {
+            "type": "function",
+            "function": {"name": "extract_uml_diagram"},
+        }
 
     def test_sends_a_multimodal_message_with_the_system_instruction_and_image_data_uri(
         self, monkeypatch

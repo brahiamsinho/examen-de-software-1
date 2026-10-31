@@ -217,6 +217,39 @@ def submit_command(
     return result
 
 
+@transaction.atomic
+def submit_commands(
+    *,
+    organization: Organization,
+    doc_id: UUID,
+    commands_to_apply: list[UmlCommand],
+    now: datetime.datetime,
+    expected_revision: int | None = None,
+) -> CommandResult:
+    """Apply a prevalidated batch under one lock, save, revision and broadcast.
+
+    Image-reconciliation confirmation uses this instead of `submit_command`
+    per item so observers never see a partially reconciled diagram.
+    """
+    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    document = _to_project_document(row)
+    if expected_revision is not None and document.revision != expected_revision:
+        raise ValueError("The diagram changed after this preview. Upload the image again.")
+    result: CommandResult | None = None
+    for command in commands_to_apply:
+        if isinstance(command, commands.SetGenerationProfile):
+            _validate_generation_profile(document.model, command)
+        if isinstance(command, commands.UpdateRelationship):
+            _validate_relationship_update(document.model, command)
+        result = apply(document, command, now=now)
+        document = result.document
+    if result is None:
+        raise ValueError("A command batch cannot be empty")
+    _save(row, result.document)
+    transaction.on_commit(lambda: broadcast_document(document=result.document))
+    return result
+
+
 def _validate_relationship_update(
     model: CanonicalUmlModel, command: commands.UpdateRelationship
 ) -> None:

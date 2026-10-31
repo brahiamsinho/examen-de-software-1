@@ -13,7 +13,12 @@ from django.utils import timezone
 
 from apps.ai_assistant.errors import MissingApiKeyError
 from apps.ai_assistant.gemini_client import GeminiFunctionCall
-from apps.ai_assistant.service import apply_image_command, apply_voice_command
+from apps.ai_assistant.service import (
+    apply_image_command,
+    apply_voice_command,
+    confirm_image_import,
+    preview_image_import,
+)
 from apps.organizations.tests.factories import make_organization
 from apps.uml_documents import services
 
@@ -288,7 +293,7 @@ class TestApplyImageCommand:
 
         assert gemini.received["image_bytes"] == b"fake-png-bytes"
         assert gemini.received["image_mime_type"] == "image/png"
-        assert len(gemini.received["tools"]) == 9
+        assert [tool["name"] for tool in gemini.received["tools"]] == ["extract_uml_diagram"]
 
     def test_a_multi_command_image_applies_every_command_in_order(self):
         organization = make_organization()
@@ -323,6 +328,137 @@ class TestApplyImageCommand:
         [persona] = reloaded.model.classes
         assert persona.name == "Persona"
         assert [a.name for a in persona.attributes] == ["edad"]
+
+    def test_a_structured_image_extraction_creates_attributes_and_relationships(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        gemini = FakeImageGeminiClient(
+            [
+                GeminiFunctionCall(
+                    name="extract_uml_diagram",
+                    args={
+                        "classes": [
+                            {
+                                "name": "Venta",
+                                "attributes": [
+                                    {"name": "id", "type": "Integer"},
+                                    {"name": "fecha", "type": "DateTime"},
+                                ],
+                                "operations": [],
+                            },
+                            {
+                                "name": "Cliente",
+                                "attributes": [
+                                    {"name": "id", "type": "Integer"},
+                                    {"name": "nombre", "type": "String"},
+                                    {"name": "email", "type": "String"},
+                                ],
+                                "operations": [],
+                            },
+                        ],
+                        "relationships": [
+                            {
+                                "kind": "association",
+                                "source_class_name": "Venta",
+                                "target_class_name": "Cliente",
+                                "source_multiplicity": "*",
+                                "target_multiplicity": "1",
+                            }
+                        ],
+                    },
+                )
+            ]
+        )
+
+        result = apply_image_command(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            now=timezone.now(),
+            gemini=gemini,
+        )
+
+        assert [item.ok for item in result.applied] == [True] * 8
+        reloaded = services.get_document(organization=organization, doc_id=document.id)
+        venta = next(uml_class for uml_class in reloaded.model.classes if uml_class.name == "Venta")
+        cliente = next(uml_class for uml_class in reloaded.model.classes if uml_class.name == "Cliente")
+        assert [attribute.name for attribute in venta.attributes] == ["id", "fecha"]
+        assert [attribute.name for attribute in cliente.attributes] == ["id", "nombre", "email"]
+        [relationship] = reloaded.model.relationships
+        assert relationship.source.class_id == venta.id
+        assert relationship.target.class_id == cliente.id
+        assert relationship.source.multiplicity.upper is None
+
+    def test_preview_keeps_the_document_unchanged_until_confirmation(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        apply_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá una clase Producto",
+            now=timezone.now(),
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Producto"})]),
+        )
+        image = FakeImageGeminiClient(
+            [GeminiFunctionCall(name="extract_uml_diagram", args={"classes": [], "relationships": []})]
+        )
+
+        preview = preview_image_import(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            gemini=image,
+        )
+
+        assert [change.message for change in preview.changes] == ["Removed class 'Producto'"]
+        assert [uml_class.name for uml_class in services.get_document(organization=organization, doc_id=document.id).model.classes] == ["Producto"]
+
+        result = confirm_image_import(
+            organization=organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+        )
+
+        assert [item.ok for item in result.applied] == [True]
+        assert services.get_document(organization=organization, doc_id=document.id).model.classes == ()
+
+    def test_stale_preview_cannot_delete_changes_made_after_preview(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        apply_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá Producto",
+            now=timezone.now(),
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Producto"})]),
+        )
+        preview = preview_image_import(
+            organization=organization,
+            doc_id=document.id,
+            image_bytes=b"fake-png-bytes",
+            image_mime_type="image/png",
+            gemini=FakeImageGeminiClient(
+                [GeminiFunctionCall(name="extract_uml_diagram", args={"classes": [], "relationships": []})]
+            ),
+        )
+        apply_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá Cliente",
+            now=timezone.now(),
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Cliente"})]),
+        )
+
+        with pytest.raises(ValueError, match="diagram changed after this preview"):
+            confirm_image_import(
+                organization=organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+            )
+
+        current = services.get_document(organization=organization, doc_id=document.id)
+        assert [uml_class.name for uml_class in current.model.classes] == ["Producto", "Cliente"]
 
     def test_a_failing_command_does_not_roll_back_earlier_successes_or_block_later_ones(self):
         organization = make_organization()

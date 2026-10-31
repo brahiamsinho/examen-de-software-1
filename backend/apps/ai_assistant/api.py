@@ -3,16 +3,23 @@ voice transcript into a sequence of applied UML commands. Thin, mirroring
 `apps.uml_documents.api`'s resolve_membership -> require_role -> call one
 service function -> serialize shape.
 """
+import dataclasses
 from uuid import UUID
 
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import File, Path, Router, UploadedFile
+from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from apps.ai_assistant import service
 from apps.ai_assistant.errors import GeminiRequestError, InvalidImageError, MissingApiKeyError
-from apps.ai_assistant.schemas import VoiceCommandIn, VoiceCommandOut
+from apps.ai_assistant.schemas import (
+    ImageImportConfirmIn,
+    ImageImportPreviewOut,
+    VoiceCommandIn,
+    VoiceCommandOut,
+)
 from apps.organizations.constants import Role
 from apps.organizations.permissions import require_role, resolve_membership
 
@@ -42,10 +49,11 @@ def voice_command_view(
     }
 
 
-@ai_assistant_router.post("/{doc_id}/image-command", response=VoiceCommandOut)
+@ai_assistant_router.post("/{doc_id}/image-command", response=ImageImportPreviewOut)
 def image_command_view(
     request: HttpRequest, org_slug: Path[str], doc_id: UUID, file: File[UploadedFile]
 ):
+    """Compatibility route: image input is preview-only, never a write."""
     membership = resolve_membership(request, org_slug)
     require_role(membership, Role.OWNER, Role.EDITOR)
 
@@ -57,17 +65,51 @@ def image_command_view(
     if file.size is not None and file.size > _MAX_IMAGE_BYTES:
         raise InvalidImageError("The image exceeds the maximum allowed size of 10 MB.")
 
-    result = service.apply_image_command(
+    preview = service.preview_image_import(
         organization=membership.organization,
         doc_id=doc_id,
         image_bytes=file.read(),
         image_mime_type=file.content_type,
-        now=timezone.now(),
     )
     return {
-        "revision": result.revision,
-        "applied": [{"ok": item.ok, "message": item.message} for item in result.applied],
+        "plan_id": preview.plan_id,
+        "base_revision": preview.base_revision,
+        "changes": [dataclasses.asdict(item) for item in preview.changes],
     }
+
+
+@ai_assistant_router.post("/{doc_id}/image-import-preview", response=ImageImportPreviewOut)
+def image_import_preview_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, file: File[UploadedFile]
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    if file.content_type not in _ALLOWED_IMAGE_CONTENT_TYPES:
+        raise InvalidImageError(f"Unsupported image type {file.content_type!r}.")
+    if file.size is not None and file.size > _MAX_IMAGE_BYTES:
+        raise InvalidImageError("The image exceeds the maximum allowed size of 10 MB.")
+    preview = service.preview_image_import(
+        organization=membership.organization,
+        doc_id=doc_id,
+        image_bytes=file.read(),
+        image_mime_type=file.content_type,
+    )
+    return {"plan_id": preview.plan_id, "base_revision": preview.base_revision, "changes": [dataclasses.asdict(item) for item in preview.changes]}
+
+
+@ai_assistant_router.post("/{doc_id}/image-import-confirm", response=VoiceCommandOut)
+def image_import_confirm_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: ImageImportConfirmIn
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        result = service.confirm_image_import(
+            organization=membership.organization, doc_id=doc_id, plan_id=payload.plan_id, now=timezone.now()
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return {"revision": result.revision, "applied": [dataclasses.asdict(item) for item in result.applied]}
 
 
 # --- exception handlers ----------------------------------------------------

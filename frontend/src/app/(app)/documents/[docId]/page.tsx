@@ -29,7 +29,7 @@ import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert"
 import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
-import { postImageCommand } from "@/lib/image_command";
+import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
 import { postVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
 import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_interop";
@@ -166,10 +166,12 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     return result;
   }
 
-  /** Same POST-then-refresh shape as `handleVoiceCommand`, against the
-   * image-import endpoint instead. */
-  async function handleImageCommand(file: File): Promise<VoiceCommandResult> {
-    const result = await postImageCommand(orgSlug!, docId, file);
+  async function handleImagePreview(file: File) {
+    return previewImageImport(orgSlug!, docId, file);
+  }
+
+  async function handleImageConfirm(planId: string): Promise<VoiceCommandResult> {
+    const result = await confirmImageImport(orgSlug!, docId, planId);
     await refreshDocument();
     return result;
   }
@@ -368,7 +370,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                       <CardTitle>Importar desde imagen</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <ImageImportButton onSubmit={handleImageCommand} disabled={isSubmitting} />
+                      <ImageImportButton onPreview={handleImagePreview} onConfirm={handleImageConfirm} disabled={isSubmitting} />
                     </CardContent>
                   </Card>
                 ) : null}

@@ -29,3 +29,29 @@ export function postImageCommand(
     { method: "POST", body: formData, signal: AbortSignal.timeout(IMAGE_COMMAND_TIMEOUT_MS) },
   );
 }
+
+export type ImageImportPreview = {
+  plan_id: string;
+  base_revision: number;
+  changes: VoiceCommandResult["applied"];
+};
+
+export function previewImageImport(orgSlug: string, docId: string, file: File): Promise<ImageImportPreview> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFetch<ImageImportPreview>(
+    `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/image-import-preview`,
+    { method: "POST", body: formData, signal: AbortSignal.timeout(IMAGE_COMMAND_TIMEOUT_MS) },
+  );
+}
+
+export function confirmImageImport(
+  orgSlug: string,
+  docId: string,
+  planId: string,
+): Promise<VoiceCommandResult> {
+  return apiFetch<VoiceCommandResult>(
+    `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/image-import-confirm`,
+    { method: "POST", json: { plan_id: planId } },
+  );
+}

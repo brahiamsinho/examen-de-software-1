@@ -17,3 +17,13 @@ class AppliedCommandOut(Schema):
 class VoiceCommandOut(Schema):
     revision: int
     applied: list[AppliedCommandOut]
+
+
+class ImageImportPreviewOut(Schema):
+    plan_id: str
+    base_revision: int
+    changes: list[AppliedCommandOut]
+
+
+class ImageImportConfirmIn(Schema):
+    plan_id: str
