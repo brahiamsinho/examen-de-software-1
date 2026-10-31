@@ -1,0 +1,73 @@
+Project UML_System {
+  database_type: 'PostgreSQL'
+  Note: 'Current Django ORM data model'
+}
+
+Table User {
+  id UUID [primary key]
+  email String [not null]
+  full_name String [not null]
+  is_active Boolean [default: true]
+  is_staff Boolean [default: false]
+  is_verified Boolean [default: false]
+  date_joined DateTime
+}
+
+Table Organization {
+  id UUID [primary key]
+  name String [not null]
+  slug String [unique, not null]
+  plan String [not null]
+  created_at DateTime
+  updated_at DateTime
+}
+
+Table Membership {
+  id UUID [primary key]
+  user_id UUID [not null]
+  organization_id UUID [not null]
+  role String [not null]
+  created_at DateTime
+  updated_at DateTime
+}
+
+Table EmailToken {
+  id UUID [primary key]
+  user_id UUID [not null]
+  purpose String [not null]
+  token_hash String [unique, not null]
+  expires_at DateTime [not null]
+  used_at DateTime
+  created_at DateTime
+}
+
+Table UmlDocument {
+  id UUID [primary key]
+  organization_id UUID [not null]
+  owner_id String [not null]
+  revision Integer [default: 1]
+  data JSONField [not null]
+  created_at DateTime
+  updated_at DateTime
+}
+
+Table Deployment {
+  id UUID [primary key]
+  organization_id UUID [not null]
+  document_id UUID [not null]
+  created_by UUID
+  status String [not null]
+  error Text
+  log_tail Text
+  public_path String
+  created_at DateTime
+  updated_at DateTime
+}
+
+Ref: User.id < EmailToken.user_id
+Ref: User.id < Membership.user_id
+Ref: Organization.id < Membership.organization_id
+Ref: Organization.id < UmlDocument.organization_id
+Ref: Organization.id < Deployment.organization_id
+Ref: UmlDocument.id < Deployment.document_id
+Ref: User.id < Deployment.created_by

@@ -1,14 +1,14 @@
-# Examen-1-Software
+# Modelia — Examen-1-Software
 
-Full-stack template project (exam/learning context): Django + Django REST
-Framework backend, PostgreSQL database, Next.js (TypeScript, App Router)
-frontend, and a Flutter mobile app — backend and frontend run in Docker,
-mobile runs on the host/emulator.
+Modelia is a multi-tenant UML CASE tool. It stores and collaborates on UML
+documents, maps them deterministically to a relational model, generates Spring
+Boot projects, supports XMI interchange, and includes web and Flutter clients.
+The platform uses Django Ninja/Channels, PostgreSQL and Redis on the backend,
+Next.js on the web, and Flutter for mobile. Backend, frontend and supporting
+services run in Docker; Flutter runs on the host or an emulator.
 
-> **Note on env files:** the sandbox that generated this scaffold blocks
-> writing any file with `.env` in its path, so every example env file
-> below was written without the leading dot (`env.example` instead of
-> `.env.example`). Rename each one as shown before use.
+> **Environment files:** `env.example` is the committed template. Copy it to
+> the ignored root `.env` and provide real values locally or in deployment.
 
 ## Prerequisites
 
@@ -19,12 +19,10 @@ mobile runs on the host/emulator.
 
 ## Quickstart
 
-1. Copy every env example to its real file:
+1. Copy the root environment template to its local file:
 
    ```
    cp env.example .env
-   cp backend/env.example backend/.env
-   cp frontend/env.local.example frontend/.env.local
    ```
 
    Then edit the copies with real values (never commit the `.env` files —
@@ -50,8 +48,7 @@ before rendering. This only works when the browser sends the Django
 `sessionid` cookie to the Next.js origin — true for `localhost` and any
 same-parent-domain deploy. A split-domain deployment (frontend and backend
 on unrelated domains) would bounce every authenticated user to `/login`;
-see `docs/ai/ARCHITECTURE.md`'s "Route protection" section before deploying
-that way.
+see `docs/ai/ARCHITECTURE.md` before deploying that way.
 
 ## Backend management commands
 
@@ -88,9 +85,11 @@ docker compose down             # stop and remove containers
 ## Project layout
 
 ```
-backend/   Django + DRF project (config/ settings package, apps/ for future features)
-frontend/  Next.js + TypeScript app (App Router, src/ dir)
-mobile/    Flutter app
+backend/   Django Ninja/Channels API, domain apps and generator pipeline
+frontend/  Next.js App Router workspace and UML canvas
+mobile/    Flutter client, OpenAPI connection and screen designer
+runner/    isolated runner for generated backend deployments
+openspec/  active and archived specification-driven changes
 docs/ai/   living project memory (vision, architecture, decisions, state)
 ```
 

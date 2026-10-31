@@ -9,6 +9,7 @@ staticfiles/
 .env
 .env.local
 .env.*.local
+deploy/.env.prod
 .dart_tool/
 .flutter-plugins*
 build/
