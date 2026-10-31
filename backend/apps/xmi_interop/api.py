@@ -16,7 +16,6 @@ from apps.generation_export.service import slugify_document_name
 from apps.organizations.constants import Role
 from apps.organizations.permissions import require_role, resolve_membership
 from apps.uml_documents import codec, services
-from apps.uml_documents.errors import DocumentNotEmptyError
 from apps.uml_documents.schemas import DocumentOut
 from apps.xmi_interop.errors import InvalidXmiError, XmiError
 from apps.xmi_interop.exporter import export_xmi
@@ -60,13 +59,17 @@ def import_xmi_view(request: HttpRequest, org_slug: Path[str], file: File[Upload
     return Status(201, {**codec.document_out(document), "warnings": list(result.warnings)})
 
 
-@xmi_router.post(
-    "/{doc_id}/import-xmi", response={200: DocumentImportOut, 409: dict, 422: dict}
-)
+@xmi_router.post("/{doc_id}/import-xmi", response={200: DocumentImportOut, 422: dict})
 def import_xmi_into_document_view(
     request: HttpRequest, org_slug: Path[str], doc_id: UUID, file: File[UploadedFile]
 ):
-    """Loads the XMI INTO an existing blank document (409 if it already has content)."""
+    """Loads the XMI INTO an existing document, REPLACING its current content —
+    the Modelia <-> Enterprise Architect round-trip: edit in EA, re-import to
+    bring those changes back. Deliberately unconditional (no longer
+    blank-only, design.md DD184): the frontend confirms with the user before
+    calling this when the document already has content, since the backend
+    itself no longer refuses.
+    """
     membership = resolve_membership(request, org_slug)
     require_role(membership, Role.OWNER, Role.EDITOR)
     services.get_document(organization=membership.organization, doc_id=doc_id)  # 404 first
@@ -74,22 +77,13 @@ def import_xmi_into_document_view(
         result = _parse_upload(file)
     except XmiError as exc:
         return Status(422, {"detail": str(exc), "code": exc.code})
-    try:
-        document = services.replace_blank_document_content(
-            organization=membership.organization,
-            doc_id=doc_id,
-            model=result.model,
-            layout=result.layout,
-            now=timezone.now(),
-        )
-    except DocumentNotEmptyError:
-        return Status(
-            409,
-            {
-                "detail": "Este diagrama ya tiene contenido. Importa en un diagrama en blanco.",
-                "code": "document_not_empty",
-            },
-        )
+    document = services.replace_document_content(
+        organization=membership.organization,
+        doc_id=doc_id,
+        model=result.model,
+        layout=result.layout,
+        now=timezone.now(),
+    )
     return Status(200, {**codec.document_out(document), "warnings": list(result.warnings)})
 
 

@@ -222,9 +222,16 @@ export function parseMultiplicityInput(text: string): string | null {
   return Number(upperText) >= lower ? `${lower}..${Number(upperText)}` : null;
 }
 
-/** A primitive string renders as itself; an `EnumerationRef` renders its enum id. */
-export function attributeTypeLabel(t: AttributeType): string {
-  return typeof t === "string" ? t : t.enumeration_ref.enumeration_id;
+/**
+ * A primitive string renders as itself; an `EnumerationRef` renders its
+ * enum's NAME, looked up in `enumNames` (id -> name, built from
+ * `model.enumerations` by the caller). Falls back to the raw id when the
+ * lookup is omitted or the id isn't in it (a genuinely orphaned
+ * reference) rather than throwing, so a stale/missing enum never crashes
+ * the canvas — it just shows its id like before this fix.
+ */
+export function attributeTypeLabel(t: AttributeType, enumNames: Record<string, string> = {}): string {
+  return typeof t === "string" ? t : (enumNames[t.enumeration_ref.enumeration_id] ?? t.enumeration_ref.enumeration_id);
 }
 
 /**

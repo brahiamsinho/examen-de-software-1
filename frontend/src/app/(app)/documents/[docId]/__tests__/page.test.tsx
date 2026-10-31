@@ -612,7 +612,8 @@ describe("DocumentPage — backend download", () => {
       expect(screen.queryByRole("button", { name: "Eliminar diagrama" }) !== null).toBe(visible);
     });
 
-    it("offers 'Importar XML' only on a blank diagram, and only to editors", async () => {
+    it("offers 'Importar XML' to editors on both blank and populated diagrams, never to viewers", async () => {
+      // Blank: the empty-state prompt's own control.
       useDocumentMock.mockReturnValue(stateFor(blank));
       const { unmount } = renderPage("acme", "EDITOR");
       expect(await screen.findByRole("button", { name: "Importar XML" })).toBeInTheDocument();
@@ -623,8 +624,18 @@ describe("DocumentPage — backend download", () => {
       expect(screen.queryByRole("button", { name: "Importar XML" })).not.toBeInTheDocument();
       viewer.unmount();
 
+      // Populated: the Modelia <-> Enterprise Architect round-trip control
+      // next to "Exportar XML" — importing here now REPLACES the diagram
+      // (confirmed by the user in a dialog, design.md DD184), so it must
+      // stay reachable, not just on a blank diagram.
       useDocumentMock.mockReturnValue(stateFor(document));
-      renderPage("acme", "EDITOR");
+      const editor = renderPage("acme", "EDITOR");
+      await screen.findByText("Tap Cliente");
+      expect(screen.getByRole("button", { name: "Importar XML" })).toBeInTheDocument();
+      editor.unmount();
+
+      useDocumentMock.mockReturnValue(stateFor(document));
+      renderPage("acme", "VIEWER");
       await screen.findByText("Tap Cliente");
       expect(screen.queryByRole("button", { name: "Importar XML" })).not.toBeInTheDocument();
     });

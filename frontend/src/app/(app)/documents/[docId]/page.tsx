@@ -134,6 +134,15 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const isBlank = document.model.classes.length === 0 && document.model.relationships.length === 0;
 
   async function handleImportIntoDocument(file: File) {
+    // Importing over an already-populated diagram REPLACES it (the Modelia
+    // <-> Enterprise Architect round-trip workflow) — the backend no longer
+    // refuses this, so the confirmation lives here instead.
+    if (!isBlank) {
+      const confirmed = window.confirm(
+        "Este diagrama ya tiene contenido. Importar un archivo XML lo va a reemplazar por completo. Esta acción no se puede deshacer. ¿Continuar?",
+      );
+      if (!confirmed) return;
+    }
     const result = await importXmiIntoDocument(orgSlug!, docId, file);
     const { warnings, ...imported } = result;
     applyDocument(imported);
@@ -252,6 +261,9 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               label="Exportar XML"
               pendingLabel="Exportando..."
             />
+            {canEdit && !isBlank ? (
+              <ImportXmiControl onImport={handleImportIntoDocument} disabled={isSubmitting} />
+            ) : null}
             {canEdit ? (
               <Button type="button" variant="outline" size="lg" onClick={() => setDeleteOpen(true)}>
                 <Trash2 />

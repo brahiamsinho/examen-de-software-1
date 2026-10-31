@@ -42,13 +42,20 @@ def _attr(name, type_name):
     )
 
 
-def _assoc(ends, name="r"):
+def _assoc(ends, name="r", tags=None):
     body = "".join(
         f'<UML:AssociationEnd multiplicity="{m}" aggregation="{agg}" type="{t}"/>'
         for t, m, agg in ends
     )
+    tags_xml = (
+        "<UML:ModelElement.taggedValue>"
+        + "".join(f'<UML:TaggedValue tag="{k}" value="{v}"/>' for k, v in tags.items())
+        + "</UML:ModelElement.taggedValue>"
+        if tags
+        else ""
+    )
     return (
-        f'<UML:Association name="{name}"><UML:Association.connection>{body}'
+        f'<UML:Association name="{name}">{tags_xml}<UML:Association.connection>{body}'
         "</UML:Association.connection></UML:Association>"
     )
 
@@ -162,6 +169,82 @@ class TestXmi21:
         assert generalization.source.class_id == special.id
         assert generalization.target.class_id == order.id
         assert any("Actor" in w for w in result.warnings)
+
+
+def _join_xmi(join_name, join_xid, a_xid, a_name, b_xid, b_name, *, rel_name=""):
+    """A synthetic XMI shaped like the exporter's real association-class
+    pattern (design.md DD185): one NORMAL both-ends-many association
+    between `a` and `b` (self-referencing when a_xid == b_xid), carrying
+    an `associationclass` tag pointing at a separate EMPTY class -- the
+    exact real Enterprise Architect shape, not the earlier two-synthetic-
+    associations design."""
+    classes_xml = _cls(a_xid, a_name, _attr("n", "String"))
+    if b_xid != a_xid:
+        classes_xml += _cls(b_xid, b_name, _attr("n", "String"))
+    body = (
+        classes_xml
+        + _cls(join_xid, join_name)
+        + _assoc(
+            [(a_xid, "0..*", "none"), (b_xid, "0..*", "none")],
+            name=rel_name,
+            tags={"associationclass": join_xid, "subtype": "Class"},
+        )
+    )
+    return _ea11(body)
+
+
+class TestJoinClassCollapse:
+    """The mirror of the exporter's association-class attachment
+    (design.md DD185): a class referenced by an association's
+    `associationclass` tag, with no attributes/operations of its own, is
+    hidden from the imported model -- the association itself needs no
+    change at all, it already carries its own real both-ends-many
+    multiplicities."""
+
+    def test_hides_the_association_class_and_keeps_the_real_association_untouched(self):
+        result = import_xmi(_join_xmi("Student_Course", "J", "A", "Student", "B", "Course", rel_name="enrolled_in"))
+        model = result.model
+
+        assert sorted(c.name for c in model.classes) == ["Course", "Student"]
+        (relationship,) = model.relationships
+        assert relationship.kind is RelationshipKind.ASSOCIATION
+        assert relationship.name == "enrolled_in"  # untouched -- nothing was collapsed/rebuilt
+        assert relationship.source.multiplicity == Multiplicity(0, None)
+        assert relationship.target.multiplicity == Multiplicity(0, None)
+        names = {c.id: c.name for c in model.classes}
+        assert {names[relationship.source.class_id], names[relationship.target.class_id]} == {"Student", "Course"}
+        assert any("Student_Course" in w and "clase de asociación" in w for w in result.warnings)
+
+    def test_hides_a_self_referencing_association_class(self):
+        result = import_xmi(_join_xmi("Employee_Employee", "J", "A", "Employee", "A", "Employee"))
+        model = result.model
+
+        assert [c.name for c in model.classes] == ["Employee"]
+        (relationship,) = model.relationships
+        assert relationship.source.class_id == relationship.target.class_id
+        assert relationship.source.multiplicity == Multiplicity(0, None)
+        assert relationship.target.multiplicity == Multiplicity(0, None)
+        assert any("Employee_Employee" in w and "clase de asociación" in w for w in result.warnings)
+
+    def test_keeps_an_association_class_that_has_real_attributes(self):
+        # Same associationclass-tag shape, but the class has an attribute
+        # -- a deliberate real entity in EA, not a pure join-table marker,
+        # so it must be left alone (the documented escape hatch).
+        body = (
+            _cls("A", "Student", _attr("n", "String"))
+            + _cls("B", "Course", _attr("n", "String"))
+            + _cls("J", "Student_Course", _attr("note", "String"))
+            + _assoc(
+                [("A", "0..*", "none"), ("B", "0..*", "none")],
+                tags={"associationclass": "J", "subtype": "Class"},
+            )
+        )
+        result = import_xmi(_ea11(body))
+        model = result.model
+
+        assert sorted(c.name for c in model.classes) == ["Course", "Student", "Student_Course"]
+        assert len(model.relationships) == 1
+        assert not any("clase de asociación" in w for w in result.warnings)
 
 
 class TestFailures:

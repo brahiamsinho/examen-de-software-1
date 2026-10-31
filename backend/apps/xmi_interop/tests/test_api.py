@@ -7,6 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.organizations.tests.factories import make_org_with_roles
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "ea-basico.xml"
+SECOND_FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "synthetic-xmi21.xml"
 
 
 def _import(client, organization, content: bytes, name="ea-basico.xml"):
@@ -81,7 +82,11 @@ class TestExportXmi:
 
 
 @pytest.mark.django_db
-class TestImportXmiIntoBlankDocument:
+class TestImportXmiIntoDocument:
+    """`POST .../documents/{doc_id}/import-xmi`: the Modelia <-> Enterprise
+    Architect round-trip endpoint. Unconditional (design.md DD184) — it
+    replaces whatever the document currently has, blank or not."""
+
     def _blank(self, client, organization, user) -> str:
         client.force_login(user)
         return client.post(
@@ -90,10 +95,14 @@ class TestImportXmiIntoBlankDocument:
             content_type="application/json",
         ).json()["id"]
 
-    def _import_into(self, client, organization, doc_id):
+    def _import_into(self, client, organization, doc_id, content: bytes = None):
         return client.post(
             f"/api/orgs/{organization.slug}/documents/{doc_id}/import-xmi",
-            {"file": SimpleUploadedFile("ea.xml", FIXTURE.read_bytes(), content_type="application/xml")},
+            {
+                "file": SimpleUploadedFile(
+                    "ea.xml", content or FIXTURE.read_bytes(), content_type="application/xml"
+                )
+            },
         )
 
     def test_blank_document_receives_the_model_and_keeps_its_name(self, auth_client):
@@ -111,15 +120,22 @@ class TestImportXmiIntoBlankDocument:
         fetched = auth_client.get(f"/api/orgs/{organization.slug}/documents/{doc_id}").json()
         assert len(fetched["model"]["classes"]) == 2
 
-    def test_non_empty_document_is_refused_with_409(self, auth_client):
+    def test_importing_into_a_non_empty_document_replaces_its_content(self, auth_client):
         organization, owner, *_ = make_org_with_roles()
         doc_id = self._blank(auth_client, organization, owner)
-        assert self._import_into(auth_client, organization, doc_id).status_code == 200
+        first = self._import_into(auth_client, organization, doc_id)
+        assert first.status_code == 200
+        assert sorted(c["name"] for c in first.json()["model"]["classes"]) == ["Class A", "Class B"]
 
-        response = self._import_into(auth_client, organization, doc_id)
+        response = self._import_into(auth_client, organization, doc_id, SECOND_FIXTURE.read_bytes())
 
-        assert response.status_code == 409
-        assert response.json()["code"] == "document_not_empty"
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == doc_id  # same document, not a new one
+        assert body["revision"] == 3  # 1 (created) -> 2 (first import) -> 3 (this one)
+        assert sorted(c["name"] for c in body["model"]["classes"]) == ["Order", "OrderLine", "SpecialOrder"]
+        fetched = auth_client.get(f"/api/orgs/{organization.slug}/documents/{doc_id}").json()
+        assert sorted(c["name"] for c in fetched["model"]["classes"]) == ["Order", "OrderLine", "SpecialOrder"]
 
     def test_viewer_cannot_import_into_a_document(self, auth_client):
         organization, owner, _editor, viewer, _outsider = make_org_with_roles()

@@ -302,13 +302,16 @@ export function toElements(
   model: UmlModel,
   layout: DiagramLayout = { positions: {} },
 ): ElementDefinition[] {
+  // id -> name, so an EnumerationRef-typed attribute/parameter/return type
+  // shows the enum's actual name on the canvas instead of its raw id.
+  const enumNames: Record<string, string> = Object.fromEntries(model.enumerations.map((e) => [e.id, e.name]));
   const nodes: ElementDefinition[] = model.classes.map((c) => {
-    const attributeLines = c.attributes.map((a) => `- ${a.name}: ${attributeTypeLabel(a.type)}`);
+    const attributeLines = c.attributes.map((a) => `- ${a.name}: ${attributeTypeLabel(a.type, enumNames)}`);
     const operationLines = c.operations.map((o) => {
       const params = o.parameters
-        .map((p) => `${p.name}: ${attributeTypeLabel(p.type)}`)
+        .map((p) => `${p.name}: ${attributeTypeLabel(p.type, enumNames)}`)
         .join(", ");
-      const returnSuffix = o.return_type === null ? "" : `: ${attributeTypeLabel(o.return_type)}`;
+      const returnSuffix = o.return_type === null ? "" : `: ${attributeTypeLabel(o.return_type, enumNames)}`;
       return `${VISIBILITY_SYMBOL[o.visibility]} ${o.name}(${params})${returnSuffix}`;
     });
     const box = classBoxSvgDataUri(c.name, attributeLines, operationLines);

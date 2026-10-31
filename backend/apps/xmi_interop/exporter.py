@@ -18,10 +18,12 @@ import re
 import uuid
 from xml.etree.ElementTree import Element, SubElement, indent, tostring
 
+from apps.relational_mapping.domain.schema import Table
+from apps.relational_mapping.mapping.mapper import map_to_relational
 from apps.uml_modeling.documents import ProjectDocument
 from apps.uml_modeling.domain.elements import RelationshipKind, UmlClass
 from apps.uml_modeling.domain.model import CanonicalUmlModel
-from apps.uml_modeling.domain.types import EnumerationRef, PrimitiveType, format_multiplicity
+from apps.uml_modeling.domain.types import EnumerationRef, Multiplicity, PrimitiveType, format_multiplicity
 
 _EA_TYPE_NAMES = {
     PrimitiveType.STRING: "String",
@@ -63,6 +65,119 @@ def _tags(parent: Element, tags: list[tuple[str, str]]) -> None:
         SubElement(holder, "UML:TaggedValue", {"tag": tag, "value": _clean(value)})
 
 
+def _is_many(multiplicity: Multiplicity) -> bool:
+    """Mirrors `apps.relational_mapping.mapping.mapper._is_many` (DD11)
+    WITHOUT importing that app (one-Django-app-per-domain): "many" is
+    `upper is None or upper > 1`.
+    """
+    return multiplicity.upper is None or multiplicity.upper > 1
+
+
+def _is_join_relationship(relationship) -> bool:
+    """Both ends many, mirroring `mapper.py`'s `_map_relationships`
+    `source_many and target_many` branch EXACTLY: this applies to ANY
+    non-GENERALIZATION relationship kind, not only ASSOCIATION -- `mapper.py`
+    never special-cases `kind` before checking both-ends-many.
+
+    A relationship matching this is never part of the UML model itself
+    (the join table is computed on the fly by `map_to_relational`), but it
+    IS given a visible "association class" here (an empty class linked to
+    the SAME single association via the `associationclass`/`conID` tag
+    pair -- design.md DD185) so opening the exported XMI in real Enterprise
+    Architect shows the join table as its own box, dashed-line-attached to
+    the one real `*..*` association, instead of a bare line with nothing
+    to hint at the implied join table.
+    """
+    return _is_many(relationship.source.multiplicity) and _is_many(relationship.target.multiplicity)
+
+
+def _relational_join_tables(model: CanonicalUmlModel) -> dict[str, Table]:
+    """Best-effort {relationship.id: its REAL computed join `Table`}, by
+    reusing `map_to_relational` directly (an intentional cross-app read of
+    a pure, already-tested function -- the exact reasoning behind
+    `apps.relational_mapping.api`'s own `/join-tables` preview endpoint:
+    "so the name and columns shown here never drift from what actually
+    gets built"). `_is_join_relationship` decides WHICH relationships get
+    a join class at all (cheap, always safe); this only ENRICHES that
+    join class with the real column names/types when possible.
+
+    Never raises: an invalid model (e.g. a dangling endpoint,
+    `map_to_relational` itself would reject) simply gets no enrichment --
+    the join class is still written, just empty, exactly as it was
+    before this enrichment existed. A join table has no `source_class_ids`
+    (that only marks a REAL class's table); each of its foreign keys
+    carries `source_relationship_id` back to the relationship it came from.
+    """
+    try:
+        relational = map_to_relational(model)
+    except Exception:
+        return {}
+    tables_by_relationship: dict[str, Table] = {}
+    for table in relational.tables:
+        if table.source_class_ids:
+            continue
+        for fk in table.foreign_keys:
+            if fk.source_relationship_id is not None:
+                tables_by_relationship[fk.source_relationship_id] = table
+    return tables_by_relationship
+
+
+def _unique_join_name(taken: set[str], base: str) -> str:
+    """Readable-name counterpart of `mapper.py`'s `unique_name` (that one
+    totalizes snake_case SQL table names via `naming.py`; this totalizes a
+    human-readable UML class display name), so a colliding join name --
+    two both-ends-many relationships between the same pair of classes, or
+    a real class already named like the join -- gets a stable numeric
+    suffix instead of silently shadowing it. A self-referencing pair
+    (`source_name == target_name`) naturally produces e.g. `"C_C"`, which
+    cannot collide with the real class `"C"` by construction.
+    """
+    if base not in taken:
+        return base
+    suffix = 2
+    while f"{base}_{suffix}" in taken:
+        suffix += 1
+    return f"{base}_{suffix}"
+
+
+def _plan_join_relationships(model: CanonicalUmlModel, local_ids: dict) -> dict[str, dict]:
+    """One plan per both-ends-many relationship: the synthetic association
+    class's name/xmi.id/ea_localid. Extends `local_ids` IN PLACE with one
+    entry per join class (own `ea_localid`, used the same way a real
+    class's would be for `ea_sourceID`/`ea_targetID`-style tags and for
+    diagram positioning). Ids are derived deterministically from the
+    ORIGINAL relationship's id via `_ea_id`, suffixed so they can never
+    collide with a real class/relationship id (a different name string
+    hashes to a different UUID5) and stay stable across repeated exports
+    of the unchanged document.
+    """
+    taken_names = {c.name for c in model.classes} | {e.name for e in model.enumerations}
+    relational_tables = _relational_join_tables(model)
+    plans: dict[str, dict] = {}
+    next_local = max(local_ids.values(), default=0) + 1
+    for relationship in model.relationships:
+        if relationship.kind is RelationshipKind.GENERALIZATION:
+            continue
+        if not _is_join_relationship(relationship):
+            continue
+        source_name = model.class_by_id(relationship.source.class_id).name
+        target_name = model.class_by_id(relationship.target.class_id).name
+        join_name = _unique_join_name(taken_names, f"{source_name}_{target_name}")
+        taken_names.add(join_name)
+        key = f"{relationship.id}:join"
+        local_ids[key] = next_local
+        next_local += 1
+        plans[relationship.id] = {
+            "key": key,
+            "ea_id": _ea_id("EAID", key),
+            "name": join_name,
+            "source_class_id": relationship.source.class_id,
+            "target_class_id": relationship.target.class_id,
+            "table": relational_tables.get(relationship.id),
+        }
+    return plans
+
+
 def export_xmi(document: ProjectDocument) -> bytes:
     model = document.model
     name = _clean(document.metadata.name)
@@ -71,6 +186,7 @@ def export_xmi(document: ProjectDocument) -> bytes:
     class_ids = {c.id: _ea_id("EAID", c.id) for c in model.classes}
     enum_ids = {e.id: _ea_id("EAID", e.id) for e in model.enumerations}
     local_ids = {element_id: index for index, element_id in enumerate({**class_ids, **enum_ids}, start=1)}
+    join_info = _plan_join_relationships(model, local_ids)
 
     root = Element("XMI", {"xmi.version": "1.1", "xmlns:UML": "omg.org/UML1.3", "timestamp": stamp})
     documentation = SubElement(SubElement(root, "XMI.header"), "XMI.documentation")
@@ -105,7 +221,13 @@ def export_xmi(document: ProjectDocument) -> bytes:
     for enumeration in model.enumerations:
         _write_enumeration(package_owned, enumeration, package_id, name, enum_ids, local_ids)
     for relationship in model.relationships:
-        _write_relationship(package_owned, relationship, model, class_ids, local_ids)
+        plan = join_info.get(relationship.id)
+        if plan is not None:
+            _write_join_class(package_owned, plan, package_id, name, local_ids[plan["key"]], _ea_id("EAID", relationship.id))
+        _write_relationship(
+            package_owned, relationship, model, class_ids, local_ids,
+            join_class_ea_id=plan["ea_id"] if plan is not None else None,
+        )
     for primitive, xid in datatype_ids.items():
         SubElement(
             owned,
@@ -114,7 +236,7 @@ def export_xmi(document: ProjectDocument) -> bytes:
              "isLeaf": "false", "isAbstract": "false"},
         )
 
-    _write_diagram(content, document, package_id, name, class_ids, enum_ids)
+    _write_diagram(content, document, package_id, name, class_ids, enum_ids, join_info)
     SubElement(root, "XMI.difference")
     SubElement(SubElement(root, "XMI.extensions", {"xmi.extender": "Enterprise Architect 2.5"}), "EAModel.paramSub")
 
@@ -195,7 +317,18 @@ def _write_enumeration(parent, enumeration, package_id, package_name, enum_ids, 
 _WHOLE_END_AGGREGATION = {RelationshipKind.AGGREGATION: "shared", RelationshipKind.COMPOSITION: "composite"}
 
 
-def _write_relationship(parent, relationship, model, class_ids, local_ids) -> None:
+def _write_relationship(parent, relationship, model, class_ids, local_ids, *, join_class_ea_id: str | None = None) -> None:
+    """`join_class_ea_id`: for a both-ends-many relationship, the plain
+    association below gets two extra tagged values -- `associationclass`
+    (pointing at the join class's `xmi.id`) and `subtype="Class"` -- the
+    EXACT marker real Enterprise Architect writes for a genuine UML
+    "Association Class" (verified from a real EA export the user made
+    themselves: attaching a class to this association in EA produces
+    precisely these two tags, nothing else different about the
+    association itself; design.md DD185). No separate synthetic
+    associations are written -- the real `*..*` association is the only
+    one, exactly as for any other relationship.
+    """
     source, target = relationship.source, relationship.target
     source_name = model.class_by_id(source.class_id).name
     target_name = model.class_by_id(target.class_id).name
@@ -222,9 +355,12 @@ def _write_relationship(parent, relationship, model, class_ids, local_ids) -> No
          "isLeaf": "false", "isAbstract": "false"},
     )
     ea_type = "Association" if relationship.kind is RelationshipKind.ASSOCIATION else "Aggregation"
+    association_class_tags = (
+        [("subtype", "Class"), ("associationclass", join_class_ea_id)] if join_class_ea_id is not None else []
+    )
     _tags(
         element,
-        [("ea_type", ea_type), ("direction", "Unspecified"), *endpoint_tags,
+        [("ea_type", ea_type), ("direction", "Unspecified"), *endpoint_tags, *association_class_tags,
          ("lb", format_multiplicity(source.multiplicity)), ("mt", _clean(relationship.name or "")),
          ("rb", format_multiplicity(target.multiplicity))],
     )
@@ -243,13 +379,68 @@ def _write_relationship(parent, relationship, model, class_ids, local_ids) -> No
         _tags(node, [("containment", "Unspecified"), ("ea_end", ea_end)])
 
 
+_MODELIA_SYNTHETIC_TAG = ("modelia_synthetic", "join_table")
+
+
+def _write_join_class(
+    parent, plan: dict, package_id: str, package_name: str, local_id: int, association_ea_id: str
+) -> None:
+    """A `UML:Class` representing a both-ends-many relationship's
+    materialized join table (see `_plan_join_relationships`). Never part
+    of `model.classes` -- this is display-only, mirroring how
+    `apps.relational_mapping.mapping.mapper._build_join_table` computes
+    the join table on the fly rather than storing it in the UML model.
+    When `plan["table"]` is available (the model mapped cleanly via
+    `_relational_join_tables`), its REAL columns are written as this
+    class's attributes -- purely informational, matching exactly what
+    Modelia's own join-table preview hint already shows on the canvas.
+    When it isn't (an invalid model `map_to_relational` couldn't map),
+    the class is left empty, as before this enrichment existed.
+
+    `conID` is the REAL Enterprise Architect tag (verified from a real EA
+    export) an association class carries back to its owning association --
+    the reverse of the association's own `associationclass` tag
+    (`_write_relationship`). Both point at each other; EA uses this pair
+    to draw the dashed line from the class to the association.
+
+    `modelia_synthetic` is OUR OWN marker (EA safely ignores unknown
+    tags, standard XMI extensibility), not a real EA convention -- since
+    this class may now carry real-looking attributes, the importer can no
+    longer tell "ours" from "a real association class the user built in
+    EA" just by checking for zero attributes
+    (`importer._hide_association_classes`'s original signal). This tag is
+    the reliable one now; emptiness stays a fallback for a genuine
+    EA-authored association class that never carried this tag.
+    """
+    element = SubElement(
+        parent,
+        "UML:Class",
+        {"name": _clean(plan["name"]), "xmi.id": plan["ea_id"], "visibility": "public", "namespace": package_id,
+         "isRoot": "false", "isLeaf": "false", "isAbstract": "false", "isActive": "false"},
+    )
+    _tags(
+        element,
+        [*_class_tags(package_id, package_name, local_id, "Class"), ("conID", association_ea_id), _MODELIA_SYNTHETIC_TAG],
+    )
+    features = SubElement(element, "UML:Classifier.feature")
+    table = plan.get("table")
+    if table is not None:
+        for column in table.columns:
+            node = SubElement(
+                features,
+                "UML:Attribute",
+                {"name": _clean(column.name), "visibility": "public", "ownerScope": "instance", "targetScope": "instance"},
+            )
+            _tags(node, [("type", column.type.value)])
+
+
 def _box_height(feature_rows: int) -> int:
     """Enough room for the name compartment plus one row per attribute/operation
     (never below the sample's floor, so a featureless class keeps its old size)."""
     return max(_BOX_HEIGHT, _HEADER_HEIGHT + feature_rows * _ROW_HEIGHT)
 
 
-def _write_diagram(content, document, package_id, package_name, class_ids, enum_ids) -> None:
+def _write_diagram(content, document, package_id, package_name, class_ids, enum_ids, join_info: dict) -> None:
     diagram = SubElement(
         content,
         "UML:Diagram",
@@ -264,12 +455,36 @@ def _write_diagram(content, document, package_id, package_name, class_ids, enum_
         **{c.id: len(c.attributes) + len(c.operations) for c in document.model.classes},
         **{e.id: len(e.literals) for e in document.model.enumerations},
     }
-    for index, (element_id, xid) in enumerate(node_ids.items()):
-        seqno += 1
+
+    # Pass 1: real classes/enumerations, exactly as before (explicit
+    # layout position, else a deterministic grid fallback).
+    positions: dict[str, tuple[float, float, int]] = {}
+    for index, element_id in enumerate(node_ids):
         position = document.layout.positions.get(element_id)
         height = _box_height(feature_rows.get(element_id, 0))
         x = position.x if position else 100 + _BOX_WIDTH / 2 + (index % _GRID_COLUMNS) * _GRID_STEP_X
         y = position.y if position else 100 + height / 2 + (index // _GRID_COLUMNS) * _GRID_STEP_Y
+        positions[element_id] = (x, y, height)
+
+    # Pass 2: synthetic join classes are never in the layout -- position
+    # each at the midpoint of its two related classes (already resolved
+    # above), offset a bit so a self-referencing join (whose "midpoint" is
+    # the single related class's own position) doesn't render on top of it.
+    join_node_ids: dict[str, str] = {}
+    for plan in join_info.values():
+        source_x, source_y, _source_h = positions[plan["source_class_id"]]
+        target_x, target_y, _target_h = positions[plan["target_class_id"]]
+        positions[plan["key"]] = (
+            (source_x + target_x) / 2 + 40,
+            (source_y + target_y) / 2 + 40,
+            _box_height(0),
+        )
+        join_node_ids[plan["key"]] = plan["ea_id"]
+    node_ids = {**node_ids, **join_node_ids}
+
+    for element_id, xid in node_ids.items():
+        seqno += 1
+        x, y, height = positions[element_id]
         left, top = round(x - _BOX_WIDTH / 2), round(y - height / 2)
         SubElement(
             elements,
@@ -278,6 +493,12 @@ def _write_diagram(content, document, package_id, package_name, class_ids, enum_
              "subject": xid, "seqno": str(seqno), "style": "ImageID=0;"},
         )
     for relationship in document.model.relationships:
+        # A both-ends-many relationship keeps its own single real
+        # association (see `_write_relationship`'s `join_class_ea_id`
+        # param) -- there is only ever one edge to draw per relationship,
+        # same as any other. EA draws the association-class's dashed
+        # connector itself from the `associationclass`/`conID` tag pair,
+        # not from anything in the diagram geometry.
         seqno += 1
         SubElement(
             elements,

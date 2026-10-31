@@ -236,8 +236,20 @@ describe("lib/uml_documents", () => {
       expect(attributeTypeLabel("String")).toBe("String");
     });
 
-    it("returns the enumeration id for an EnumerationRef", () => {
+    it("returns the enum's NAME for an EnumerationRef when it's in the lookup", () => {
+      expect(
+        attributeTypeLabel({ enumeration_ref: { enumeration_id: "e1" } }, { e1: "EstadoPedido" }),
+      ).toBe("EstadoPedido");
+    });
+
+    it("falls back to the raw enumeration id when no lookup is given", () => {
       expect(attributeTypeLabel({ enumeration_ref: { enumeration_id: "e1" } })).toBe("e1");
+    });
+
+    it("falls back to the raw enumeration id when the lookup doesn't have it (orphaned reference)", () => {
+      expect(
+        attributeTypeLabel({ enumeration_ref: { enumeration_id: "e1" } }, { other: "Other" }),
+      ).toBe("e1");
     });
   });
 

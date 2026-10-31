@@ -56,9 +56,10 @@ export function takeImportWarnings(docId: string): string[] {
 }
 
 /**
- * Loads an XMI file INTO an existing blank document (replacing its model).
- * The server answers 409 `document_not_empty` when the document already has
- * classes or relationships.
+ * Loads an XMI file INTO an existing document, REPLACING its current model —
+ * the Modelia <-> Enterprise Architect round-trip workflow. Unconditional on
+ * the server; the caller is responsible for confirming with the user first
+ * when the document already has content (see `documents/[docId]/page.tsx`).
  */
 export async function importXmiIntoDocument(
   orgSlug: string,

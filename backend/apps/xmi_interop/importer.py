@@ -60,12 +60,17 @@ MAX_XMI_BYTES = 5 * 1024 * 1024
 _PRIMITIVES: dict[str, PrimitiveType] = {
     **dict.fromkeys(("int", "integer", "short", "byte", "smallint", "int32", "uint"), PrimitiveType.INTEGER),
     **dict.fromkeys(("long", "bigint", "int64"), PrimitiveType.LONG),
-    **dict.fromkeys(("string", "varchar", "char", "character", "nvarchar"), PrimitiveType.STRING),
+    # "uuid" is here for exporter.py's own synthetic join-class attributes
+    # (design.md DD186, `Column.type` values from `relational_mapping`'s
+    # `ColumnType` -- there is no dedicated UUID primitive in this
+    # project's closed 8-primitive set, STRING is the closest fit).
+    **dict.fromkeys(("string", "varchar", "char", "character", "nvarchar", "uuid"), PrimitiveType.STRING),
     **dict.fromkeys(("text", "clob"), PrimitiveType.TEXT),
     **dict.fromkeys(("double", "float", "decimal", "numeric", "real", "number", "money"), PrimitiveType.DECIMAL),
     **dict.fromkeys(("bool", "boolean", "bit"), PrimitiveType.BOOLEAN),
     "date": PrimitiveType.DATE,
-    **dict.fromkeys(("datetime", "timestamp", "time"), PrimitiveType.DATETIME),
+    # "timestamptz" is `ColumnType.TIMESTAMPTZ`'s value, same DD186 reason.
+    **dict.fromkeys(("datetime", "timestamp", "timestamptz", "time"), PrimitiveType.DATETIME),
 }
 _SILENT_ELEMENTS = frozenset({"DataType", "PrimitiveType", "Diagram", "Stereotype", "TagDefinition", "TaggedValue"})
 _VISIBILITIES = {v.value: v for v in Visibility}
@@ -92,6 +97,12 @@ class _RawClass:
     operations: list[tuple[str, str | None, bool]] = field(default_factory=list)  # name, visibility, has_signature
     literals: list[str] | None = None  # not None => an enumeration
     visibility: str | None = None
+    # The `modelia_synthetic` tagged value (XMI 1.1/UML 1.3 only), OUR OWN
+    # marker on a join-table association class (see
+    # `exporter._MODELIA_SYNTHETIC_TAG`, design.md DD186) -- distinguishes
+    # "our own generated placeholder, safe to hide even with real-looking
+    # columns" from a genuine EA-authored association class.
+    modelia_synthetic: bool = False
 
 
 @dataclass
@@ -107,6 +118,12 @@ class _RawEnd:
 class _RawAssociation:
     name: str | None
     ends: list[_RawEnd]
+    # The `associationclass` tagged value, XMI 1.1/UML 1.3 only (v1 reader,
+    # `_read_association_v1`) -- the class xid a real Enterprise Architect
+    # "Association Class" is attached to. Verified from a real EA export
+    # (design.md DD185); the XMI 2.x reader has no verified equivalent, so
+    # this always stays None there.
+    association_class_ref: str | None = None
 
 
 @dataclass
@@ -220,7 +237,10 @@ def _read_class_v1(el: Element, raw: _Raw) -> None:
         return
     stereotype = next((s.get("name", "") for s in el.iter() if _local(s.tag) == "Stereotype"), "")
     is_enum = tags.get("ea_stype") == "Enumeration" or stereotype.lower() == "enumeration"
-    raw_class = _RawClass(el.get("xmi.id", ""), name, visibility=el.get("visibility"))
+    raw_class = _RawClass(
+        el.get("xmi.id", ""), name, visibility=el.get("visibility"),
+        modelia_synthetic=tags.get("modelia_synthetic") == "join_table",
+    )
     features = _kid(el, "Classifier.feature")
     for feature in features if features is not None else ():
         kind = _local(feature.tag)
@@ -261,7 +281,8 @@ def _read_association_v1(el: Element, raw: _Raw) -> None:
                 role=end.get("name") or None,
             )
         )
-    raw.associations.append(_RawAssociation(el.get("name") or None, ends))
+    association_class_ref = _tagged(el).get("associationclass") or None
+    raw.associations.append(_RawAssociation(el.get("name") or None, ends, association_class_ref))
 
 
 _GEOMETRY = re.compile(r"(Left|Top|Right|Bottom)=(-?\d+(?:\.\d+)?)")
@@ -475,12 +496,68 @@ def _build(raw: _Raw) -> tuple[CanonicalUmlModel, DiagramLayout, list[str]]:
         )
 
     relationships = _build_relationships(raw, ids, {c.xid for c in raw.classes if c.literals is None}, warnings)
-    model = CanonicalUmlModel(classes=tuple(classes), enumerations=enumerations, relationships=tuple(relationships))
-    class_ids = {c.id for c in classes}
+    association_class_ids = {
+        ids[a.association_class_ref]
+        for a in raw.associations
+        if a.association_class_ref and a.association_class_ref in ids
+    }
+    synthetic_class_ids = {ids[c.xid] for c in raw.classes if c.modelia_synthetic}
+    final_classes = _hide_association_classes(tuple(classes), association_class_ids, synthetic_class_ids, warnings)
+    model = CanonicalUmlModel(classes=final_classes, enumerations=enumerations, relationships=tuple(relationships))
+    class_ids = {c.id for c in final_classes}
     positions = {
         ids[xid]: Position(x=x, y=y) for xid, (x, y) in raw.positions.items() if xid in ids and ids[xid] in class_ids
     }
     return model, DiagramLayout(positions=positions), warnings
+
+
+def _hide_association_classes(
+    classes: tuple[UmlClass, ...],
+    association_class_ids: set[ElementId],
+    synthetic_class_ids: set[ElementId],
+    warnings: list[str],
+) -> tuple[UmlClass, ...]:
+    """Drop a class that is purely a both-ends-many relationship's
+    materialized join table, attached to the association via the
+    `associationclass`/`conID` tag pair a real EA export uses (design.md
+    DD185). The relationship itself needs no change at all: it already
+    carries its own real multiplicities, since the association class is a
+    SEPARATE element merely linked to it by tag, never a replacement for
+    the association's own connection ends.
+
+    Two ways a class qualifies for hiding, checked independently:
+    - `synthetic_class_ids` -- carries OUR OWN `modelia_synthetic` tag
+      (design.md DD186): Modelia's exporter writes this on every join
+      class it generates, now WITH real-looking columns (matching the
+      canvas's own join-table preview hint), so "has attributes" can no
+      longer be the only signal -- this tag is. Always hidden, regardless
+      of attribute content, since we generated those columns ourselves
+      and they should always regenerate fresh from the relationship, not
+      be treated as durable user edits.
+    - No `modelia_synthetic` tag (a genuine EA-authored association
+      class, like the one this project's real EA test produced): falls
+      back to the ORIGINAL signal -- no attributes and no operations. A
+      class the user gave real attributes to in EA (deliberately turning
+      it into a real entity) is kept exactly as any other class --
+      Modelia's `CanonicalUmlModel` has no first-class "association
+      class" concept, so the closest faithful representation of real
+      content is an ordinary standalone class.
+    """
+    if not association_class_ids:
+        return classes
+    kept: list[UmlClass] = []
+    for uml_class in classes:
+        is_candidate = uml_class.id in association_class_ids
+        is_synthetic = uml_class.id in synthetic_class_ids
+        is_empty = not uml_class.attributes and not uml_class.operations
+        if is_candidate and (is_synthetic or is_empty):
+            warnings.append(
+                f"Se ocultó la clase de asociación '{uml_class.name}' (representa visualmente, en Enterprise "
+                "Architect, la tabla intermedia de una relación muchos-a-muchos)."
+            )
+            continue
+        kept.append(uml_class)
+    return tuple(kept)
 
 
 def _build_relationships(

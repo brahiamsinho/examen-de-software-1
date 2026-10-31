@@ -26,7 +26,7 @@ from apps.relational_mapping.mapping.profile_parser import (
 )
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_documents import codec, schemas
-from apps.uml_documents.errors import DocumentNotEmptyError, InvalidCommandPayloadError
+from apps.uml_documents.errors import InvalidCommandPayloadError
 from apps.uml_documents.models import UmlDocument
 from apps.uml_modeling.documents import DiagramLayout, Position, ProjectDocument, ProjectMetadata
 from apps.uml_modeling.domain.elements import (
@@ -144,7 +144,7 @@ def create_document_from_model(
 
 
 @transaction.atomic
-def replace_blank_document_content(
+def replace_document_content(
     *,
     organization: Organization,
     doc_id: UUID,
@@ -152,18 +152,21 @@ def replace_blank_document_content(
     layout: DiagramLayout,
     now: datetime.datetime,
 ) -> ProjectDocument:
-    """Loads a ready model (e.g. an XMI import) INTO an existing blank document.
+    """Loads a ready model (e.g. an XMI import) INTO an existing document,
+    REPLACING whatever it currently has — used for the Modelia <-> Enterprise
+    Architect round-trip workflow (edit in EA, re-import to bring the changes
+    back). Deliberately unconditional: unlike a blank-only import, this
+    intentionally overwrites existing content, so the caller (the frontend's
+    confirmation prompt) is where accidental data loss must be guarded, not
+    here.
 
-    Serialized under the same row lock as `submit_command`, so the emptiness
-    check cannot race a concurrent edit. Refuses with `DocumentNotEmptyError`
-    when the document already has classes or relationships. The name stays the
-    one the user chose; the revision is bumped once and the result is broadcast
-    on commit so other connected clients see the new content.
+    Serialized under the same row lock as `submit_command`, so a concurrent
+    edit cannot race the replace. The name stays the one the user chose; the
+    revision is bumped once and the result is broadcast on commit so other
+    connected clients see the new content.
     """
     row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
     document = _to_project_document(row)
-    if document.model.classes or document.model.relationships:
-        raise DocumentNotEmptyError("The document already has content.")
     updated = dataclasses.replace(
         document, model=model, layout=layout, revision=document.revision + 1, updated_at=now
     )
