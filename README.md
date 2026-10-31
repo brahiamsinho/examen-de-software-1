@@ -7,6 +7,16 @@ The platform uses Django Ninja/Channels, PostgreSQL and Redis on the backend,
 Next.js on the web, and Flutter for mobile. Backend, frontend and supporting
 services run in Docker; Flutter runs on the host or an emulator.
 
+## What you can do
+
+- Create and collaboratively edit UML class diagrams inside an organization.
+- Import and export Enterprise Architect-compatible XMI files.
+- Transform a UML model into a relational model and download a generated Spring
+  Boot backend.
+- Run a generated backend in an isolated runner and connect the Flutter app to
+  its OpenAPI contract.
+- Use voice or image-assisted UML commands when an AI provider is configured.
+
 > **Environment files:** `env.example` is the committed template. Copy it to
 > the ignored root `.env` and provide real values locally or in deployment.
 
@@ -35,8 +45,24 @@ services run in Docker; Flutter runs on the host or an emulator.
    ```
 
 3. Reach the apps:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
+    - Frontend: http://localhost:3000
+    - Backend API: http://localhost:8000
+
+4. Stop the local stack when you finish:
+
+   ```
+   docker compose down
+   ```
+
+## Services
+
+| Service | Responsibility |
+| --- | --- |
+| `frontend` | Next.js web application and UML workspace. |
+| `backend` | Django Ninja/Channels API, document persistence and generation pipeline. |
+| `db` | PostgreSQL storage for users, organizations, documents and deployments. |
+| `redis` | Channels and realtime collaboration support. |
+| `runner` | Isolated build and runtime service for generated Spring applications. |
 
 ## Session auth deployment note
 
@@ -59,6 +85,25 @@ docker compose exec backend python manage.py <command>
 ```
 
 Examples: `migrate`, `createsuperuser`, `startapp <name> apps/<name>`.
+
+## Verification
+
+Run the relevant checks from the repository root before sharing a change:
+
+```bash
+# Backend: requires the Compose backend and database services.
+docker compose exec -T backend pytest
+
+# Web application.
+cd frontend && npm test
+
+# Flutter application.
+cd mobile && flutter analyze && flutter test
+```
+
+The full backend suite may take longer than focused app tests. For a change in
+one backend app, run that app's tests first and then the full suite before a
+release.
 
 ## Mobile (Flutter)
 

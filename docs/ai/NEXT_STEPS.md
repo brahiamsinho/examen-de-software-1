@@ -1,5 +1,7 @@
 # Next Steps
 
+**Documentation update 2026-10-31:** keep `README.md` aligned with actual service boundaries, quickstart commands and verification commands whenever Docker, web, mobile or runner workflows change.
+
 **Audit update 2026-10-31 (current priority):** (1) run backend pytest with the existing Compose `backend` and `db` services when they are intentionally started; (2) manually smoke `mobile-openapi-connect` against a real `/gen/<id>` deployment; (3) add keyboard navigation and screen-reader validation to the Cytoscape canvas; (4) keep all new tenant-bound models on `TenantScopedModel`/scoped managers and consider PostgreSQL RLS only if the threat model or scale requires defense in depth. Frontend tests (66 files/430 tests) and mobile analyze/test (0 issues/105 tests) passed in this audit.
 
 **Update 2026-09-29 (Association Class attributes carry real join-table columns):** done, verified against the comprehensive DD185 test diagram plus a real EA-authored empty association class (see `CURRENT_STATE.md`, DD186), committed. Next candidates: (1) still not tried against a fresh real-EA round trip with the new populated columns — worth one more open-in-EA check when there's time; (2) the `modelia_synthetic` tag is trusted unconditionally once present — a hand-crafted file claiming that tag on a class the user actually cares about would get silently hidden, an accepted trade-off for now.
