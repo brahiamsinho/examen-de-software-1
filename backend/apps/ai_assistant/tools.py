@@ -194,3 +194,70 @@ TOOLS = [
     REMOVE_RELATIONSHIP,
     UPDATE_RELATIONSHIP,
 ]
+
+# Image imports use one structured extraction rather than asking the model to
+# independently decide how many command calls to emit. The latter allowed a
+# vision model to create visible classes while silently omitting their fields
+# and connectors.
+EXTRACT_UML_DIAGRAM = {
+    "name": "extract_uml_diagram",
+    "description": (
+        "Extract the complete UML class diagram visible in the image. Include every "
+        "legible class, its attributes and operations, and every relationship."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "classes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "attributes": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "type": {"type": "string", "enum": _ATTRIBUTE_TYPES},
+                                },
+                                "required": ["name", "type"],
+                            },
+                        },
+                        "operations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "return_type": {"type": "string", "enum": _ATTRIBUTE_TYPES},
+                                },
+                                "required": ["name"],
+                            },
+                        },
+                    },
+                    "required": ["name", "attributes", "operations"],
+                },
+            },
+            "relationships": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string", "enum": _RELATIONSHIP_KINDS},
+                        "source_class_name": {"type": "string"},
+                        "target_class_name": {"type": "string"},
+                        "source_multiplicity": {"type": "string", "description": _MULTIPLICITY_DESCRIPTION},
+                        "target_multiplicity": {"type": "string", "description": _MULTIPLICITY_DESCRIPTION},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["kind", "source_class_name", "target_class_name"],
+                },
+            },
+        },
+        "required": ["classes", "relationships"],
+    },
+}
+
+IMAGE_IMPORT_TOOLS = [EXTRACT_UML_DIAGRAM]

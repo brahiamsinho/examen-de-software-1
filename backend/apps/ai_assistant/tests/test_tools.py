@@ -11,7 +11,9 @@ from apps.uml_modeling.domain.types import PrimitiveType
 def test_every_declared_tool_has_a_translator_handler():
     declared_names = {tool["name"] for tool in tools.TOOLS}
 
-    assert declared_names == set(_HANDLERS.keys())
+    # Reconciliation has one internal-only `remove_class` handler. It must
+    # never become a voice tool, where a misheard name could delete a class.
+    assert declared_names.issubset(_HANDLERS.keys())
 
 
 def test_tool_names_are_unique():

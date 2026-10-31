@@ -1,5 +1,9 @@
 # Next Steps
 
+**Image reconciliation follow-up 2026-10-31:** perform a manual browser smoke test with an existing diagram: upload a reduced image, cancel and confirm the diagram is unchanged; upload it again, apply, and confirm removed classes/members/relationships disappear as previewed. Also verify an image with a new attribute and changed multiplicity before committing/pushing.
+
+**Image-import follow-up 2026-10-31:** manually retry the `Venta`–`Producto`–`Cliente` whiteboard photo after the structured image-extraction and handwritten-multiplicity normalization corrections. Confirm that every visible attribute and both associations are created with their multiplicities; if handwriting remains ambiguous, improve recognition feedback rather than silently inventing model elements.
+
 **Documentation update 2026-10-31:** keep `README.md` aligned with actual service boundaries, quickstart commands and verification commands whenever Docker, web, mobile or runner workflows change.
 
 **Audit update 2026-10-31 (current priority):** (1) run backend pytest with the existing Compose `backend` and `db` services when they are intentionally started; (2) manually smoke `mobile-openapi-connect` against a real `/gen/<id>` deployment; (3) add keyboard navigation and screen-reader validation to the Cytoscape canvas; (4) keep all new tenant-bound models on `TenantScopedModel`/scoped managers and consider PostgreSQL RLS only if the threat model or scale requires defense in depth. Frontend tests (66 files/430 tests) and mobile analyze/test (0 issues/105 tests) passed in this audit.
