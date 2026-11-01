@@ -5,8 +5,9 @@ import { useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
-import type { VoiceCommandResult } from "@/lib/voice_command";
+import type { VoiceCommandPreview, VoiceCommandResult } from "@/lib/voice_command";
 
 /**
  * Minimal shape of the Web Speech API's `SpeechRecognition` this component
@@ -53,9 +54,8 @@ function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null 
 }
 
 type VoiceCommandButtonProps = {
-  /** Container-supplied: POSTs the transcript and returns the applied-commands
-   * report, mirroring `AddClassForm`'s `onSubmit`-returns-result convention. */
-  onSubmit: (transcript: string) => Promise<VoiceCommandResult>;
+  onPreview: (transcript: string) => Promise<VoiceCommandPreview>;
+  onConfirm: (planId: string) => Promise<VoiceCommandResult>;
   disabled?: boolean;
 };
 
@@ -71,10 +71,11 @@ type Status = "idle" | "listening" | "processing" | "done" | "error";
  * crash) when the browser has no `SpeechRecognition` at all (Firefox,
  * Safari).
  */
-export function VoiceCommandButton({ onSubmit, disabled = false }: VoiceCommandButtonProps) {
+export function VoiceCommandButton({ onPreview, onConfirm, disabled = false }: VoiceCommandButtonProps) {
   const [status, setStatus] = useState<Status>("idle");
   const [heard, setHeard] = useState<string | null>(null);
   const [result, setResult] = useState<VoiceCommandResult | null>(null);
+  const [preview, setPreview] = useState<VoiceCommandPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -85,14 +86,26 @@ export function VoiceCommandButton({ onSubmit, disabled = false }: VoiceCommandB
     setStatus("processing");
     setError(null);
     try {
-      const applied = await onSubmit(transcript);
-      setResult(applied);
+      setPreview(await onPreview(transcript));
       setStatus("done");
     } catch (err) {
       setResult(null);
       setError(
         err instanceof ApiError ? err.detail : "Ocurrió un error inesperado. Intenta de nuevo.",
       );
+      setStatus("error");
+    }
+  }
+
+  async function handleConfirm() {
+    if (preview === null) return;
+    setStatus("processing");
+    try {
+      setResult(await onConfirm(preview.plan_id));
+      setPreview(null);
+      setStatus("done");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : "Ocurrió un error inesperado. Intenta de nuevo.");
       setStatus("error");
     }
   }
@@ -188,6 +201,28 @@ export function VoiceCommandButton({ onSubmit, disabled = false }: VoiceCommandB
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+      <Dialog
+        open={preview !== null}
+        onOpenChange={(open) => !open && setPreview(null)}
+        title="Revisar comando de voz"
+        description="El comando todavía no modificó el diagrama. Confirmá para aplicar estos cambios."
+      >
+        <ul className="max-h-64 overflow-y-auto text-sm">
+          {preview?.changes.map((change, index) => (
+            <li key={index} className={change.ok ? "py-1" : "py-1 text-destructive"}>
+              {change.ok ? "•" : "⚠"} {change.message}
+            </li>
+          ))}
+        </ul>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setPreview(null)} disabled={status === "processing"}>
+            Cancelar
+          </Button>
+          <Button type="button" variant="caution" onClick={handleConfirm} disabled={status === "processing" || preview?.changes.some((change) => !change.ok)}>
+            Aplicar cambios
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

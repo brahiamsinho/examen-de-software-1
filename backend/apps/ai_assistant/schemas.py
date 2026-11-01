@@ -19,6 +19,16 @@ class VoiceCommandOut(Schema):
     applied: list[AppliedCommandOut]
 
 
+class VoiceCommandPreviewOut(Schema):
+    plan_id: str
+    base_revision: int
+    changes: list[AppliedCommandOut]
+
+
+class VoiceCommandConfirmIn(Schema):
+    plan_id: str
+
+
 class ImageImportPreviewOut(Schema):
     plan_id: str
     base_revision: int

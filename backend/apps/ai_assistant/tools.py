@@ -10,13 +10,11 @@ the diagram in natural language, so every function signature below takes
 class/attribute/operation/relationship *names* as strings; `translator.py`
 resolves those names to the document's real `ElementId`s.
 
-Only 9 of the 11 `UmlCommand`s are exposed (a documented judgment call,
-also called out in the implementation handoff): `RemoveClass` is left out
-because a misheard class name would silently delete a whole class and
-cascade-remove every relationship touching it — too destructive a blast
-radius for a voice channel with no undo. `SetGenerationProfile` is a
-low-level backend-generation knob (JPA/DB profile keys) nobody naturally
-describes in spoken language, so it stays manual-UI-only.
+Only 10 of the 11 `UmlCommand`s are exposed. `RemoveClass` is available
+because voice commands now require explicit preview confirmation before any
+diagram change persists. `SetGenerationProfile` is a low-level backend-
+generation knob (JPA/DB profile keys) nobody naturally describes in spoken
+language, so it stays manual-UI-only.
 """
 from apps.uml_modeling.domain.types import PrimitiveType
 
@@ -35,6 +33,16 @@ ADD_CLASS = {
         "type": "object",
         "properties": {"name": {"type": "string", "description": "The new class's name."}},
         "required": ["name"],
+    },
+}
+
+REMOVE_CLASS = {
+    "name": "remove_class",
+    "description": "Remove an existing UML class and its attached relationships.",
+    "parameters": {
+        "type": "object",
+        "properties": {"class_name": {"type": "string", "description": "The class to remove."}},
+        "required": ["class_name"],
     },
 }
 
@@ -185,6 +193,7 @@ UPDATE_RELATIONSHIP = {
 
 TOOLS = [
     ADD_CLASS,
+    REMOVE_CLASS,
     RENAME_CLASS,
     ADD_ATTRIBUTE,
     REMOVE_ATTRIBUTE,

@@ -31,7 +31,7 @@ import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
-import { postVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
+import { confirmVoiceCommand, previewVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
 import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_interop";
 import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
@@ -154,14 +154,12 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     router.replace("/dashboard");
   }
 
-  /**
-   * Same POST-then-refresh shape `useDocument.submitCommand` uses for the
-   * manual forms, just against the voice endpoint instead of `/commands`:
-   * `refreshDocument` is the identical GET-and-`setDocument` mechanism,
-   * exposed standalone so this doesn't invent a second refresh path.
-   */
-  async function handleVoiceCommand(transcript: string): Promise<VoiceCommandResult> {
-    const result = await postVoiceCommand(orgSlug!, docId, transcript);
+  async function handleVoicePreview(transcript: string) {
+    return previewVoiceCommand(orgSlug!, docId, transcript);
+  }
+
+  async function handleVoiceConfirm(planId: string): Promise<VoiceCommandResult> {
+    const result = await confirmVoiceCommand(orgSlug!, docId, planId);
     await refreshDocument();
     return result;
   }
@@ -359,7 +357,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                       <CardTitle>Comando de voz</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <VoiceCommandButton onSubmit={handleVoiceCommand} disabled={isSubmitting} />
+                      <VoiceCommandButton onPreview={handleVoicePreview} onConfirm={handleVoiceConfirm} disabled={isSubmitting} />
                     </CardContent>
                   </Card>
                 ) : null}

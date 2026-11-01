@@ -9,6 +9,7 @@ whole seam actually works, not just the translator in isolation.
 import datetime
 
 import pytest
+from django.core.cache import cache
 from django.utils import timezone
 
 from apps.ai_assistant.errors import MissingApiKeyError
@@ -17,7 +18,9 @@ from apps.ai_assistant.service import (
     apply_image_command,
     apply_voice_command,
     confirm_image_import,
+    confirm_voice_command,
     preview_image_import,
+    preview_voice_command,
 )
 from apps.organizations.tests.factories import make_organization
 from apps.uml_documents import services
@@ -105,7 +108,7 @@ class TestApplyVoiceCommand:
         )
 
         assert "creá una clase Persona" in gemini.received["transcript"]
-        assert len(gemini.received["tools"]) == 9
+        assert len(gemini.received["tools"]) == 10
 
     def test_a_multi_command_utterance_applies_every_command_in_order(self):
         organization = make_organization()
@@ -242,6 +245,116 @@ class TestApplyVoiceCommand:
                 now=timezone.now(),
                 gemini=gemini,
             )
+
+
+@pytest.mark.django_db
+class TestVoiceCommandPreview:
+    def test_preview_does_not_mutate_until_explicit_confirmation(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        gemini = FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Persona"})])
+
+        preview = preview_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá una clase Persona",
+            gemini=gemini,
+        )
+
+        assert [change.message for change in preview.changes] == ["Created class 'Persona'"]
+        assert services.get_document(organization=organization, doc_id=document.id).model.classes == ()
+
+        result = confirm_voice_command(
+            organization=organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+        )
+
+        assert result.applied == [type(result.applied[0])(ok=True, message="Created class 'Persona'")]
+        assert [item.name for item in services.get_document(organization=organization, doc_id=document.id).model.classes] == ["Persona"]
+
+    def test_remove_class_is_previewed_and_only_deleted_after_confirmation(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        apply_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá una clase Persona",
+            now=timezone.now(),
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Persona"})]),
+        )
+
+        preview = preview_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="eliminá Persona",
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="remove_class", args={"class_name": "Persona"})]),
+        )
+
+        assert [change.message for change in preview.changes] == ["Removed class 'Persona'"]
+        assert [item.name for item in services.get_document(organization=organization, doc_id=document.id).model.classes] == ["Persona"]
+
+        confirm_voice_command(
+            organization=organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+        )
+
+        assert services.get_document(organization=organization, doc_id=document.id).model.classes == ()
+
+    def test_stale_preview_cannot_overwrite_newer_voice_changes(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        preview = preview_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá una clase Persona",
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Persona"})]),
+        )
+        apply_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá una clase Cliente",
+            now=timezone.now(),
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Cliente"})]),
+        )
+
+        with pytest.raises(ValueError, match="diagram changed after this preview"):
+            confirm_voice_command(
+                organization=organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+            )
+
+        assert [item.name for item in services.get_document(organization=organization, doc_id=document.id).model.classes] == ["Cliente"]
+
+    def test_foreign_or_expired_preview_cannot_delete_a_class(self):
+        organization = make_organization()
+        owner = organization.memberships.get().user
+        document = _create_document(organization, owner)
+        apply_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="creá una clase Persona",
+            now=timezone.now(),
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="add_class", args={"name": "Persona"})]),
+        )
+        preview = preview_voice_command(
+            organization=organization,
+            doc_id=document.id,
+            transcript="eliminá Persona",
+            gemini=FakeGeminiClient([GeminiFunctionCall(name="remove_class", args={"class_name": "Persona"})]),
+        )
+
+        other_organization = make_organization()
+        with pytest.raises(ValueError, match="voice preview has expired"):
+            confirm_voice_command(
+                organization=other_organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+            )
+        cache.delete(f"ai_assistant:voice-command-plan:{preview.plan_id}")
+        with pytest.raises(ValueError, match="voice preview has expired"):
+            confirm_voice_command(
+                organization=organization, doc_id=document.id, plan_id=preview.plan_id, now=timezone.now()
+            )
+
+        assert [item.name for item in services.get_document(organization=organization, doc_id=document.id).model.classes] == ["Persona"]
 
 
 @pytest.mark.django_db
