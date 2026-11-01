@@ -13,6 +13,12 @@ export type VoiceCommandResult = {
   applied: AppliedVoiceCommand[];
 };
 
+export type VoiceCommandPreview = {
+  plan_id: string;
+  base_revision: number;
+  changes: AppliedVoiceCommand[];
+};
+
 // Slightly longer than the backend's own Gemini request timeout
 // (`REQUEST_TIMEOUT_MS` in `apps/ai_assistant/gemini_client.py`, 45s — real
 // measurement against the live API showed 19-25s+ for a trivial prompt on
@@ -29,5 +35,27 @@ export function postVoiceCommand(
   return apiFetch<VoiceCommandResult>(
     `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/voice-command`,
     { method: "POST", json: { transcript }, signal: AbortSignal.timeout(VOICE_COMMAND_TIMEOUT_MS) },
+  );
+}
+
+export function previewVoiceCommand(
+  orgSlug: string,
+  docId: string,
+  transcript: string,
+): Promise<VoiceCommandPreview> {
+  return apiFetch<VoiceCommandPreview>(
+    `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/voice-command-preview`,
+    { method: "POST", json: { transcript }, signal: AbortSignal.timeout(VOICE_COMMAND_TIMEOUT_MS) },
+  );
+}
+
+export function confirmVoiceCommand(
+  orgSlug: string,
+  docId: string,
+  planId: string,
+): Promise<VoiceCommandResult> {
+  return apiFetch<VoiceCommandResult>(
+    `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/voice-command-confirm`,
+    { method: "POST", json: { plan_id: planId } },
   );
 }

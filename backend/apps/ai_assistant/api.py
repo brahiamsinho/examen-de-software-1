@@ -17,8 +17,10 @@ from apps.ai_assistant.errors import GeminiRequestError, InvalidImageError, Miss
 from apps.ai_assistant.schemas import (
     ImageImportConfirmIn,
     ImageImportPreviewOut,
+    VoiceCommandConfirmIn,
     VoiceCommandIn,
     VoiceCommandOut,
+    VoiceCommandPreviewOut,
 )
 from apps.organizations.constants import Role
 from apps.organizations.permissions import require_role, resolve_membership
@@ -31,22 +33,54 @@ _MAX_IMAGE_BYTES = 10 * 1024 * 1024
 _ALLOWED_IMAGE_CONTENT_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
 
 
-@ai_assistant_router.post("/{doc_id}/voice-command", response=VoiceCommandOut)
+@ai_assistant_router.post("/{doc_id}/voice-command", response=VoiceCommandPreviewOut)
 def voice_command_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: VoiceCommandIn
+):
+    """Compatibility route: spoken commands are preview-only until confirmed."""
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    preview = service.preview_voice_command(
+        organization=membership.organization,
+        doc_id=doc_id,
+        transcript=payload.transcript,
+    )
+    return {
+        "plan_id": preview.plan_id,
+        "base_revision": preview.base_revision,
+        "changes": [dataclasses.asdict(item) for item in preview.changes],
+    }
+
+
+@ai_assistant_router.post("/{doc_id}/voice-command-preview", response=VoiceCommandPreviewOut)
+def voice_command_preview_view(
     request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: VoiceCommandIn
 ):
     membership = resolve_membership(request, org_slug)
     require_role(membership, Role.OWNER, Role.EDITOR)
-    result = service.apply_voice_command(
-        organization=membership.organization,
-        doc_id=doc_id,
-        transcript=payload.transcript,
-        now=timezone.now(),
+    preview = service.preview_voice_command(
+        organization=membership.organization, doc_id=doc_id, transcript=payload.transcript
     )
     return {
-        "revision": result.revision,
-        "applied": [{"ok": item.ok, "message": item.message} for item in result.applied],
+        "plan_id": preview.plan_id,
+        "base_revision": preview.base_revision,
+        "changes": [dataclasses.asdict(item) for item in preview.changes],
     }
+
+
+@ai_assistant_router.post("/{doc_id}/voice-command-confirm", response=VoiceCommandOut)
+def voice_command_confirm_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: VoiceCommandConfirmIn
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        result = service.confirm_voice_command(
+            organization=membership.organization, doc_id=doc_id, plan_id=payload.plan_id, now=timezone.now()
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return {"revision": result.revision, "applied": [dataclasses.asdict(item) for item in result.applied]}
 
 
 @ai_assistant_router.post("/{doc_id}/image-command", response=ImageImportPreviewOut)

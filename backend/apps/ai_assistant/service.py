@@ -74,6 +74,13 @@ class ImageImportPreview:
 
 
 @dataclasses.dataclass(frozen=True)
+class VoiceCommandPreview:
+    plan_id: str
+    base_revision: int
+    changes: list[AppliedCommand]
+
+
+@dataclasses.dataclass(frozen=True)
 class _ImageImportPlan:
     document_id: UUID
     organization_id: UUID
@@ -82,7 +89,17 @@ class _ImageImportPlan:
     changes: tuple[AppliedCommand, ...]
 
 
+@dataclasses.dataclass(frozen=True)
+class _VoiceCommandPlan:
+    document_id: UUID
+    organization_id: UUID
+    base_revision: int
+    calls: tuple[GeminiFunctionCall, ...]
+    changes: tuple[AppliedCommand, ...]
+
+
 _IMAGE_PLAN_TTL_SECONDS = 15 * 60
+_VOICE_PLAN_TTL_SECONDS = 15 * 60
 
 
 def _document_context(document: ProjectDocument) -> str:
@@ -132,6 +149,64 @@ def apply_voice_command(
 
     return _apply_translated_commands(
         organization=organization, doc_id=doc_id, document=document, calls=calls, now=now
+    )
+
+
+def preview_voice_command(
+    *,
+    organization: Organization,
+    doc_id: UUID,
+    transcript: str,
+    gemini: GeminiClientProtocol | None = None,
+) -> VoiceCommandPreview:
+    """Interpret speech into an expiring, non-persisted edit plan."""
+    gemini = gemini or get_active_llm_client()
+    document = services.get_document(organization=organization, doc_id=doc_id)
+    calls = gemini.generate_function_calls(
+        system_instruction=_SYSTEM_INSTRUCTION,
+        transcript=f"{_document_context(document)}\n\nUser said: {transcript}",
+        tools=tools.TOOLS,
+    )
+    changes = tuple(_describe_calls(document, calls))
+    plan_id = uuid4().hex
+    cache.set(
+        _voice_plan_key(plan_id),
+        _VoiceCommandPlan(
+            document_id=doc_id,
+            organization_id=organization.id,
+            base_revision=document.revision,
+            calls=tuple(calls),
+            changes=changes,
+        ),
+        timeout=_VOICE_PLAN_TTL_SECONDS,
+    )
+    return VoiceCommandPreview(plan_id=plan_id, base_revision=document.revision, changes=list(changes))
+
+
+def confirm_voice_command(
+    *, organization: Organization, doc_id: UUID, plan_id: str, now: datetime.datetime
+) -> VoiceCommandResult:
+    plan = cache.get(_voice_plan_key(plan_id))
+    if not isinstance(plan, _VoiceCommandPlan) or plan.document_id != doc_id or plan.organization_id != organization.id:
+        raise ValueError("This voice preview has expired. Speak the command again.")
+    document = services.get_document(organization=organization, doc_id=doc_id)
+    if document.revision != plan.base_revision:
+        raise ValueError("The diagram changed after this preview. Speak the command again.")
+    cache.delete(_voice_plan_key(plan_id))
+    if not plan.calls:
+        return VoiceCommandResult(revision=document.revision, applied=[])
+    translator = Translator(document.model)
+    translated = [translator.translate(call) for call in plan.calls]
+    result = services.submit_commands(
+        organization=organization,
+        doc_id=doc_id,
+        commands_to_apply=[services.command_from_payload(item.payload) for item in translated],
+        now=now,
+        expected_revision=plan.base_revision,
+    )
+    return VoiceCommandResult(
+        revision=result.document.revision,
+        applied=[AppliedCommand(ok=True, message=item.description) for item in translated],
     )
 
 
@@ -233,6 +308,10 @@ def confirm_image_import(
 
 def _image_plan_key(plan_id: str) -> str:
     return f"ai_assistant:image-import-plan:{plan_id}"
+
+
+def _voice_plan_key(plan_id: str) -> str:
+    return f"ai_assistant:voice-command-plan:{plan_id}"
 
 
 def _describe_calls(document: ProjectDocument, calls: Sequence[GeminiFunctionCall]) -> list[AppliedCommand]:

@@ -82,7 +82,7 @@ def _upload(
 
 @pytest.mark.django_db
 class TestVoiceCommandView:
-    def test_editor_applies_a_voice_command(self, auth_client):
+    def test_editor_receives_a_non_mutating_voice_preview(self, auth_client):
         organization, owner, editor, _viewer, _outsider = make_org_with_roles()
         doc_id = _create_document(organization, owner)
         auth_client.force_login(editor)
@@ -96,10 +96,11 @@ class TestVoiceCommandView:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["revision"] == 2
-        assert body["applied"] == [{"ok": True, "message": "Created class 'Persona'"}]
+        assert body["base_revision"] == 1
+        assert body["changes"] == [{"ok": True, "message": "Created class 'Persona'"}]
+        assert services.get_document(organization=organization, doc_id=doc_id).model.classes == ()
 
-    def test_owner_applies_a_voice_command(self, auth_client):
+    def test_owner_receives_an_empty_voice_preview(self, auth_client):
         organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
         doc_id = _create_document(organization, owner)
         auth_client.force_login(owner)
@@ -112,7 +113,31 @@ class TestVoiceCommandView:
             )
 
         assert response.status_code == 200
-        assert response.json() == {"revision": 1, "applied": []}
+        assert response.json()["base_revision"] == 1
+        assert response.json()["changes"] == []
+
+    def test_confirm_applies_a_voice_preview_only_after_explicit_request(self, auth_client):
+        organization, owner, _editor, _viewer, _outsider = make_org_with_roles()
+        doc_id = _create_document(organization, owner)
+        auth_client.force_login(owner)
+
+        with _patched_gemini([GeminiFunctionCall(name="add_class", args={"name": "Persona"})]):
+            preview = auth_client.post(
+                _url(organization, doc_id),
+                data={"transcript": "creá una clase Persona"},
+                content_type="application/json",
+            )
+
+        assert services.get_document(organization=organization, doc_id=doc_id).model.classes == ()
+        confirmed = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents/{doc_id}/voice-command-confirm",
+            data={"plan_id": preview.json()["plan_id"]},
+            content_type="application/json",
+        )
+
+        assert confirmed.status_code == 200
+        assert confirmed.json()["applied"] == [{"ok": True, "message": "Created class 'Persona'"}]
+        assert [item.name for item in services.get_document(organization=organization, doc_id=doc_id).model.classes] == ["Persona"]
 
     def test_viewer_is_denied(self, auth_client):
         organization, owner, _editor, viewer, _outsider = make_org_with_roles()
@@ -225,8 +250,9 @@ class TestVoiceCommandView:
 
         assert response.status_code == 200
         body = response.json()
-        assert body["applied"][0] == {"ok": True, "message": "Created class 'Persona'"}
-        assert body["applied"][1]["ok"] is False
+        assert body["changes"][0] == {"ok": True, "message": "Created class 'Persona'"}
+        assert body["changes"][1]["ok"] is False
+        assert services.get_document(organization=organization, doc_id=doc_id).model.classes == ()
 
 
 @pytest.mark.django_db
