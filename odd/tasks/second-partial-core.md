@@ -17,7 +17,7 @@ S5. "Como quinto punto auditor inteligente ademas de validar UML, podria analiza
 ## Tasks
 
 - T1 — S1-S5 — inline — complete — Established baseline and traceability; route: inline because no writer trigger applies; evidence: repository audit plus `docs/ai/TRACEABILITY_MATRIX.md`; commit: pending.
-- T2 — S1 — inline — complete — Added immutable UML snapshots, history, structural comparison, explicit-confirmation restoration and UI; Risk: item 1 (restoration changes persisted UML content); evidence: backend 149 tests, frontend 67 files / 432 tests, TypeScript check and independent verifier passed; commit: `948eb99`.
+- T2 — S1 — inline — complete — Added immutable UML snapshots, history, structural comparison, explicit-confirmation restoration and UI; Risk: item 1 (restoration changes persisted UML content); evidence: backend 149 tests, frontend 67 files / 432 tests, TypeScript check and independent verifier passed; commit: `ea1c9ff`.
 - T3 — S3 — inline — pending — Add tenant-scoped template catalogue, publication and independent document instantiation; Risk: item 1 (persisted template and document data); commit: pending.
 - T4 — S4 — inline — pending — Expose a full read-only relational preview and deterministic SQL export from the authoritative mapper; Risk: none; commit: pending.
 - T5 — S5 — inline — pending — Add deterministic architectural audit findings, optional local-AI explanation boundary and report export; Risk: item 3 (new consumed audit contract); commit: pending.
@@ -41,4 +41,4 @@ L4 — T1 complete: recorded current reusable foundations, missing capability bo
 
 L5 — T2 complete: `UmlVersion` stores tenant-bound JSON snapshots with sequential version numbers, source revision, author and optional description. History/compare read snapshots only; restore requires an explicit UI confirmation and expected-revision validation under the document row lock, then writes a new revision and broadcasts it. Independent high-risk verification found no blockers.
 
-L6 — T2 delivery: committed as `948eb99 feat(uml): add diagram version history`. Native assessment is high risk (item 1); receipt-driven development is clone-locally disabled, so no native review lifecycle was started. Assessment explicitly excluded two user-owned untracked files.
+L6 — T2 delivery: committed as `ea1c9ff feat(uml): add diagram version history`. Native assessment is high risk (item 1); receipt-driven development is clone-locally disabled, so no native review lifecycle was started. Assessment explicitly excluded two user-owned untracked files.
