@@ -28,6 +28,7 @@ import { ValidationPanel } from "@/components/workspace/ValidationPanel";
 import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert";
 import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
+import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
@@ -336,7 +337,16 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
         </div>
 
         <aside className="flex w-full flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
-          <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
+           <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Versiones</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VersionHistoryPanel orgSlug={orgSlug} docId={docId} revision={document.revision} canEdit={canEdit} onRestored={refreshDocument} />
+            </CardContent>
+          </Card>
 
           <ValidationPanel lastValidation={lastValidation} />
 

@@ -1,5 +1,7 @@
 # Next Steps
 
+**Second partial 2026-11-06:** implement T3 from `odd/tasks/second-partial-core.md`: tenant-scoped UML templates, catalogue, safe deep cloning with new IDs and organization visibility. Preserve the version-history API and do not copy snapshots by reference.
+
 **Voice preview follow-up 2026-11-01:** manually smoke-test speech in Chrome or Edge: speak a class deletion, cancel it and confirm the class remains; repeat, confirm it, and verify the class disappears. Also verify a multi-command edit and the stale-preview error after another edit changes the diagram.
 
 **Image reconciliation follow-up 2026-10-31:** perform a manual browser smoke test with an existing diagram: upload a reduced image, cancel and confirm the diagram is unchanged; upload it again, apply, and confirm removed classes/members/relationships disappear as previewed. Also verify an image with a new attribute and changed multiplicity before committing/pushing.

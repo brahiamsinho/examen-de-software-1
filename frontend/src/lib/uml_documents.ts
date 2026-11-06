@@ -178,8 +178,68 @@ export type DocumentSummary = {
   updated_at: string;
 };
 
+export type UmlVersionSummary = {
+  id: string;
+  number: number;
+  source_revision: number;
+  description: string;
+  created_by_id: string | null;
+  created_at: string;
+};
+
+export type UmlVersion = UmlVersionSummary & {
+  snapshot: Pick<UmlDocument, "metadata" | "model" | "layout">;
+};
+
+export type VersionChange = { id: string; name?: string; class_id?: string; class_name?: string };
+export type VersionDiff = {
+  from_version_id: string;
+  to_version_id: string;
+  classes: { added: VersionChange[]; removed: VersionChange[]; modified: { before: VersionChange; after: VersionChange }[] };
+  attributes: { added: VersionChange[]; removed: VersionChange[]; modified: { before: VersionChange; after: VersionChange }[] };
+  relationships: { added: VersionChange[]; removed: VersionChange[]; modified: { before: VersionChange; after: VersionChange }[] };
+};
+
 export async function listDocuments(orgSlug: string): Promise<DocumentSummary[]> {
   return apiFetch<DocumentSummary[]>(base(orgSlug));
+}
+
+function versionsBase(orgSlug: string, docId: string): string {
+  return `${base(orgSlug)}/${encodeURIComponent(docId)}/versions`;
+}
+
+export function listVersions(orgSlug: string, docId: string): Promise<UmlVersionSummary[]> {
+  return apiFetch<UmlVersionSummary[]>(versionsBase(orgSlug, docId));
+}
+
+export function createVersion(
+  orgSlug: string,
+  docId: string,
+  input: { description: string; expected_revision: number },
+): Promise<UmlVersion> {
+  return apiFetch<UmlVersion>(versionsBase(orgSlug, docId), { method: "POST", json: input });
+}
+
+export function compareVersions(
+  orgSlug: string,
+  docId: string,
+  fromVersionId: string,
+  toVersionId: string,
+): Promise<VersionDiff> {
+  const query = new URLSearchParams({ from_version_id: fromVersionId, to_version_id: toVersionId });
+  return apiFetch<VersionDiff>(`${versionsBase(orgSlug, docId)}/compare?${query}`);
+}
+
+export function restoreVersion(
+  orgSlug: string,
+  docId: string,
+  versionId: string,
+  expectedRevision: number,
+): Promise<UmlDocument> {
+  return apiFetch<UmlDocument>(`${versionsBase(orgSlug, docId)}/${encodeURIComponent(versionId)}/restore`, {
+    method: "POST",
+    json: { expected_revision: expectedRevision },
+  });
 }
 
 export async function submitCommand(
