@@ -16,6 +16,8 @@ diagram change persists. `SetGenerationProfile` is a low-level backend-
 generation knob (JPA/DB profile keys) nobody naturally describes in spoken
 language, so it stays manual-UI-only.
 """
+import copy
+
 from apps.uml_modeling.domain.types import PrimitiveType
 
 _VISIBILITIES = ["public", "private", "protected", "package"]
@@ -275,15 +277,53 @@ IMAGE_IMPORT_TOOLS = [EXTRACT_UML_DIAGRAM]
 # reason: asked for "one call per change", the real model stopped at
 # `add_class` and omitted every attribute and relationship. One object forces a
 # complete suggestion (classes WITH their members, plus relationships).
+# Told to the model wherever it may propose relationships (board proposals and
+# the chat). The editor already derives the intermediate table of a both-ends-many
+# association, so the model must express many-to-many with the multiplicities
+# instead of drawing `1 - 0..*` links, which silently change what is generated.
+RELATIONSHIP_GUIDANCE = (
+    "Relationships: always give BOTH multiplicities. The multiplicity at an end says how "
+    "many instances of THAT end's class relate to ONE instance of the class at the other "
+    "end (a Customer places '0..*' Orders; an Order belongs to '1' Customer). "
+    "One-to-many: '1' (or '0..1') on the one side and '0..*' (or '1..*') on the many side. "
+    "A many-to-many relationship (users and roles, roles and permissions, students and "
+    "courses) must have BOTH ends many ('0..*' or '1..*'), never '1' on either end; the "
+    "editor derives the intermediate table from it, so do not add a join class yourself. "
+    "Only when the link carries its own data (a date, a quantity, a status) create an "
+    "explicit intermediate class with those attributes and connect it to each side with "
+    "a '1' to '0..*' association. Use composition or aggregation only for real whole-part "
+    "ownership, with '1' on the whole side."
+)
+
+_PROPOSAL_MULTIPLICITY_DESCRIPTION = (
+    "Multiplicity at THIS end: how many instances of this end's class relate to ONE "
+    "instance of the class at the other end. One of '1', '0..1', '0..*', '1..*'. "
+    "A many-to-many relationship has many at both ends."
+)
+
+
+def _suggestion_parameters() -> dict:
+    """The extraction schema, copied (the image import must keep its own) with
+    both multiplicities made mandatory: left out, the translator silently falls
+    back to `0..1`/`0..*`, which is how a many-to-many link ended up `1 - 0..*`."""
+    parameters = copy.deepcopy(EXTRACT_UML_DIAGRAM["parameters"])
+    relationship = parameters["properties"]["relationships"]["items"]
+    for end in ("source_multiplicity", "target_multiplicity"):
+        relationship["properties"][end]["description"] = _PROPOSAL_MULTIPLICITY_DESCRIPTION
+    relationship["required"] = [*relationship["required"], "source_multiplicity", "target_multiplicity"]
+    return parameters
+
+
 SUGGEST_UML_ADDITIONS = {
     "name": "suggest_uml_additions",
     "description": (
         "Suggest what to ADD to the UML class diagram. List each new class together "
         "with its attributes and operations, and every relationship that connects "
-        "classes. You may also list an existing class to give it new attributes or "
-        "operations. Never repeat something the diagram already contains."
+        "classes, each with both multiplicities. You may also list an existing class "
+        "to give it new attributes or operations. Never repeat something the diagram "
+        "already contains."
     ),
-    "parameters": EXTRACT_UML_DIAGRAM["parameters"],
+    "parameters": _suggestion_parameters(),
 }
 
 PROPOSAL_TOOLS = [SUGGEST_UML_ADDITIONS]

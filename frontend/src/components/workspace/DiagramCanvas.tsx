@@ -243,8 +243,9 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
   },
   {
     // A relationship an AI proposal would add (issue #15), drawn dashed in the
-    // same violet as its draft classes; it carries no label and no arrow, since
-    // it is only a preview of "these two would be connected".
+    // same violet as its draft classes; it has no arrow, but it does carry the
+    // name and each end's multiplicity (from the generic `edge` style), since the
+    // approver must see what a relationship would be before approving it.
     selector: "edge.ai-draft-edge",
     style: { "line-style": "dashed", "line-color": AI_DRAFT_BORDER, width: 1.5, "curve-style": "bezier" },
   },
@@ -469,7 +470,16 @@ export function aiDraftElements(
   });
   for (const relationship of drafts.relationships) {
     elements.push({
-      data: { id: relationship.id, source: relationship.source, target: relationship.target, synthetic: true },
+      data: {
+        id: relationship.id,
+        source: relationship.source,
+        target: relationship.target,
+        // The labels the generic `edge` style already draws for real relationships.
+        label: relationship.name,
+        sourceLabel: relationship.sourceMultiplicity,
+        targetLabel: relationship.targetMultiplicity,
+        synthetic: true,
+      },
       classes: "ai-draft-edge",
     } as ElementDefinition);
   }

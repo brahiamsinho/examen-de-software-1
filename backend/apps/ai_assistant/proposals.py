@@ -35,7 +35,7 @@ _PROPOSAL_INSTRUCTION = (
     "list an existing class to give it new attributes or operations. Never repeat "
     "something that already exists in the diagram and never invent changes that "
     "do not follow from the request. Refer to classes by name, never by id. If "
-    "nothing useful can be added, return empty lists."
+    "nothing useful can be added, return empty lists. " + tools.RELATIONSHIP_GUIDANCE
 )
 
 
@@ -202,6 +202,21 @@ def create_proposal(
     return proposal
 
 
+def _with_multiplicities(call: GeminiFunctionCall, message: str) -> str:
+    """Shows an approver what a relationship would really get, with the same
+    defaults the translator applies, and flags a both-ends-many link: the editor
+    derives its intermediate table, so approving it adds more than two classes
+    and a line."""
+    if call.name != "add_relationship":
+        return message
+    source = str(call.args.get("source_multiplicity") or "0..1")
+    target = str(call.args.get("target_multiplicity") or "0..*")
+    note = f" ({source} to {target}"
+    if "*" in source and "*" in target:
+        note += ", many-to-many: an intermediate table is derived from it"
+    return f"{message}{note})"
+
+
 def propose_calls(
     *,
     organization: Organization,
@@ -218,7 +233,8 @@ def propose_calls(
     if not calls:
         return None
     changes = [
-        {"ok": item.ok, "message": item.message} for item in service.describe_calls(document, calls)
+        {"ok": item.ok, "message": _with_multiplicities(call, item.message)}
+        for call, item in zip(calls, service.describe_calls(document, calls), strict=True)
     ]
     with transaction.atomic():
         proposal = AiProposal.objects.for_organization(organization).create(

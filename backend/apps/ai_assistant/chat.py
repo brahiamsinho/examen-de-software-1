@@ -47,7 +47,7 @@ _CHAT_INSTRUCTION = (
     "and operations, and its relationships): it leaves a draft on the board that a "
     "developer approves. Then say in reply_in_chat that you left a draft for them to "
     "approve; never say you already added or changed anything. If you have nothing "
-    "useful to add, make no call."
+    "useful to add, make no call. " + tools.RELATIONSHIP_GUIDANCE
 )
 
 # Said by the chat itself when the model left a draft but wrote no sentence.

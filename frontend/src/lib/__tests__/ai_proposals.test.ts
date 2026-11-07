@@ -131,8 +131,45 @@ describe("buildAiDrafts", () => {
     ]);
 
     expect(drafts.relationships).toEqual([
-      { id: "ai-draft-edge:p1:1", source: "c-persona", target: "ai-draft:p1:pedido", kind: "association", proposalId: "p1" },
+      {
+        id: "ai-draft-edge:p1:1",
+        source: "c-persona",
+        target: "ai-draft:p1:pedido",
+        kind: "association",
+        name: "",
+        // The same defaults the backend applies when the AI gives none.
+        sourceMultiplicity: "0..1",
+        targetMultiplicity: "0..*",
+        proposalId: "p1",
+      },
     ]);
+  });
+
+  it("carries the multiplicity of each end and the name, so a many-to-many draft reads as one", () => {
+    const drafts = buildAiDrafts(model, [
+      proposal({
+        calls: [
+          { name: "add_class", args: { name: "Rol" } },
+          {
+            name: "add_relationship",
+            args: {
+              kind: "association",
+              source_class_name: "Persona",
+              target_class_name: "Rol",
+              source_multiplicity: "0..*",
+              target_multiplicity: "1..*",
+              name: "tiene",
+            },
+          },
+        ],
+      }),
+    ]);
+
+    expect(drafts.relationships[0]).toMatchObject({
+      name: "tiene",
+      sourceMultiplicity: "0..*",
+      targetMultiplicity: "1..*",
+    });
   });
 
   it("shows the operations the AI proposes on a draft class", () => {
