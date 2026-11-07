@@ -24,6 +24,8 @@ _SCOPED_FILES = (
     _PACKAGE_DIR / "translator.py",
     _PACKAGE_DIR / "schemas.py",
     _PACKAGE_DIR / "service.py",
+    _PACKAGE_DIR / "models.py",
+    _PACKAGE_DIR / "proposals.py",
     _PACKAGE_DIR / "api.py",
 )
 _ALLOWED_PREFIXES = (

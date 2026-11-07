@@ -12,11 +12,13 @@ from ninja import File, Path, Router, UploadedFile
 from ninja.errors import HttpError
 from ninja.security import django_auth
 
-from apps.ai_assistant import service
+from apps.ai_assistant import proposals, service
 from apps.ai_assistant.errors import GeminiRequestError, InvalidImageError, MissingApiKeyError
 from apps.ai_assistant.schemas import (
     ImageImportConfirmIn,
     ImageImportPreviewOut,
+    ProposalOut,
+    ProposalRequestIn,
     VoiceCommandConfirmIn,
     VoiceCommandIn,
     VoiceCommandOut,
@@ -144,6 +146,70 @@ def image_import_confirm_view(
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc
     return {"revision": result.revision, "applied": [dataclasses.asdict(item) for item in result.applied]}
+
+
+# --- AI board proposals (issue #15) ----------------------------------------
+
+
+@ai_assistant_router.post("/{doc_id}/ai-proposals", response={201: ProposalOut})
+def create_proposal_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: ProposalRequestIn
+):
+    """A teammate asks the AI for ideas. The answer is a draft: it is stored
+    and broadcast, and the diagram is not touched until someone approves it."""
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        proposal = proposals.create_proposal(
+            organization=membership.organization,
+            doc_id=doc_id,
+            requested_by=request.user,
+            prompt=payload.prompt,
+        )
+    except proposals.NoSuggestionsError as exc:
+        raise HttpError(422, str(exc)) from exc
+    return 201, proposals.serialize_proposal(proposal)
+
+
+@ai_assistant_router.get("/{doc_id}/ai-proposals", response=list[ProposalOut])
+def list_proposals_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)  # any member reads
+    found = proposals.list_proposals(organization=membership.organization, doc_id=doc_id)
+    return [proposals.serialize_proposal(item) for item in found]
+
+
+@ai_assistant_router.post("/{doc_id}/ai-proposals/{proposal_id}/approve", response=ProposalOut)
+def approve_proposal_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, proposal_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        proposal = proposals.approve_proposal(
+            organization=membership.organization,
+            doc_id=doc_id,
+            proposal_id=proposal_id,
+            decided_by=request.user,
+            now=timezone.now(),
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return proposals.serialize_proposal(proposal)
+
+
+@ai_assistant_router.post("/{doc_id}/ai-proposals/{proposal_id}/reject", response=ProposalOut)
+def reject_proposal_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, proposal_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        proposal = proposals.reject_proposal(
+            organization=membership.organization,
+            doc_id=doc_id,
+            proposal_id=proposal_id,
+            decided_by=request.user,
+            now=timezone.now(),
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return proposals.serialize_proposal(proposal)
 
 
 # --- exception handlers ----------------------------------------------------

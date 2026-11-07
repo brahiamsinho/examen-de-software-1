@@ -330,6 +330,14 @@ def broadcast_document(*, document: ProjectDocument) -> None:
     )
 
 
+def broadcast_event(*, document_id: UUID, payload: dict) -> None:
+    """Fans a JSON-safe, `type`-tagged event out to every socket subscribed
+    to this document's group. Used by features (e.g. AI proposals) that
+    share the document socket without owning it. Call via
+    `transaction.on_commit` so readers never see an uncommitted state."""
+    async_to_sync(get_channel_layer().group_send)(f"uml-doc-{document_id}", payload)
+
+
 def create_document(
     *, organization: Organization, owner_id: str, name: str, now: datetime.datetime
 ) -> ProjectDocument:
