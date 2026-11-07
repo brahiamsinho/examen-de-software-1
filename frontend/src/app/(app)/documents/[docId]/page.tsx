@@ -1,7 +1,7 @@
 "use client";
 
 import { useAtomValue } from "jotai";
-import { AlertTriangle, FileUp, Trash2 } from "lucide-react";
+import { AlertTriangle, FileUp, ScrollText, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useMemo, useState } from "react";
 
@@ -13,6 +13,7 @@ import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
 import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
+import { ActivityLogDialog } from "@/components/workspace/ActivityLogDialog";
 import { AiProposalsPanel } from "@/components/workspace/AiProposalsPanel";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
@@ -42,6 +43,7 @@ import {
 import { postChat, type ChatMessage } from "@/lib/ai_chat";
 import { ApiError } from "@/lib/api";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
+import { downloadLog } from "@/lib/session_log";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
 import { confirmVoiceCommand, previewVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
@@ -49,6 +51,7 @@ import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_
 import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
 import { useDocumentActions } from "@/state/documents";
+import { useSessionLog } from "@/state/session_log";
 import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
 
 const NO_AI_DRAFTS: AiDrafts = { classes: [], relationships: [] };
@@ -100,6 +103,10 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const myRole = organizations.find((org) => org.slug === orgSlug)?.my_role ?? null;
   const canEdit = myRole === "OWNER" || myRole === "EDITOR";
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [exportingLog, setExportingLog] = useState(false);
+  const [logExportError, setLogExportError] = useState<string | null>(null);
+  const sessionLog = useSessionLog(orgSlug, docId, logOpen);
   const [askingAi, setAskingAi] = useState(false);
   const [busyProposalId, setBusyProposalId] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
@@ -217,6 +224,18 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
       throw err; // keeps the typed text in the panel so the user can retry
     } finally {
       setAskingAi(false);
+    }
+  }
+
+  async function handleExportLog() {
+    setExportingLog(true);
+    setLogExportError(null);
+    try {
+      await downloadLog(orgSlug!, docId, sessionLog.filters);
+    } catch {
+      setLogExportError("No se pudo exportar la bitácora. Intenta de nuevo.");
+    } finally {
+      setExportingLog(false);
     }
   }
 
@@ -339,6 +358,10 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               label="Exportar XML"
               pendingLabel="Exportando..."
             />
+            <Button type="button" variant="outline" size="lg" onClick={() => setLogOpen(true)}>
+              <ScrollText />
+              Bitácora
+            </Button>
             {canEdit && !isBlank ? (
               <ImportXmiControl onImport={handleImportIntoDocument} disabled={isSubmitting} />
             ) : null}
@@ -632,6 +655,20 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
         onOpenChange={setDeleteOpen}
         diagramName={document.metadata.name}
         onConfirm={handleDelete}
+      />
+      <ActivityLogDialog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        entries={sessionLog.entries}
+        sessions={sessionLog.sessions}
+        filters={sessionLog.filters}
+        loading={sessionLog.loading}
+        error={sessionLog.error}
+        exporting={exportingLog}
+        exportError={logExportError}
+        onFiltersChange={sessionLog.setFilters}
+        onExport={() => void handleExportLog()}
+        onReload={sessionLog.reload}
       />
     </div>
   );

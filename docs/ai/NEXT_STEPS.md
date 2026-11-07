@@ -1,6 +1,6 @@
 # Next Steps
 
-**AI participation 2026-11-07:** #15 (AI proposals on the board) is merged (PR #20). #16 (group chat, the AI answers when mentioned with `@IA`) is implemented and verified on `feature/ai-group-chat`; next: independent verification, then push and a PR with `Closes #16` once the user authorizes it, then #17 (session log). Add trigger B (the AI proposes on its own) as a follow-up over the same proposal pipeline. #18 and #19 have their own owners/decisions: #19 needs a push-service choice first. The real LLM provider call for proposals has not been exercised yet; try it once with a real key.
+**AI participation 2026-11-07:** #15 (AI proposals on the board) is merged (PR #20). #16 (group chat, the AI answers when mentioned with `@IA`) is merged (PR #21). #17 (session log) is implemented and verified on `feature/session-log`; next: independent verification, then push and a PR with `Closes #17` once the user authorizes it. Add trigger B (the AI proposes on its own) as a follow-up over the same proposal pipeline. #18 and #19 have their own owners/decisions: #19 needs a push-service choice first. The real LLM provider call for proposals has not been exercised yet; try it once with a real key.
 
 **Second partial 2026-11-06:** implement T3 from `odd/tasks/second-partial-core.md`: tenant-scoped UML templates, catalogue, safe deep cloning with new IDs and organization visibility. Preserve the version-history API and do not copy snapshots by reference.
 
