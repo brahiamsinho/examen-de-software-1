@@ -178,12 +178,18 @@ export type DocumentSummary = {
   updated_at: string;
 };
 
+export type TemplatePreview = {
+  classes: { id: string; name: string; attributes: number; x: number; y: number }[];
+  relationships: { source: string; target: string; kind: RelationshipKind }[];
+};
+
 export type UmlTemplateSummary = {
   id: string;
   name: string;
   source_document_id: string | null;
   created_by_id: string | null;
   created_at: string;
+  preview: TemplatePreview;
 };
 
 export type UmlTemplate = UmlTemplateSummary & {
