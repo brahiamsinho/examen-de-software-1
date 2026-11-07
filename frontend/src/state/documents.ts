@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   createDocument,
   deleteDocument,
+  instantiateTemplate,
   listDocuments,
   type DocumentSummary,
 } from "@/lib/uml_documents";
@@ -54,6 +55,16 @@ export function useDocumentActions(orgSlug: string | null) {
     [orgSlug, invalidate, router],
   );
 
+  const instantiateDiagram = useCallback(
+    async (templateId: string, input: { name: string }) => {
+      const doc = await instantiateTemplate(orgSlug!, templateId, input);
+      invalidate();
+      router.push(`/documents/${doc.id}`);
+      return doc;
+    },
+    [orgSlug, invalidate, router],
+  );
+
   /**
    * Deletes then invalidates the shared list so the sidebar and the grid drop
    * the card. Navigation is the caller's call: the grid stays put, the editor
@@ -67,7 +78,7 @@ export function useDocumentActions(orgSlug: string | null) {
     [orgSlug, invalidate],
   );
 
-  return { createDiagram, importDiagram, deleteDiagram };
+  return { createDiagram, importDiagram, instantiateDiagram, deleteDiagram };
 }
 
 /**

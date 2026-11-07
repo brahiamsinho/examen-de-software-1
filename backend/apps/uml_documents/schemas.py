@@ -138,6 +138,14 @@ class VersionRestoreIn(Schema):
     expected_revision: int
 
 
+class TemplateCreateIn(Schema):
+    name: str
+
+
+class TemplateInstantiateIn(Schema):
+    name: str
+
+
 class MetadataOut(Schema):
     name: str
     description: str
@@ -175,6 +183,18 @@ class VersionSummaryOut(Schema):
 
 
 class VersionOut(VersionSummaryOut):
+    snapshot: dict
+
+
+class TemplateSummaryOut(Schema):
+    id: UUID
+    name: str
+    source_document_id: UUID | None
+    created_by_id: UUID | None
+    created_at: datetime
+
+
+class TemplateOut(TemplateSummaryOut):
     snapshot: dict
 
 

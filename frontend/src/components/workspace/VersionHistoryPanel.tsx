@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import {
   compareVersions,
+  createTemplate,
   createVersion,
   listVersions,
   restoreVersion,
@@ -41,6 +42,7 @@ function ChangeList({ title, changes }: { title: string; changes: { added: Versi
 export function VersionHistoryPanel({ orgSlug, docId, revision, canEdit, onRestored }: Props) {
   const [versions, setVersions] = useState<UmlVersionSummary[]>([]);
   const [description, setDescription] = useState("");
+  const [templateName, setTemplateName] = useState("");
   const [fromId, setFromId] = useState("");
   const [toId, setToId] = useState("");
   const [diff, setDiff] = useState<VersionDiff | null>(null);
@@ -85,6 +87,20 @@ export function VersionHistoryPanel({ orgSlug, docId, revision, canEdit, onResto
     }
   }
 
+  async function publishTemplate() {
+    if (!templateName.trim()) return;
+    setBusy(true);
+    try {
+      await createTemplate(orgSlug, docId, { name: templateName.trim() });
+      setTemplateName("");
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : "No se pudo guardar la plantilla.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function showDiff() {
     if (!fromId || !toId || fromId === toId) return;
     setBusy(true);
@@ -118,6 +134,12 @@ export function VersionHistoryPanel({ orgSlug, docId, revision, canEdit, onResto
         <div className="flex gap-2">
           <input aria-label="Descripción de versión" className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Descripción opcional" maxLength={500} />
           <Button type="button" onClick={saveVersion} disabled={busy}>Guardar versión</Button>
+        </div>
+      ) : null}
+      {canEdit ? (
+        <div className="flex gap-2">
+          <input aria-label="Nombre de plantilla" className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm" value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Nombre de plantilla" maxLength={255} />
+          <Button type="button" variant="outline" onClick={publishTemplate} disabled={busy || !templateName.trim()}>Guardar plantilla</Button>
         </div>
       ) : null}
       {versions.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no hay versiones guardadas.</p> : (

@@ -9,6 +9,8 @@ Every Access).
 """
 import dataclasses
 import datetime
+import copy
+import uuid
 from uuid import UUID
 
 from asgiref.sync import async_to_sync
@@ -27,7 +29,7 @@ from apps.relational_mapping.mapping.profile_parser import (
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_documents import codec, schemas
 from apps.uml_documents.errors import InvalidCommandPayloadError
-from apps.uml_documents.models import UmlDocument, UmlVersion
+from apps.uml_documents.models import UmlDocument, UmlTemplate, UmlVersion
 from apps.uml_modeling.documents import DiagramLayout, Position, ProjectDocument, ProjectMetadata
 from apps.uml_modeling.domain.elements import (
     Relationship,
@@ -88,6 +90,77 @@ def _get_version(*, organization: Organization, doc_id: UUID, version_id: UUID) 
         return UmlVersion.objects.for_organization(organization).get(document_id=doc_id, id=version_id)
     except UmlVersion.DoesNotExist as exc:
         raise Http404("Version not found") from exc
+
+
+def _get_template(*, organization: Organization, template_id: UUID) -> UmlTemplate:
+    try:
+        return UmlTemplate.objects.for_organization(organization).get(id=template_id)
+    except UmlTemplate.DoesNotExist as exc:
+        raise Http404("Template not found") from exc
+
+
+def list_templates(*, organization: Organization) -> list[UmlTemplate]:
+    return list(UmlTemplate.objects.for_organization(organization).order_by("name", "id"))
+
+
+def get_template(*, organization: Organization, template_id: UUID) -> UmlTemplate:
+    return _get_template(organization=organization, template_id=template_id)
+
+
+def create_template(
+    *, organization: Organization, doc_id: UUID, created_by, name: str
+) -> UmlTemplate:
+    row = _get_row(organization=organization, doc_id=doc_id)
+    return UmlTemplate.objects.for_organization(organization).create(
+        organization=organization,
+        name=name,
+        source_document=row,
+        snapshot=copy.deepcopy(row.data),
+        created_by=created_by,
+    )
+
+
+def _clone_template_data(snapshot: dict, *, name: str) -> tuple[CanonicalUmlModel, DiagramLayout]:
+    """Clone every persisted UML identifier before decoding the snapshot.
+
+    References appear in element fields, JSON object keys and layout positions,
+    so the rewrite is recursive rather than tied to one UI representation.
+    """
+    cloned = copy.deepcopy(snapshot)
+    model = cloned["model"]
+    old_ids = [
+        *(item["id"] for item in model["classes"]),
+        *(attribute["id"] for item in model["classes"] for attribute in item["attributes"]),
+        *(operation["id"] for item in model["classes"] for operation in item["operations"]),
+        *(item["id"] for item in model["enumerations"]),
+        *(literal["id"] for item in model["enumerations"] for literal in item["literals"]),
+        *(item["id"] for item in model["relationships"]),
+    ]
+    replacements = {old_id: str(uuid.uuid4()) for old_id in old_ids}
+
+    def rewrite(value):
+        if isinstance(value, str):
+            return replacements.get(value, value)
+        if isinstance(value, list):
+            return [rewrite(item) for item in value]
+        if isinstance(value, dict):
+            return {replacements.get(key, key): rewrite(item) for key, item in value.items()}
+        return value
+
+    cloned = rewrite(cloned)
+    cloned["metadata"]["name"] = name
+    _metadata, cloned_model, cloned_layout = codec.from_json(cloned)
+    return cloned_model, cloned_layout
+
+
+def instantiate_template(
+    *, organization: Organization, template_id: UUID, owner_id: str, name: str, now: datetime.datetime
+) -> ProjectDocument:
+    template = _get_template(organization=organization, template_id=template_id)
+    model, layout = _clone_template_data(template.snapshot, name=name)
+    return create_document_from_model(
+        organization=organization, owner_id=owner_id, name=name, model=model, layout=layout, now=now
+    )
 
 
 def list_versions(*, organization: Organization, doc_id: UUID) -> list[UmlVersion]:
