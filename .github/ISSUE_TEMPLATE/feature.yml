@@ -1,0 +1,49 @@
+name: Feature proposal
+description: Propose a scoped improvement to Modelia
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe one reviewable outcome. Do not include credentials, tokens, private URLs, or sensitive data.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user or project need does this address?
+      placeholder: Describe the current limitation and the desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: List the behavior that belongs in this issue and its explicit boundaries.
+      placeholder: Include affected modules and out-of-scope behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide observable outcomes and relevant negative or permission cases.
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies_risks
+    attributes:
+      label: Dependencies and risks
+      description: Note required decisions, external access, data effects, or security concerns.
+      placeholder: State "None known" when no dependency or risk is known.
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Confirmation
+      options:
+        - label: I confirm that this issue contains no credentials, tokens, or private infrastructure details.
+          required: true
