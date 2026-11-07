@@ -83,6 +83,7 @@ def import_xmi_into_document_view(
         model=result.model,
         layout=result.layout,
         now=timezone.now(),
+        actor=request.user,
     )
     return Status(200, {**codec.document_out(document), "warnings": list(result.warnings)})
 

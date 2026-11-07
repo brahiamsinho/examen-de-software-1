@@ -209,6 +209,7 @@ def restore_version_view(
             version_id=version_id,
             expected_revision=payload.expected_revision,
             now=timezone.now(),
+            actor=request.user,
         )
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc
@@ -240,6 +241,7 @@ def submit_command_view(
         doc_id=doc_id,
         command=command,
         now=timezone.now(),
+        actor=request.user,
     )
     return {
         "revision": result.document.revision,
