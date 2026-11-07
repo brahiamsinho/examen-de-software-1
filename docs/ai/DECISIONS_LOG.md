@@ -1860,3 +1860,10 @@ are the design-level ones that govern how the code is actually shaped.
 - Decision: `apps.ai_assistant` is no longer database-free; only proposals are persisted, and every diagram change still goes through `uml_documents.services.submit_commands`.
 - Decision: trigger A first (a developer asks the AI); trigger B (the AI proposes on its own) comes later over the same pipeline, to keep token cost predictable.
 - Decision: a proposal written for an older revision becomes `stale` and cannot be approved, matching the voice/image plans' revision binding.
+
+## 2026-11-07 - Group chat with one AI model (GitHub #16)
+- Decision (user: "usemos lo recomendado"): the AI answers only when a message mentions `@IA`; other messages are only stored and shown. This keeps token cost predictable and lets developers talk among themselves.
+- Decision: the chat is persisted (`ChatMessage`, migration `ai_assistant/0003`, additive new table) with the database auto id as the single ordering, and broadcast on the existing document socket (`chat.message`). Nothing lives in a shared in-memory cache, so simultaneous writers cannot lose or mix messages.
+- Decision: the model answers through a `reply_in_chat` function call over the existing `generate_function_calls` seam, so neither provider's contract changed. The model receives the last 30 messages as `Author: text` lines plus the diagram context; a message is at most 2000 characters (the issue's token/cost risk).
+- Decision (assumption): OWNER/EDITOR write, VIEWER reads only, another organization gets 404. If the model fails the human's message is kept and the response carries `ai_error` instead of an HTTP error.
+- Known gaps: no per-organization cost cap yet; the AI cannot edit the diagram from the chat (it points the team to "Pide ideas a la IA", which creates a draft).

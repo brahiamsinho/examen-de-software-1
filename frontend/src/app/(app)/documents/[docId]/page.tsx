@@ -14,6 +14,7 @@ import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
 import { AiProposalsPanel } from "@/components/workspace/AiProposalsPanel";
+import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
 import { DeploymentActions, DeploymentNotices, DeploymentUrl } from "@/components/workspace/DeploymentControls";
 import { EditRelationshipDialog } from "@/components/workspace/EditRelationshipDialog";
@@ -38,6 +39,7 @@ import {
   type AiDrafts,
   type AiProposal,
 } from "@/lib/ai_proposals";
+import { postChat, type ChatMessage } from "@/lib/ai_chat";
 import { ApiError } from "@/lib/api";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
@@ -51,6 +53,7 @@ import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
 
 const NO_AI_DRAFTS: AiDrafts = { classes: [], relationships: [] };
 const NO_PROPOSALS: AiProposal[] = [];
+const NO_CHAT: ChatMessage[] = [];
 
 function proposalErrorMessage(err: unknown): string {
   return err instanceof ApiError ? err.detail : "No se pudo completar la acción con la IA. Intenta de nuevo.";
@@ -75,6 +78,8 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     applyDocument,
     applyProposal,
     proposals = NO_PROPOSALS,
+    chatMessages = NO_CHAT,
+    applyChatMessage,
     refreshDocument,
     error,
     lastValidation,
@@ -98,6 +103,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const [askingAi, setAskingAi] = useState(false);
   const [busyProposalId, setBusyProposalId] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
   const aiDrafts = useMemo(
     () => (document === null ? NO_AI_DRAFTS : buildAiDrafts(document.model, proposals)),
     [document, proposals],
@@ -211,6 +217,21 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
       throw err; // keeps the typed text in the panel so the user can retry
     } finally {
       setAskingAi(false);
+    }
+  }
+
+  async function handleSendChat(content: string) {
+    setChatError(null);
+    try {
+      const result = await postChat(orgSlug!, docId, content);
+      // The same messages also arrive over the socket; folding them in makes the
+      // UI correct immediately and when the socket is momentarily down.
+      applyChatMessage?.(result.message);
+      if (result.reply) applyChatMessage?.(result.reply);
+      if (result.ai_error) setChatError("La IA no pudo responder ahora. Menciónala de nuevo para reintentar.");
+    } catch (err) {
+      setChatError(err instanceof ApiError ? err.detail : "No se pudo enviar el mensaje. Intenta de nuevo.");
+      throw err; // gives the typed text back to the panel
     }
   }
 
@@ -394,6 +415,15 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
         <aside className="flex w-full flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
            <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Chat del equipo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChatPanel messages={chatMessages} canWrite={canEdit} error={chatError} onSend={handleSendChat} />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
