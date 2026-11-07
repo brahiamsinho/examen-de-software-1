@@ -93,6 +93,66 @@ class TestUmlTemplates:
         assert body["model"]["classes"][0]["id"] != "order"
         assert UmlTemplate.all_objects.filter(id=template_id, organization=organization).exists()
 
+    def test_instantiation_remaps_every_reference_and_leaves_the_source_untouched(self, auth_client):
+        organization, _owner, editor, viewer, _outsider = make_org_with_roles()
+        auth_client.force_login(editor)
+        base = f"/api/orgs/{organization.slug}/documents"
+        source = auth_client.post(base, data={"name": "Graph"}, content_type="application/json").json()
+        for payload in (
+            {"type": "AddClass", "class_id": "cls-a", "name": "A"},
+            {"type": "AddClass", "class_id": "cls-b", "name": "B"},
+            {
+                "type": "AddAttribute",
+                "class_id": "cls-a",
+                "attribute": {"id": "attr-1", "name": "code", "type": "String"},
+            },
+            {
+                "type": "AddRelationship",
+                "relationship": {
+                    "id": "rel-1",
+                    "kind": "association",
+                    "source": {"class_id": "cls-a", "multiplicity": "1"},
+                    "target": {"class_id": "cls-b", "multiplicity": "0..*"},
+                },
+            },
+        ):
+            assert (
+                auth_client.post(
+                    f"{base}/{source['id']}/commands", data=payload, content_type="application/json"
+                ).status_code
+                == 200
+            )
+        row = UmlDocument.all_objects.get(id=source["id"])
+        row.data["layout"] = {"positions": {"cls-a": {"x": 10, "y": 20}}}
+        row.save()
+        original = auth_client.get(f"{base}/{source['id']}").json()
+        template = auth_client.post(
+            f"{base}/{source['id']}/templates", data={"name": "Graph"}, content_type="application/json"
+        ).json()
+
+        auth_client.force_login(viewer)
+        assert auth_client.get(f"{base}/templates/{template['id']}").status_code == 200
+        auth_client.force_login(editor)
+        copy = auth_client.post(
+            f"{base}/templates/{template['id']}/instantiate",
+            data={"name": "Copy"},
+            content_type="application/json",
+        ).json()
+
+        model = copy["model"]
+        class_ids = {item["id"] for item in model["classes"]}
+        assert len(class_ids) == 2 and class_ids.isdisjoint({"cls-a", "cls-b"})
+        cls_a = next(item for item in model["classes"] if item["name"] == "A")
+        cls_b = next(item for item in model["classes"] if item["name"] == "B")
+        assert cls_a["attributes"][0]["id"] != "attr-1"
+        relationship = model["relationships"][0]
+        assert relationship["id"] != "rel-1"
+        assert relationship["source"]["class_id"] == cls_a["id"]
+        assert relationship["target"]["class_id"] == cls_b["id"]
+        assert set(copy["layout"]["positions"]) == {cls_a["id"]}
+        assert copy["layout"]["positions"][cls_a["id"]] == {"x": 10, "y": 20}
+        assert auth_client.get(f"{base}/{source['id']}").json() == original
+
     def test_templates_are_invisible_across_organizations(self, auth_client):
         organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
         other_organization, other_owner, *_rest = make_org_with_roles()
