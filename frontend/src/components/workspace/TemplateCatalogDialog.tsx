@@ -6,8 +6,19 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { TemplatePreviewThumbnail } from "@/components/workspace/TemplatePreviewThumbnail";
 import { ApiError } from "@/lib/api";
 import { listTemplates, type UmlDocument, type UmlTemplateSummary } from "@/lib/uml_documents";
+import { cn } from "@/lib/utils";
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
+function summarize(template: UmlTemplateSummary): string {
+  const { classes, relationships } = template.preview;
+  return `${plural(classes.length, "clase", "clases")} · ${plural(relationships.length, "relación", "relaciones")}`;
+}
 
 type Props = {
   open: boolean;
@@ -55,12 +66,31 @@ export function TemplateCatalogDialog({ open, onOpenChange, orgSlug, onInstantia
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Plantillas" description="Crea un diagrama nuevo a partir de una plantilla de tu organización.">
+    <Dialog open={open} onOpenChange={onOpenChange} className="max-w-2xl" title="Plantillas" description="Crea un diagrama nuevo a partir de una plantilla de tu organización.">
       <div className="flex flex-col gap-4">
         {templates.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no hay plantillas disponibles.</p> : (
-          <select aria-label="Plantilla" className="h-9 rounded-md border bg-background px-3 text-sm" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-            {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-          </select>
+          <div role="radiogroup" aria-label="Plantilla" className="grid max-h-[28rem] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+            {templates.map((template) => (
+              <label
+                key={template.id}
+                className={cn(
+                  "flex cursor-pointer flex-col gap-2 rounded-lg border p-2 text-sm transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
+                  template.id === selectedId ? "border-ring bg-accent/40" : "border-border hover:border-ring/60",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="template"
+                  className="sr-only"
+                  checked={template.id === selectedId}
+                  onChange={() => setSelectedId(template.id)}
+                />
+                <TemplatePreviewThumbnail preview={template.preview} />
+                <span className="font-medium">{template.name}</span>
+                <span className="text-xs text-muted-foreground">{summarize(template)}</span>
+              </label>
+            ))}
+          </div>
         )}
         <Input aria-label="Nombre del nuevo diagrama" value={name} onChange={(event) => setName(event.target.value)} placeholder="Nombre del nuevo diagrama" />
         {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}

@@ -192,6 +192,7 @@ class TemplateSummaryOut(Schema):
     source_document_id: UUID | None
     created_by_id: UUID | None
     created_at: datetime
+    preview: dict
 
 
 class TemplateOut(TemplateSummaryOut):

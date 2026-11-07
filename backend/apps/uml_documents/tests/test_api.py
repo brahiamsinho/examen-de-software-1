@@ -153,6 +153,52 @@ class TestUmlTemplates:
         assert copy["layout"]["positions"][cls_a["id"]] == {"x": 10, "y": 20}
         assert auth_client.get(f"{base}/{source['id']}").json() == original
 
+    def test_catalogue_rows_carry_a_lightweight_preview(self, auth_client):
+        organization, _owner, editor, viewer, _outsider = make_org_with_roles()
+        auth_client.force_login(editor)
+        base = f"/api/orgs/{organization.slug}/documents"
+        source = auth_client.post(base, data={"name": "Pv"}, content_type="application/json").json()
+        for payload in (
+            {"type": "AddClass", "class_id": "a", "name": "Alpha"},
+            {"type": "AddClass", "class_id": "b", "name": "Beta"},
+            {
+                "type": "AddAttribute",
+                "class_id": "a",
+                "attribute": {"id": "attr", "name": "code", "type": "String"},
+            },
+            {
+                "type": "AddRelationship",
+                "relationship": {
+                    "id": "r",
+                    "kind": "association",
+                    "source": {"class_id": "a", "multiplicity": "1"},
+                    "target": {"class_id": "b", "multiplicity": "0..*"},
+                },
+            },
+        ):
+            auth_client.post(f"{base}/{source['id']}/commands", data=payload, content_type="application/json")
+        row = UmlDocument.all_objects.get(id=source["id"])
+        row.data["layout"] = {"positions": {"a": {"x": 10, "y": 20}}}
+        row.save()
+        auth_client.post(
+            f"{base}/{source['id']}/templates", data={"name": "Pv"}, content_type="application/json"
+        )
+
+        auth_client.force_login(viewer)
+        row_out = auth_client.get(f"{base}/templates").json()[0]
+
+        preview = row_out["preview"]
+        by_name = {item["name"]: item for item in preview["classes"]}
+        assert set(by_name) == {"Alpha", "Beta"}
+        assert by_name["Alpha"]["attributes"] == 1
+        assert (by_name["Alpha"]["x"], by_name["Alpha"]["y"]) == (10, 20)
+        # A class without a saved position still gets coordinates so the thumbnail can draw it.
+        assert isinstance(by_name["Beta"]["x"], (int, float)) and isinstance(by_name["Beta"]["y"], (int, float))
+        assert preview["relationships"] == [
+            {"source": by_name["Alpha"]["id"], "target": by_name["Beta"]["id"], "kind": "association"}
+        ]
+        assert "snapshot" not in row_out
+
     def test_templates_are_invisible_across_organizations(self, auth_client):
         organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
         other_organization, other_owner, *_rest = make_org_with_roles()

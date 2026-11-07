@@ -69,6 +69,7 @@ def _template_summary_out(template) -> dict:
         "source_document_id": template.source_document_id,
         "created_by_id": template.created_by_id,
         "created_at": template.created_at,
+        "preview": services.template_preview(template.snapshot),
     }
 
 

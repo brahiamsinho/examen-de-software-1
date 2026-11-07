@@ -99,6 +99,34 @@ def _get_template(*, organization: Organization, template_id: UUID) -> UmlTempla
         raise Http404("Template not found") from exc
 
 
+def template_preview(snapshot: dict) -> dict:
+    """A thumbnail-sized description of a template for the catalogue.
+
+    Carries only class names, attribute counts, coordinates and relationship
+    endpoints, so listing templates never ships whole snapshots. Classes the
+    author never positioned get a deterministic grid slot to remain drawable.
+    """
+    positions = snapshot.get("layout", {}).get("positions", {})
+    classes = []
+    for index, uml_class in enumerate(snapshot["model"]["classes"]):
+        position = positions.get(uml_class["id"])
+        x, y = (position["x"], position["y"]) if position else (index % 3 * 220, index // 3 * 160)
+        classes.append(
+            {
+                "id": uml_class["id"],
+                "name": uml_class["name"],
+                "attributes": len(uml_class["attributes"]),
+                "x": x,
+                "y": y,
+            }
+        )
+    relationships = [
+        {"source": item["source"]["class_id"], "target": item["target"]["class_id"], "kind": item["kind"]}
+        for item in snapshot["model"]["relationships"]
+    ]
+    return {"classes": classes, "relationships": relationships}
+
+
 def list_templates(*, organization: Organization) -> list[UmlTemplate]:
     return list(UmlTemplate.objects.for_organization(organization).order_by("name", "id"))
 

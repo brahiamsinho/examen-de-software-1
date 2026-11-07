@@ -30,7 +30,7 @@ describe("VersionHistoryPanel", () => {
       snapshot: { metadata: { name: "Diagram", description: "" }, model: { classes: [], enumerations: [], relationships: [], generation_metadata: {} }, layout: { positions: {} } },
     });
     vi.mocked(createTemplate).mockResolvedValue({
-      id: "template-1", name: "Sales starter", source_document_id: "doc-1", created_by_id: "user-1", created_at: "2026-11-07T00:00:00Z",
+      id: "template-1", name: "Sales starter", source_document_id: "doc-1", created_by_id: "user-1", created_at: "2026-11-07T00:00:00Z", preview: { classes: [], relationships: [] },
       snapshot: { metadata: { name: "Diagram", description: "" }, model: { classes: [], enumerations: [], relationships: [], generation_metadata: {} }, layout: { positions: {} } },
     });
   });
