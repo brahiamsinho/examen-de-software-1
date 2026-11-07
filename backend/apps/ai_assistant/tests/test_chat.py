@@ -44,6 +44,25 @@ def _post(organization, document, author, content, model=None):
     )
 
 
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("@IA hola", True),
+        ("hola @ia", True),
+        ("hey,@IA!", True),
+        ("a@ia.com", False),
+        ("@IAmigos", False),
+        ("@IAñ", False),
+        ("ñ@IA", False),
+        ("@IA1", False),
+        ("hey_@IA", False),
+    ],
+)
+def test_mention_detection_boundaries(text, expected):
+    # The frontend's `mentionsAi` must agree on every one of these.
+    assert chat.mentions_ai(text) is expected
+
+
 @pytest.mark.django_db
 class TestPostingMessages:
     def test_a_message_is_stored_with_its_author_and_the_model_stays_silent_without_a_mention(self):

@@ -55,6 +55,11 @@ describe("mentionsAi", () => {
     expect(mentionsAi(text)).toBe(true);
   });
 
+  // Accented letters count as word characters, exactly like the backend's Unicode `\w`.
+  it.each(["@IAñ qué tal", "ñ@IA", "@IA1", "hey_@IA"])("ignores %s like the backend does", (text) => {
+    expect(mentionsAi(text)).toBe(false);
+  });
+
   it.each(["escríbeme a hola@ia.com", "@IAmigos qué tal", "la IA sola"])("ignores %s", (text) => {
     expect(mentionsAi(text)).toBe(false);
   });

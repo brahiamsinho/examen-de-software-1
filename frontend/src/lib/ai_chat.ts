@@ -59,8 +59,12 @@ export function upsertChatMessage(messages: ChatMessage[], incoming: ChatMessage
   return next.length > MAX_CHAT_MESSAGES ? next.slice(next.length - MAX_CHAT_MESSAGES) : next;
 }
 
-/** Same rule as the backend: `@IA` as its own word, not inside an email or `@IAmigos`. */
-const MENTION = /(?<![\w@])@ia(?!\w)/i;
+/**
+ * Same rule as the backend (`chat._MENTION`): `@IA` as its own word, not inside an
+ * email or `@IAmigos`. Python's `\w` is Unicode and JS's is ASCII-only without the
+ * `u` flag, so the word characters are spelled out (letters, digits, underscore).
+ */
+const MENTION = /(?<![\p{L}\p{N}_@])@ia(?![\p{L}\p{N}_])/iu;
 
 export function mentionsAi(content: string): boolean {
   return MENTION.test(content);
