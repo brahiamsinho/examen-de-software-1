@@ -17,7 +17,7 @@ Source request: "la IA sera un desarrollador mas todas las ideas que la IA tenga
 
 | Issue | Status | Evidence |
 | --- | --- | --- |
-| #15 AI proposes changes on the board | Implemented on `feature/ai-board-proposals` (trigger A: a developer asks) | `apps/ai_assistant/proposals.py`, `models.AiProposal`, `POST/GET /ai-proposals`, `.../approve\|reject`, `proposal.update` socket event, `AiProposalsPanel`, dashed drafts in `DiagramCanvas`. Backend ai_assistant + uml_documents + organizations 349 passed; frontend 463 passed; verified in a real browser (viewer read-only, editor approves, live update). |
+| #15 AI proposes changes on the board | Implemented on `feature/ai-board-proposals` (trigger A: a developer asks) | `apps/ai_assistant/proposals.py`, `models.AiProposal`, `POST/GET /ai-proposals`, `.../approve\|reject`, `proposal.update` socket event, `AiProposalsPanel`, dashed drafts in `DiagramCanvas`. Complete suggestions (classes with attributes, operations and relationships) and per-change selective approval added after trying it with the real AI. Backend ai_assistant + uml_documents + organizations 365 passed; frontend 476 passed; verified in a real browser with the real provider (viewer read-only, editor approves a selection, live update). |
 | #15 follow-up: trigger B (AI proposes on its own) | Planned | Agreed order: A first, then B as another trigger over the same proposal pipeline. |
 | #16 Group chat, one model, shared context | Planned | Depends on #15. |
 | #17 Session log | Planned | Depends on #15 and #16. |

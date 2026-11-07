@@ -29,6 +29,8 @@ class AiProposal(TenantScopedModel):
     base_revision = models.PositiveIntegerField()
     calls = models.JSONField(default=list)
     changes = models.JSONField(default=list)
+    # Which of `calls` the approver chose to apply (None until decided or when rejected).
+    applied_indices = models.JSONField(null=True, default=None)
     status = models.CharField(
         max_length=16, choices=ProposalStatus.choices, default=ProposalStatus.PENDING
     )

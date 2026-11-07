@@ -602,7 +602,7 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
     cyMock.fit.mockClear();
     const drafts = {
-      classes: [{ id: "ai-draft:p1:pedido", name: "Pedido", attributes: [], proposalId: "p1" }],
+      classes: [{ id: "ai-draft:p1:pedido", name: "Pedido", attributes: [], operations: [], proposalId: "p1" }],
       relationships: [],
     };
 

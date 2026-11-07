@@ -495,6 +495,9 @@ def _expand_image_extraction(calls: Sequence[GeminiFunctionCall]) -> list[Gemini
     return expanded
 
 
+expand_extraction = _expand_image_extraction
+
+
 def _normalize_image_multiplicity(value: str) -> str:
     """Translate common handwritten UML shorthand into the command grammar."""
     compact = value.strip().replace(" ", "")

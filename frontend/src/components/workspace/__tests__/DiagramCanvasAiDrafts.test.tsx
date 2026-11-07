@@ -12,8 +12,8 @@ vi.mock("cytoscape-fcose", () => ({ default: {} }));
 
 const drafts: AiDrafts = {
   classes: [
-    { id: "ai-draft:p1:pedido", name: "Pedido", attributes: ["- total: FLOAT"], proposalId: "p1" },
-    { id: "ai-draft:p1:item", name: "Item", attributes: [], proposalId: "p1" },
+    { id: "ai-draft:p1:pedido", name: "Pedido", attributes: ["- total: FLOAT"], operations: ["+ calcular()"], proposalId: "p1" },
+    { id: "ai-draft:p1:item", name: "Item", attributes: [], operations: [], proposalId: "p1" },
   ],
   relationships: [
     { id: "ai-draft-edge:p1:2", source: "c-persona", target: "ai-draft:p1:pedido", kind: "association", proposalId: "p1" },

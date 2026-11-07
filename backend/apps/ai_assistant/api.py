@@ -4,6 +4,7 @@ voice transcript into a sequence of applied UML commands. Thin, mirroring
 service function -> serialize shape.
 """
 import dataclasses
+import json
 from uuid import UUID
 
 from django.http import HttpRequest
@@ -11,10 +12,12 @@ from django.utils import timezone
 from ninja import File, Path, Router, UploadedFile
 from ninja.errors import HttpError
 from ninja.security import django_auth
+from pydantic import ValidationError
 
 from apps.ai_assistant import proposals, service
 from apps.ai_assistant.errors import GeminiRequestError, InvalidImageError, MissingApiKeyError
 from apps.ai_assistant.schemas import (
+    ApproveProposalIn,
     ImageImportConfirmIn,
     ImageImportPreviewOut,
     ProposalOut,
@@ -178,10 +181,24 @@ def list_proposals_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID)
     return [proposals.serialize_proposal(item) for item in found]
 
 
+def _optional_approve_body(request: HttpRequest) -> ApproveProposalIn | None:
+    if request.content_type != "application/json" or not request.body:
+        return None
+    try:
+        return ApproveProposalIn.model_validate(json.loads(request.body))
+    except (ValueError, ValidationError) as exc:
+        raise HttpError(422, "The approval body must be JSON like {\"selected\": [0, 2]}.") from exc
+
+
 @ai_assistant_router.post("/{doc_id}/ai-proposals/{proposal_id}/approve", response=ProposalOut)
 def approve_proposal_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, proposal_id: UUID):
+    """Applies the chosen changes (`selected` indices in a JSON body) or, with
+    no body at all, every change. The unchosen ones are discarded with the
+    proposal. The body is read by hand because Ninja answers 400 to a missing
+    body, and "approve everything" must keep working as a bodyless POST."""
     membership = resolve_membership(request, org_slug)
     require_role(membership, Role.OWNER, Role.EDITOR)
+    payload = _optional_approve_body(request)
     try:
         proposal = proposals.approve_proposal(
             organization=membership.organization,
@@ -189,6 +206,7 @@ def approve_proposal_view(request: HttpRequest, org_slug: Path[str], doc_id: UUI
             proposal_id=proposal_id,
             decided_by=request.user,
             now=timezone.now(),
+            selected=payload.selected if payload is not None else None,
         )
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc

@@ -90,6 +90,92 @@ class TestProposalsApi:
         assert [c.name for c in after.model.classes] == ["Pedido"]
         assert auth_client.get(_url(organization, document.id)).json() == []
 
+    def test_approving_with_a_selection_applies_only_those_changes(self, auth_client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        auth_client.force_login(editor)
+        calls = [
+            GeminiFunctionCall(name="add_class", args={"name": "Pedido"}),
+            GeminiFunctionCall(name="add_class", args={"name": "Cliente"}),
+        ]
+        proposal_id = _propose(auth_client, organization, document.id, calls=calls).json()["id"]
+
+        response = auth_client.post(
+            _url(organization, document.id, f"/{proposal_id}/approve"),
+            data={"selected": [1]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        assert response.json()["applied_indices"] == [1]
+        names = [c.name for c in services.get_document(organization=organization, doc_id=document.id).model.classes]
+        assert names == ["Cliente"]
+
+    def test_a_selection_that_drops_a_dependency_answers_409_and_changes_nothing(self, auth_client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        auth_client.force_login(editor)
+        calls = [
+            GeminiFunctionCall(name="add_class", args={"name": "Pedido"}),
+            GeminiFunctionCall(
+                name="add_attribute",
+                args={"class_name": "Pedido", "attribute_name": "total", "attribute_type": "Decimal"},
+            ),
+        ]
+        proposal_id = _propose(auth_client, organization, document.id, calls=calls).json()["id"]
+
+        response = auth_client.post(
+            _url(organization, document.id, f"/{proposal_id}/approve"),
+            data={"selected": [1]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 409
+        assert "depend" in response.json()["detail"]
+        assert services.get_document(organization=organization, doc_id=document.id).revision == document.revision
+
+    def test_a_malformed_approval_body_answers_422_and_applies_nothing(self, auth_client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        auth_client.force_login(editor)
+        proposal_id = _propose(auth_client, organization, document.id).json()["id"]
+
+        response = auth_client.post(
+            _url(organization, document.id, f"/{proposal_id}/approve"),
+            data={"selected": "all"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert services.get_document(organization=organization, doc_id=document.id).revision == document.revision
+
+    def test_a_structured_suggestion_arrives_with_attributes_and_relationships(self, auth_client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        auth_client.force_login(editor)
+        suggestion = GeminiFunctionCall(
+            name="suggest_uml_additions",
+            args={
+                "classes": [
+                    {"name": "Pedido", "attributes": [{"name": "total", "type": "Decimal"}], "operations": []},
+                    {"name": "Cliente", "attributes": [], "operations": []},
+                ],
+                "relationships": [
+                    {"kind": "association", "source_class_name": "Cliente", "target_class_name": "Pedido"}
+                ],
+            },
+        )
+
+        body = _propose(auth_client, organization, document.id, calls=[suggestion]).json()
+
+        assert [call["name"] for call in body["calls"]] == [
+            "add_class",
+            "add_class",
+            "add_attribute",
+            "add_relationship",
+        ]
+        assert all(change["ok"] for change in body["changes"])
+
     def test_rejecting_keeps_the_diagram_unchanged(self, auth_client):
         organization, owner, editor, *_ = make_org_with_roles()
         document = _document(organization, owner)

@@ -460,7 +460,7 @@ export function aiDraftElements(
   overridePositionOf: (draftId: string) => { x: number; y: number } | null = () => null,
 ): ElementDefinition[] {
   const elements: ElementDefinition[] = drafts.classes.map((draft, index) => {
-    const box = classBoxSvgDataUri(draft.name, draft.attributes);
+    const box = classBoxSvgDataUri(draft.name, draft.attributes, draft.operations);
     return {
       data: { id: draft.id, label: "", bgImage: box.uri, width: box.width, height: box.height, synthetic: true },
       position: overridePositionOf(draft.id) ?? { x: anchor.x, y: anchor.y + index * AI_DRAFT_ROW_GAP },

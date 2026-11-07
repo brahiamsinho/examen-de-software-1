@@ -52,6 +52,11 @@ class ProposalRequestIn(Schema):
         return value
 
 
+class ApproveProposalIn(Schema):
+    # Indices into the proposal's `changes`/`calls`; omitted or null applies all.
+    selected: list[int] | None = None
+
+
 class ProposalCallOut(Schema):
     name: str
     args: dict
@@ -65,6 +70,7 @@ class ProposalOut(Schema):
     base_revision: int
     changes: list[AppliedCommandOut]
     calls: list[ProposalCallOut]
+    applied_indices: list[int] | None
     requested_by: str | None
     decided_by: str | None
     created_at: str

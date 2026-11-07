@@ -34,6 +34,7 @@ const pendingProposal = {
   base_revision: 1,
   changes: [],
   calls: [],
+  applied_indices: null,
   requested_by: "Ana",
   decided_by: null,
   created_at: "2026-11-07T10:00:00Z",

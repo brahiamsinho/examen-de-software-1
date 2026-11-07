@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAiDrafts, upsertProposal, type AiProposal } from "@/lib/ai_proposals";
+import {
+  buildAiDrafts,
+  defaultSelection,
+  toggleChange,
+  upsertProposal,
+  type AiProposal,
+} from "@/lib/ai_proposals";
 import type { UmlModel } from "@/lib/uml_documents";
 
 function proposal(overrides: Partial<AiProposal> = {}): AiProposal {
@@ -13,12 +19,59 @@ function proposal(overrides: Partial<AiProposal> = {}): AiProposal {
     changes: [],
     calls: [],
     requested_by: "Ana",
+    applied_indices: null,
     decided_by: null,
     created_at: "2026-11-07T10:00:00Z",
     decided_at: null,
     ...overrides,
   };
 }
+
+// 0 Pedido, 1 Cliente, 2 Pedido.total, 3 Cliente -> Pedido
+const calls = [
+  { name: "add_class", args: { name: "Pedido" } },
+  { name: "add_class", args: { name: "Cliente" } },
+  { name: "add_attribute", args: { class_name: "pedido", attribute_name: "total", attribute_type: "Decimal" } },
+  { name: "add_relationship", args: { kind: "association", source_class_name: "Cliente", target_class_name: "Pedido" } },
+];
+
+describe("change selection", () => {
+  it("selects every change that can be applied by default and skips the broken ones", () => {
+    const withBroken = proposal({
+      calls,
+      changes: [{ ok: true, message: "a" }, { ok: false, message: "b" }, { ok: true, message: "c" }, { ok: true, message: "d" }],
+    });
+
+    expect([...defaultSelection(withBroken)]).toEqual([0, 2, 3]);
+  });
+
+  it("selecting an attribute also selects the class it belongs to", () => {
+    expect([...toggleChange(calls, new Set(), 2)].sort()).toEqual([0, 2]);
+  });
+
+  it("selecting a relationship selects both of its classes", () => {
+    expect([...toggleChange(calls, new Set(), 3)].sort()).toEqual([0, 1, 3]);
+  });
+
+  it("unselecting a class also unselects its attributes and relationships", () => {
+    const all = new Set([0, 1, 2, 3]);
+
+    expect([...toggleChange(calls, all, 0)].sort()).toEqual([1]);
+    expect([...toggleChange(calls, all, 1)].sort()).toEqual([0, 2]);
+  });
+
+  it("unselecting only an attribute leaves its class selected", () => {
+    expect([...toggleChange(calls, new Set([0, 2]), 2)]).toEqual([0]);
+  });
+
+  it("does not mutate the selection it receives", () => {
+    const original = new Set([0]);
+
+    toggleChange(calls, original, 1);
+
+    expect([...original]).toEqual([0]);
+  });
+});
 
 const model: UmlModel = {
   classes: [{ id: "c-persona", name: "Persona", visibility: "public", attributes: [], operations: [] }],
@@ -60,7 +113,7 @@ describe("buildAiDrafts", () => {
     ]);
 
     expect(drafts.classes).toEqual([
-      { id: "ai-draft:p1:pedido", name: "Pedido", attributes: ["- total: FLOAT"], proposalId: "p1" },
+      { id: "ai-draft:p1:pedido", name: "Pedido", attributes: ["- total: FLOAT"], operations: [], proposalId: "p1" },
     ]);
   });
 
@@ -80,6 +133,19 @@ describe("buildAiDrafts", () => {
     expect(drafts.relationships).toEqual([
       { id: "ai-draft-edge:p1:1", source: "c-persona", target: "ai-draft:p1:pedido", kind: "association", proposalId: "p1" },
     ]);
+  });
+
+  it("shows the operations the AI proposes on a draft class", () => {
+    const drafts = buildAiDrafts(model, [
+      proposal({
+        calls: [
+          { name: "add_class", args: { name: "Pedido" } },
+          { name: "add_operation", args: { class_name: "Pedido", operation_name: "calcular" } },
+        ],
+      }),
+    ]);
+
+    expect(drafts.classes[0]!.operations).toEqual(["+ calcular()"]);
   });
 
   it("never duplicates a class that already exists and skips relationships with an unknown end", () => {

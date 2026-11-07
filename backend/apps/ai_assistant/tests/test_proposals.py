@@ -197,6 +197,243 @@ class TestDecideProposal:
             proposals.list_proposals(organization=other_organization, doc_id=document.id)
 
 
+def _suggestion(classes, relationships=()):
+    return GeminiFunctionCall(
+        name="suggest_uml_additions",
+        args={"classes": list(classes), "relationships": list(relationships)},
+    )
+
+
+def _names(proposal):
+    return [call["name"] for call in proposal.calls]
+
+
+@pytest.mark.django_db
+class TestStructuredSuggestions:
+    def test_the_model_is_given_the_structured_tool_so_it_cannot_stop_at_class_names(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        seen = {}
+
+        class _Recording(_FakeClient):
+            def generate_function_calls(self, *, system_instruction, transcript, tools):
+                seen["tools"] = [tool["name"] for tool in tools]
+                return super().generate_function_calls(
+                    system_instruction=system_instruction, transcript=transcript, tools=tools
+                )
+
+        proposals.create_proposal(
+            organization=organization,
+            doc_id=document.id,
+            requested_by=owner,
+            prompt="ideas",
+            gemini=_Recording([_suggestion([{"name": "Pedido", "attributes": [], "operations": []}])]),
+        )
+
+        assert seen["tools"] == ["suggest_uml_additions"]
+
+    def test_classes_arrive_with_their_attributes_operations_and_relationships(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[
+                _suggestion(
+                    [
+                        {
+                            "name": "Pedido",
+                            "attributes": [{"name": "total", "type": "Decimal"}],
+                            "operations": [{"name": "calcular"}],
+                        },
+                        {"name": "Cliente", "attributes": [{"name": "email", "type": "String"}], "operations": []},
+                    ],
+                    [{"kind": "association", "source_class_name": "Cliente", "target_class_name": "Pedido"}],
+                )
+            ],
+        )
+
+        assert _names(proposal) == [
+            "add_class",
+            "add_class",
+            "add_attribute",
+            "add_operation",
+            "add_attribute",
+            "add_relationship",
+        ]
+        assert all(change["ok"] for change in proposal.changes)
+
+    def test_existing_classes_and_relationships_are_never_duplicated(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        _add_class(organization, document.id, "Persona")
+
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[
+                _suggestion(
+                    [
+                        {"name": "persona", "attributes": [{"name": "email", "type": "String"}], "operations": []},
+                        {"name": "Pedido", "attributes": [], "operations": []},
+                    ],
+                    [{"kind": "association", "source_class_name": "Persona", "target_class_name": "Pedido"}],
+                )
+            ],
+        )
+
+        assert _names(proposal) == ["add_class", "add_attribute", "add_relationship"]
+        assert proposal.calls[0]["args"] == {"name": "Pedido"}
+        assert proposal.calls[1]["args"]["class_name"] == "persona"
+
+    def test_an_attribute_the_class_already_has_is_not_proposed_again(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        _add_class(organization, document.id, "Persona")
+        services.submit_commands(
+            organization=organization,
+            doc_id=document.id,
+            commands_to_apply=[
+                services.command_from_payload(
+                    _attribute_payload("id-Persona", "email"),
+                )
+            ],
+            now=timezone.now(),
+        )
+
+        with pytest.raises(proposals.NoSuggestionsError):
+            _suggest(
+                organization,
+                document.id,
+                owner,
+                calls=[
+                    _suggestion([{"name": "Persona", "attributes": [{"name": "Email", "type": "String"}], "operations": []}])
+                ],
+            )
+
+
+def _attribute_payload(class_id, name):
+    from apps.uml_documents import schemas
+
+    return schemas.AddAttributeIn.model_validate(
+        {
+            "type": "AddAttribute",
+            "class_id": class_id,
+            "attribute": {"id": f"attr-{name}", "name": name, "type": "String", "visibility": "private"},
+        }
+    )
+
+
+def _three_changes(organization, owner, document):
+    return _suggest(
+        organization,
+        document.id,
+        owner,
+        calls=[
+            GeminiFunctionCall(name="add_class", args={"name": "Pedido"}),
+            GeminiFunctionCall(name="add_class", args={"name": "Cliente"}),
+            GeminiFunctionCall(
+                name="add_attribute",
+                args={"class_name": "Pedido", "attribute_name": "total", "attribute_type": "Decimal"},
+            ),
+        ],
+    )
+
+
+@pytest.mark.django_db
+class TestPartialApproval:
+    def _approve(self, organization, document, proposal, editor, selected):
+        return proposals.approve_proposal(
+            organization=organization,
+            doc_id=document.id,
+            proposal_id=proposal.id,
+            decided_by=editor,
+            now=timezone.now(),
+            selected=selected,
+        )
+
+    def test_only_the_selected_changes_are_applied_and_recorded(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _three_changes(organization, owner, document)
+
+        approved = self._approve(organization, document, proposal, editor, [1])
+
+        assert approved.status == "approved"
+        assert approved.applied_indices == [1]
+        after = services.get_document(organization=organization, doc_id=document.id)
+        assert [c.name for c in after.model.classes] == ["Cliente"]
+
+    def test_a_class_and_its_attribute_can_be_applied_together_without_the_rest(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _three_changes(organization, owner, document)
+
+        approved = self._approve(organization, document, proposal, editor, [2, 0])
+
+        assert approved.applied_indices == [0, 2]
+        after = services.get_document(organization=organization, doc_id=document.id)
+        pedido = next(c for c in after.model.classes if c.name == "Pedido")
+        assert [a.name for a in pedido.attributes] == ["total"]
+        assert [c.name for c in after.model.classes] == ["Pedido"]
+
+    def test_omitting_the_selection_still_applies_everything(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _three_changes(organization, owner, document)
+
+        approved = self._approve(organization, document, proposal, editor, None)
+
+        assert approved.applied_indices == [0, 1, 2]
+        after = services.get_document(organization=organization, doc_id=document.id)
+        assert sorted(c.name for c in after.model.classes) == ["Cliente", "Pedido"]
+
+    def test_an_attribute_without_its_class_is_refused_and_nothing_changes(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _three_changes(organization, owner, document)
+
+        with pytest.raises(proposals.InvalidSelectionError):
+            self._approve(organization, document, proposal, editor, [2])
+
+        after = services.get_document(organization=organization, doc_id=document.id)
+        assert after.revision == document.revision
+        assert proposals.get_proposal(
+            organization=organization, doc_id=document.id, proposal_id=proposal.id
+        ).status == "pending"
+
+    @pytest.mark.parametrize("selected", [[], [9], [-1]])
+    def test_an_empty_or_out_of_range_selection_is_refused(self, selected):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _three_changes(organization, owner, document)
+
+        with pytest.raises(proposals.InvalidSelectionError):
+            self._approve(organization, document, proposal, editor, selected)
+
+    def test_a_change_that_cannot_be_applied_blocks_only_when_it_is_selected(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[
+                GeminiFunctionCall(name="add_class", args={"name": "Pedido"}),
+                GeminiFunctionCall(name="rename_class", args={"class_name": "Ghost", "new_name": "X"}),
+            ],
+        )
+
+        with pytest.raises(proposals.UnapplicableProposalError):
+            self._approve(organization, document, proposal, editor, [1])
+        approved = self._approve(organization, document, proposal, editor, [0])
+
+        assert approved.applied_indices == [0]
+
+
 @pytest.mark.django_db
 class TestListAndBroadcast:
     def test_lists_only_pending_proposals_and_marks_outdated_ones_stale(self):

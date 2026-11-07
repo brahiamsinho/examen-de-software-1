@@ -10,12 +10,14 @@ Reuses the voice/image machinery: the same tools, `Translator`, and
 other command batch.
 """
 import datetime
+from collections.abc import Sequence
 from uuid import UUID
 
 from django.db import transaction
 from django.http import Http404
 
 from apps.ai_assistant import service, tools
+from apps.ai_assistant.errors import TranslationError
 from apps.ai_assistant.gemini_client import GeminiClientProtocol, GeminiFunctionCall
 from apps.ai_assistant.llm_provider import get_active_llm_client
 from apps.ai_assistant.models import AiProposal, ProposalStatus
@@ -26,12 +28,14 @@ from apps.uml_documents import services
 _PROPOSAL_INSTRUCTION = (
     "You are a teammate on a UML class diagram editor, working alongside human "
     "developers. A developer asks for your ideas about the diagram. Answer ONLY "
-    "with the provided function calls, one call per distinct improvement, in a "
-    "sensible order. Propose concrete, useful changes (missing classes, "
-    "attributes, relationships). Never repeat something that already exists in "
-    "the diagram and never invent changes that do not follow from the request. "
-    "Refer to classes and attributes by name, never by id. If nothing useful can "
-    "be added, make no calls."
+    "by calling suggest_uml_additions once with a COMPLETE suggestion: every new "
+    "class together with its attributes (name and type) and its operations, and "
+    "every relationship between classes with its multiplicities. A class without "
+    "attributes is rarely useful, so always include the fields it needs. You may "
+    "list an existing class to give it new attributes or operations. Never repeat "
+    "something that already exists in the diagram and never invent changes that "
+    "do not follow from the request. Refer to classes by name, never by id. If "
+    "nothing useful can be added, return empty lists."
 )
 
 
@@ -52,6 +56,11 @@ class StaleProposalError(ProposalError):
 class ProposalAlreadyDecidedError(ProposalError):
     def __init__(self, status: str) -> None:
         super().__init__(f"This proposal was already {status}.")
+
+
+class InvalidSelectionError(ProposalError):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
 
 
 class UnapplicableProposalError(ProposalError):
@@ -75,6 +84,7 @@ def serialize_proposal(proposal: AiProposal) -> dict:
         "base_revision": proposal.base_revision,
         "changes": proposal.changes,
         "calls": proposal.calls,
+        "applied_indices": proposal.applied_indices,
         "requested_by": _label(proposal.requested_by),
         "decided_by": _label(proposal.decided_by),
         "created_at": proposal.created_at.isoformat(),
@@ -104,6 +114,69 @@ def _mark_stale_if_outdated(proposal: AiProposal, revision: int) -> AiProposal:
     return proposal
 
 
+def _key(value: object) -> str:
+    return str(value).strip().casefold()
+
+
+def _additions_only(document, calls: list[GeminiFunctionCall]) -> list[GeminiFunctionCall]:
+    """Expands the structured suggestion into ordered UML commands and drops
+    anything the diagram (or an earlier call) already has, so a proposal never
+    proposes a duplicate class, attribute, operation or relationship. Calls the
+    expander does not know (a plain `add_class`, `rename_class`...) pass through."""
+    renamed = [
+        GeminiFunctionCall(name="extract_uml_diagram", args=call.args)
+        if call.name == "suggest_uml_additions"
+        else call
+        for call in calls
+    ]
+    expanded = service.expand_extraction(renamed)
+
+    classes = {_key(item.name): item for item in document.model.classes}
+    new_classes: set[str] = set()
+    seen_members: set[tuple[str, str, str]] = set()
+    seen_relationships: set[tuple[str, str, str]] = set()
+    kept: list[GeminiFunctionCall] = []
+
+    for call in expanded:
+        args = call.args
+        if call.name == "add_class":
+            key = _key(args.get("name", ""))
+            if key in classes or key in new_classes:
+                continue
+            new_classes.add(key)
+        elif call.name in {"add_attribute", "add_operation"}:
+            is_attribute = call.name == "add_attribute"
+            class_key = _key(args.get("class_name", ""))
+            member = _key(args.get("attribute_name" if is_attribute else "operation_name", ""))
+            marker = (class_key, "a" if is_attribute else "o", member)
+            existing = classes.get(class_key)
+            already = existing is not None and member in {
+                _key(item.name) for item in (existing.attributes if is_attribute else existing.operations)
+            }
+            if already or marker in seen_members:
+                continue
+            seen_members.add(marker)
+        elif call.name == "add_relationship":
+            source_key, target_key = _key(args.get("source_class_name", "")), _key(args.get("target_class_name", ""))
+            marker = (str(args.get("kind", "")), source_key, target_key)
+            source, target = classes.get(source_key), classes.get(target_key)
+            already = (
+                source is not None
+                and target is not None
+                and any(
+                    item.kind.value == marker[0]
+                    and item.source.class_id == source.id
+                    and item.target.class_id == target.id
+                    for item in document.model.relationships
+                )
+            )
+            if already or marker in seen_relationships:
+                continue
+            seen_relationships.add(marker)
+        kept.append(call)
+    return kept
+
+
 def create_proposal(
     *,
     organization: Organization,
@@ -119,8 +192,9 @@ def create_proposal(
     calls = gemini.generate_function_calls(
         system_instruction=_PROPOSAL_INSTRUCTION,
         transcript=f"{service.document_context(document)}\n\nA teammate asked: {prompt}",
-        tools=tools.TOOLS,
+        tools=tools.PROPOSAL_TOOLS,
     )
+    calls = _additions_only(document, list(calls))
     if not calls:
         raise NoSuggestionsError()
 
@@ -169,6 +243,18 @@ def _decidable(proposal: AiProposal) -> None:
         raise ProposalAlreadyDecidedError(proposal.get_status_display().lower())
 
 
+def _normalize_selection(selected: Sequence[int] | None, total: int) -> list[int]:
+    """Sorted, de-duplicated indices; `None` means every change. Refuses an
+    empty selection and any index outside the proposal."""
+    if selected is None:
+        return list(range(total))
+    if not selected:
+        raise InvalidSelectionError("Select at least one change to apply.")
+    if any(isinstance(item, bool) or not isinstance(item, int) or not 0 <= item < total for item in selected):
+        raise InvalidSelectionError("The selection refers to a change that is not in this proposal.")
+    return sorted(set(selected))
+
+
 def approve_proposal(
     *,
     organization: Organization,
@@ -176,13 +262,19 @@ def approve_proposal(
     proposal_id: UUID,
     decided_by,
     now: datetime.datetime,
+    selected: Sequence[int] | None = None,
 ) -> AiProposal:
-    """Apply the proposal's changes as one command batch, then mark it approved."""
+    """Apply the chosen changes of the proposal as one command batch, then mark
+    it approved. `selected` holds indices into the proposal's changes; `None`
+    applies all of them. The unchosen changes are discarded with the proposal.
+    A selection that drops something a chosen change needs (an attribute
+    without its class) is refused and nothing is written."""
     # Staleness is checked (and persisted) outside the atomic block below, so
     # the `stale` mark survives the refusal that follows it.
     proposal = get_proposal(organization=organization, doc_id=doc_id, proposal_id=proposal_id)
     _decidable(proposal)
-    if not proposal.changes or any(not change["ok"] for change in proposal.changes):
+    indices = _normalize_selection(selected, len(proposal.calls))
+    if not indices or any(not proposal.changes[index]["ok"] for index in indices):
         raise UnapplicableProposalError()
 
     with transaction.atomic():
@@ -195,10 +287,18 @@ def approve_proposal(
         _decidable(locked)
         document = services.get_document(organization=organization, doc_id=doc_id)
         translator = Translator(document.model)
-        translated = [
-            translator.translate(GeminiFunctionCall(name=call["name"], args=call["args"]))
-            for call in locked.calls
-        ]
+        try:
+            translated = [
+                translator.translate(
+                    GeminiFunctionCall(name=locked.calls[index]["name"], args=locked.calls[index]["args"])
+                )
+                for index in indices
+            ]
+        except (TranslationError, KeyError, ValueError, TypeError) as exc:
+            raise InvalidSelectionError(
+                "The selected changes depend on changes that were not selected. "
+                "Select the class an attribute or relationship belongs to."
+            ) from exc
         services.submit_commands(
             organization=organization,
             doc_id=doc_id,
@@ -207,9 +307,10 @@ def approve_proposal(
             expected_revision=locked.base_revision,
         )
         locked.status = ProposalStatus.APPROVED
+        locked.applied_indices = indices
         locked.decided_by = decided_by
         locked.decided_at = now
-        locked.save(update_fields=["status", "decided_by", "decided_at"])
+        locked.save(update_fields=["status", "applied_indices", "decided_by", "decided_at"])
         _broadcast(locked)
     return locked
 

@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import type { AiProposal } from "@/lib/ai_proposals";
+import { defaultSelection, toggleChange, type AiProposal } from "@/lib/ai_proposals";
 
 type Props = {
   proposals: AiProposal[];
@@ -16,9 +16,93 @@ type Props = {
   asking: boolean;
   error: string | null;
   onAsk: (prompt: string) => Promise<void>;
-  onApprove: (proposalId: string) => void;
+  /** `selected` = indices of the changes to apply, in order. */
+  onApprove: (proposalId: string, selected: number[]) => void;
   onReject: (proposalId: string) => void;
 };
+
+type CardProps = {
+  proposal: AiProposal;
+  canDecide: boolean;
+  busy: boolean;
+  onApprove: Props["onApprove"];
+  onReject: Props["onReject"];
+};
+
+/**
+ * One pending proposal. An editor chooses which changes to apply with
+ * checkboxes (one, some or all). The selection keeps itself applicable:
+ * choosing an attribute also chooses its class, and unchoosing a class also
+ * unchooses what hangs from it (`toggleChange`). A change that cannot be
+ * applied stays unchecked and disabled. Own state per card, so each proposal
+ * keeps its own selection.
+ */
+function ProposalCard({ proposal, canDecide, busy, onApprove, onReject }: CardProps) {
+  const [selected, setSelected] = useState<Set<number>>(() => defaultSelection(proposal));
+  const total = proposal.changes.length;
+  const everything = selected.size === total;
+
+  return (
+    <li className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-3">
+      <p className="text-xs text-muted-foreground">
+        Pedida por {proposal.requested_by ?? "alguien"}: &ldquo;{proposal.prompt}&rdquo;
+      </p>
+
+      {canDecide ? (
+        <>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Elige qué aplicar</span>
+            <span className="flex gap-1">
+              <Button type="button" size="xs" variant="ghost" onClick={() => setSelected(defaultSelection(proposal))}>
+                Todos
+              </Button>
+              <Button type="button" size="xs" variant="ghost" onClick={() => setSelected(new Set())}>
+                Ninguno
+              </Button>
+            </span>
+          </div>
+          <ul className="flex flex-col gap-1 text-sm">
+            {proposal.changes.map((change, index) => (
+              <li key={index}>
+                <label className={`flex items-start gap-2 ${change.ok ? "" : "text-destructive"}`}>
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={selected.has(index)}
+                    disabled={!change.ok || busy}
+                    onChange={() => setSelected((current) => toggleChange(proposal.calls, current, index))}
+                  />
+                  <span>{change.message}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => onReject(proposal.id)} disabled={busy}>
+              Rechazar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onApprove(proposal.id, [...selected].sort((a, b) => a - b))}
+              disabled={busy || selected.size === 0}
+            >
+              {everything ? `Aprobar todo (${selected.size})` : `Aprobar selección (${selected.size})`}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <ul className="flex flex-col gap-1 text-sm">
+          {proposal.changes.map((change, index) => (
+            <li key={index} className={change.ok ? undefined : "text-destructive"}>
+              <span aria-hidden="true">{change.ok ? "•" : "⚠"}</span> <span>{change.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
 
 /**
  * Presentational: lists the AI's pending drafts for everyone on the diagram and
@@ -80,34 +164,16 @@ export function AiProposalsPanel({ proposals, canDecide, busyId, asking, error, 
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {proposals.map((proposal) => {
-            const blocked = proposal.changes.some((change) => !change.ok);
-            const busy = busyId === proposal.id;
-            return (
-              <li key={proposal.id} className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-3">
-                <p className="text-xs text-muted-foreground">
-                  Pedida por {proposal.requested_by ?? "alguien"}: &ldquo;{proposal.prompt}&rdquo;
-                </p>
-                <ul className="flex flex-col gap-1 text-sm">
-                  {proposal.changes.map((change, index) => (
-                    <li key={index} className={change.ok ? undefined : "text-destructive"}>
-                      <span aria-hidden="true">{change.ok ? "•" : "⚠"}</span> <span>{change.message}</span>
-                    </li>
-                  ))}
-                </ul>
-                {canDecide ? (
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={() => onReject(proposal.id)} disabled={busy}>
-                      Rechazar
-                    </Button>
-                    <Button type="button" size="sm" onClick={() => onApprove(proposal.id)} disabled={busy || blocked}>
-                      Aprobar
-                    </Button>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
+          {proposals.map((proposal) => (
+            <ProposalCard
+              key={proposal.id}
+              proposal={proposal}
+              canDecide={canDecide}
+              busy={busyId === proposal.id}
+              onApprove={onApprove}
+              onReject={onReject}
+            />
+          ))}
         </ul>
       )}
     </div>

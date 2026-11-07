@@ -214,7 +214,10 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     }
   }
 
-  async function handleDecideProposal(proposalId: string, decide: typeof approveProposal) {
+  async function handleDecideProposal(
+    proposalId: string,
+    decide: (orgSlug: string, docId: string, proposalId: string) => Promise<AiProposal>,
+  ) {
     setBusyProposalId(proposalId);
     setProposalError(null);
     try {
@@ -404,7 +407,9 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                 asking={askingAi}
                 error={proposalError}
                 onAsk={handleAskAi}
-                onApprove={(proposalId) => void handleDecideProposal(proposalId, approveProposal)}
+                onApprove={(proposalId, selected) =>
+                  void handleDecideProposal(proposalId, (org, doc, id) => approveProposal(org, doc, id, selected))
+                }
                 onReject={(proposalId) => void handleDecideProposal(proposalId, rejectProposal)}
               />
             </CardContent>
