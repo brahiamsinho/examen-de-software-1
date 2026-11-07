@@ -144,6 +144,10 @@ export type AiDraftRelationship = {
   source: string;
   target: string;
   kind: RelationshipKind;
+  name: string;
+  /** Multiplicity at each end, as the AI gave it (or the backend's default). */
+  sourceMultiplicity: string;
+  targetMultiplicity: string;
   proposalId: string;
 };
 export type AiDrafts = { classes: AiDraftClass[]; relationships: AiDraftRelationship[] };
@@ -196,6 +200,10 @@ export function buildAiDrafts(model: UmlModel, proposals: AiProposal[]): AiDraft
           source,
           target,
           kind: args.kind as RelationshipKind,
+          name: String(args.name ?? ""),
+          // Same defaults as the backend translator, so the draft shows what approving would create.
+          sourceMultiplicity: String(args.source_multiplicity || "0..1"),
+          targetMultiplicity: String(args.target_multiplicity || "0..*"),
           proposalId: proposal.id,
         });
       }

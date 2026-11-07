@@ -392,6 +392,28 @@ describe("lib/uml_documents", () => {
       expect(onMessage).not.toHaveBeenCalled();
     });
 
+    it("dispatches chat.message to onChat with the message only, never to onMessage", () => {
+      const onChat = vi.fn();
+      const onMessage = vi.fn();
+      openDocumentSocket("acme", documentFixture.id, { onMessage, onClose: vi.fn(), onChat });
+      const socket = MockWebSocket.instances[0]!;
+
+      const message = { id: 7, content: "hola", author: "Ana", is_ai: false };
+      socket.onmessage?.({ data: JSON.stringify({ type: "chat.message", message }) });
+
+      expect(onChat).toHaveBeenCalledWith(message);
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    it("ignores chat.message when no onChat handler is registered", () => {
+      openDocumentSocket("acme", documentFixture.id, { onMessage: vi.fn(), onClose: vi.fn() });
+      const socket = MockWebSocket.instances[0]!;
+
+      expect(() =>
+        socket.onmessage?.({ data: JSON.stringify({ type: "chat.message", message: { id: 1 } }) }),
+      ).not.toThrow();
+    });
+
     it("ignores proposal.update when no onProposal handler is registered", () => {
       openDocumentSocket("acme", documentFixture.id, { onMessage: vi.fn(), onClose: vi.fn() });
       const socket = MockWebSocket.instances[0]!;

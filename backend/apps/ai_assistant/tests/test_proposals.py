@@ -315,6 +315,135 @@ class TestStructuredSuggestions:
             )
 
 
+def _link(source, target, source_multiplicity=None, target_multiplicity=None, kind="association"):
+    relationship = {"kind": kind, "source_class_name": source, "target_class_name": target}
+    if source_multiplicity:
+        relationship["source_multiplicity"] = source_multiplicity
+    if target_multiplicity:
+        relationship["target_multiplicity"] = target_multiplicity
+    return relationship
+
+
+def _two_classes():
+    return [{"name": "Usuario", "attributes": [], "operations": []}, {"name": "Rol", "attributes": [], "operations": []}]
+
+
+@pytest.mark.django_db
+class TestRelationshipQuality:
+    """Associations, multiplicities and intermediate tables (user feedback after
+    seeing `Usuarios 1 - 0..* Roles`, which should have been many-to-many)."""
+
+    def test_a_proposal_must_state_both_multiplicities_but_the_image_import_schema_is_untouched(self):
+        from apps.ai_assistant import tools
+
+        def required(tool):
+            return tool["parameters"]["properties"]["relationships"]["items"]["required"]
+
+        assert {"source_multiplicity", "target_multiplicity"} <= set(required(tools.SUGGEST_UML_ADDITIONS))
+        assert required(tools.EXTRACT_UML_DIAGRAM) == ["kind", "source_class_name", "target_class_name"]
+
+    def test_the_model_is_taught_many_to_many_in_the_proposal_and_in_the_chat(self):
+        from apps.ai_assistant import chat, tools
+
+        guidance = tools.RELATIONSHIP_GUIDANCE
+        assert "many-to-many" in guidance and "intermediate" in guidance and "0..*" in guidance
+        assert guidance in proposals._PROPOSAL_INSTRUCTION
+        assert guidance in chat._CHAT_INSTRUCTION
+
+    def test_a_many_to_many_link_is_labelled_with_its_multiplicities_and_the_intermediate_table(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[_suggestion(_two_classes(), [_link("Usuario", "Rol", "0..*", "0..*")])],
+        )
+
+        message = proposal.changes[-1]["message"]
+        assert "0..* to 0..*" in message and "many-to-many" in message and "intermediate table" in message
+
+    def test_a_one_to_many_link_shows_its_multiplicities_without_the_many_to_many_note(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[_suggestion(_two_classes(), [_link("Rol", "Usuario", "1", "0..*")])],
+        )
+
+        message = proposal.changes[-1]["message"]
+        assert "1 to 0..*" in message and "many-to-many" not in message
+
+    def test_a_link_without_multiplicities_shows_the_defaults_the_diagram_would_really_get(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        proposal = _suggest(
+            organization, document.id, owner, calls=[_suggestion(_two_classes(), [_link("Rol", "Usuario")])]
+        )
+
+        assert "0..1 to 0..*" in proposal.changes[-1]["message"]
+
+    def test_approving_a_many_to_many_link_creates_a_relationship_with_both_ends_many(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[_suggestion(_two_classes(), [_link("Usuario", "Rol", "0..*", "1..*")])],
+        )
+
+        proposals.approve_proposal(
+            organization=organization,
+            doc_id=document.id,
+            proposal_id=proposal.id,
+            decided_by=editor,
+            now=timezone.now(),
+        )
+
+        after = services.get_document(organization=organization, doc_id=document.id)
+        (relationship,) = after.model.relationships
+        assert (relationship.source.multiplicity.lower, relationship.source.multiplicity.upper) == (0, None)
+        assert (relationship.target.multiplicity.lower, relationship.target.multiplicity.upper) == (1, None)
+
+    def test_an_explicit_intermediate_class_keeps_its_own_attributes_and_both_links_in_order(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        classes = _two_classes() + [
+            {"name": "UsuarioRol", "attributes": [{"name": "asignadoEn", "type": "Date"}], "operations": []}
+        ]
+
+        proposal = _suggest(
+            organization,
+            document.id,
+            owner,
+            calls=[
+                _suggestion(
+                    classes,
+                    [
+                        _link("Usuario", "UsuarioRol", "1", "0..*"),
+                        _link("Rol", "UsuarioRol", "1", "0..*"),
+                    ],
+                )
+            ],
+        )
+
+        assert [call["name"] for call in proposal.calls] == [
+            "add_class",
+            "add_class",
+            "add_class",
+            "add_attribute",
+            "add_relationship",
+            "add_relationship",
+        ]
+        assert all(change["ok"] for change in proposal.changes)
+
+
 def _attribute_payload(class_id, name):
     from apps.uml_documents import schemas
 

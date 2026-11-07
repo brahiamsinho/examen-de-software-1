@@ -16,7 +16,16 @@ const drafts: AiDrafts = {
     { id: "ai-draft:p1:item", name: "Item", attributes: [], operations: [], proposalId: "p1" },
   ],
   relationships: [
-    { id: "ai-draft-edge:p1:2", source: "c-persona", target: "ai-draft:p1:pedido", kind: "association", proposalId: "p1" },
+    {
+      id: "ai-draft-edge:p1:2",
+      source: "c-persona",
+      target: "ai-draft:p1:pedido",
+      kind: "association",
+      name: "realiza",
+      sourceMultiplicity: "1",
+      targetMultiplicity: "0..*",
+      proposalId: "p1",
+    },
   ],
 };
 
@@ -38,6 +47,22 @@ describe("DiagramCanvas — aiDraftElements (pure)", () => {
       target: "ai-draft:p1:pedido",
       synthetic: true,
     });
+  });
+
+  it("labels a draft edge with its name and the multiplicity at each end, like a real relationship", async () => {
+    const { aiDraftElements } = await import("@/components/workspace/DiagramCanvas");
+
+    const edge = aiDraftElements(drafts, { x: 0, y: 0 }).find((element) => element.classes === "ai-draft-edge");
+
+    expect(edge!.data).toMatchObject({ label: "realiza", sourceLabel: "1", targetLabel: "0..*" });
+  });
+
+  it("uses the same label fields the real edges use, so one style draws both", async () => {
+    const { STYLE } = await import("@/components/workspace/DiagramCanvas");
+
+    const edge = STYLE.find((entry) => entry.selector === "edge");
+
+    expect(edge?.style).toMatchObject({ "source-label": "data(sourceLabel)", "target-label": "data(targetLabel)" });
   });
 
   it("stacks the draft boxes below the anchor so they never overlap each other", async () => {

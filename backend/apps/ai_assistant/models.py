@@ -20,6 +20,32 @@ class ProposalStatus(models.TextChoices):
     STALE = "stale", "Stale"
 
 
+class ChatMessage(TenantScopedModel):
+    """One line of a diagram's group chat (issue #16). Humans and the AI write
+    the same kind of row; the database-assigned `id` is the single ordering, so
+    simultaneous writers never overwrite or interleave each other's messages."""
+
+    id = models.BigAutoField(primary_key=True)
+    document = models.ForeignKey(
+        "uml_documents.UmlDocument", on_delete=models.CASCADE, related_name="chat_messages"
+    )
+    # Null for the AI and for a human whose account was later deleted.
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    is_ai = models.BooleanField(default=False)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = TenantScopedManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        ordering = ["id"]
+        indexes = [models.Index(fields=["organization", "document", "id"])]
+
+
 class AiProposal(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document = models.ForeignKey(

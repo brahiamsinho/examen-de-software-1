@@ -52,6 +52,28 @@ class ProposalRequestIn(Schema):
         return value
 
 
+class ChatMessageIn(Schema):
+    content: str = Field(max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Write a message first.")
+        return value
+
+
+class ChatMessageOut(Schema):
+    id: int
+    document_id: str
+    author: str
+    author_id: str | None
+    is_ai: bool
+    content: str
+    created_at: str
+
+
 class ApproveProposalIn(Schema):
     # Indices into the proposal's `changes`/`calls`; omitted or null applies all.
     selected: list[int] | None = None
@@ -75,3 +97,11 @@ class ProposalOut(Schema):
     decided_by: str | None
     created_at: str
     decided_at: str | None
+
+
+class ChatPostOut(Schema):
+    message: ChatMessageOut
+    reply: ChatMessageOut | None
+    ai_error: str | None
+    # The draft the AI left on the board when the message asked it to change something.
+    proposal: ProposalOut | None
