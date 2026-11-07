@@ -287,3 +287,18 @@ SUGGEST_UML_ADDITIONS = {
 }
 
 PROPOSAL_TOOLS = [SUGGEST_UML_ADDITIONS]
+
+# Group chat (issue #16): the model answers in plain words, but through the
+# same function-calling seam both providers already implement, so no provider
+# contract changes. No call means the model had nothing to say.
+REPLY_IN_CHAT = {
+    "name": "reply_in_chat",
+    "description": "Post one short reply in the team's chat about the diagram.",
+    "parameters": {
+        "type": "object",
+        "properties": {"message": {"type": "string", "description": "The reply text."}},
+        "required": ["message"],
+    },
+}
+
+CHAT_TOOLS = [REPLY_IN_CHAT]

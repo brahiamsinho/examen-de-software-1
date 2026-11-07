@@ -14,10 +14,13 @@ from ninja.errors import HttpError
 from ninja.security import django_auth
 from pydantic import ValidationError
 
-from apps.ai_assistant import proposals, service
+from apps.ai_assistant import chat, proposals, service
 from apps.ai_assistant.errors import GeminiRequestError, InvalidImageError, MissingApiKeyError
 from apps.ai_assistant.schemas import (
     ApproveProposalIn,
+    ChatMessageIn,
+    ChatMessageOut,
+    ChatPostOut,
     ImageImportConfirmIn,
     ImageImportPreviewOut,
     ProposalOut,
@@ -152,6 +155,33 @@ def image_import_confirm_view(
 
 
 # --- AI board proposals (issue #15) ----------------------------------------
+
+
+@ai_assistant_router.get("/{doc_id}/chat", response=list[ChatMessageOut])
+def list_chat_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)  # any member reads
+    found = chat.list_messages(organization=membership.organization, doc_id=doc_id)
+    return [chat.serialize_message(item) for item in found]
+
+
+@ai_assistant_router.post("/{doc_id}/chat", response={201: ChatPostOut})
+def post_chat_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: ChatMessageIn):
+    """Posts to the diagram's group chat. A message that mentions `@IA` also
+    returns the model's reply; if the model fails the message is kept and the
+    failure is reported in `ai_error` instead of an HTTP error."""
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        result = chat.post_message(
+            organization=membership.organization, doc_id=doc_id, author=request.user, content=payload.content
+        )
+    except chat.ChatError as exc:
+        raise HttpError(422, str(exc)) from exc
+    return 201, {
+        "message": chat.serialize_message(result.message),
+        "reply": chat.serialize_message(result.reply) if result.reply else None,
+        "ai_error": result.ai_error,
+    }
 
 
 @ai_assistant_router.post("/{doc_id}/ai-proposals", response={201: ProposalOut})

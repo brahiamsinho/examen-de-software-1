@@ -232,6 +232,18 @@ class DocumentConsumer(JsonWebsocketConsumer):
             return
         self.send_json({"type": event["type"], "proposal": event["proposal"]})
 
+    def chat_message(self, event):
+        """Relays a group-chat message (issue #16) to every member, VIEWERs
+        included (they read the chat but cannot write). Re-authorizes
+        membership first, like `proposal_update`, so a revoked member stops
+        receiving chat immediately."""
+        try:
+            resolve_membership_for_user(self.scope["user"], self.org_slug)
+        except Http404:
+            self.close(4403)
+            return
+        self.send_json({"type": event["type"], "message": event["message"]})
+
     def document_update(self, event):
         """Group-message handler (DD7 — the `group_send` `type` dispatches
         here by Channels' dot-to-underscore convention). Re-authorizes
