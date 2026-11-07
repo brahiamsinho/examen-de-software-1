@@ -8,11 +8,11 @@ from django.db import connection
 from django.http import Http404
 from django.utils import timezone
 
-from apps.ai_assistant import chat
+from apps.ai_assistant import chat, proposals
 from apps.ai_assistant.errors import GeminiRequestError
 from apps.ai_assistant.gemini_client import GeminiFunctionCall
 from apps.organizations.tests.factories import make_org_with_roles
-from apps.uml_documents import services
+from apps.uml_documents import schemas, services
 
 
 class _Model:
@@ -100,7 +100,7 @@ class TestPostingMessages:
         ]
         positions = [transcript.index(line) for line in lines]
         assert positions == sorted(positions)
-        assert model.requests[0]["tools"] == ["reply_in_chat"]
+        assert model.requests[0]["tools"] == ["reply_in_chat", "suggest_uml_additions"]
 
     def test_the_model_also_sees_what_the_ai_said_earlier_and_the_diagram(self):
         organization, owner, editor, *_ = make_org_with_roles()
@@ -159,6 +159,88 @@ class TestPostingMessages:
         result = _post(organization, document, editor, "@IA ayuda", _Model(calls=[]))
 
         assert result.reply is None and result.ai_error is None
+
+
+def _suggest(classes, reply=None, relationships=()):
+    calls = [
+        GeminiFunctionCall(
+            name="suggest_uml_additions", args={"classes": list(classes), "relationships": list(relationships)}
+        )
+    ]
+    if reply:
+        calls.insert(0, GeminiFunctionCall(name="reply_in_chat", args={"message": reply}))
+    return _Model(calls=calls)
+
+
+@pytest.mark.django_db
+class TestTheAiSuggestsChangesFromTheChat:
+    def test_a_change_the_ai_wants_to_make_becomes_a_pending_draft_and_never_touches_the_diagram(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        model = _suggest(
+            [{"name": "Rol", "attributes": [{"name": "nombre", "type": "String"}], "operations": []}],
+            reply="Dejé el borrador de Rol.",
+        )
+
+        result = _post(organization, document, editor, "@IA agrega la tabla Rol", model)
+
+        assert result.proposal is not None and result.proposal.status == "pending"
+        assert result.proposal.requested_by_id == editor.id
+        assert result.proposal.prompt == "@IA agrega la tabla Rol"
+        assert [c["name"] for c in result.proposal.calls] == ["add_class", "add_attribute"]
+        pending = proposals.list_proposals(organization=organization, doc_id=document.id)
+        assert [p.id for p in pending] == [result.proposal.id]
+        after = services.get_document(organization=organization, doc_id=document.id)
+        assert after.revision == document.revision and after.model.classes == ()
+        assert result.reply.content == "Dejé el borrador de Rol."
+
+    def test_the_draft_is_broadcast_to_the_board(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        with mock.patch("apps.ai_assistant.proposals.services.broadcast_event") as broadcast:
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setattr("django.db.transaction.on_commit", lambda fn: fn())
+                _post(organization, document, editor, "@IA agrega Rol", _suggest([{"name": "Rol"}], reply="ok"))
+
+        types = [c.kwargs["payload"]["type"] for c in broadcast.call_args_list]
+        assert types.count("proposal.update") == 1
+        assert types.count("chat.message") == 2  # the person's message and the AI's reply
+
+    def test_if_the_ai_suggests_without_saying_anything_the_chat_still_tells_the_team(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        result = _post(organization, document, editor, "@IA agrega Rol", _suggest([{"name": "Rol"}]))
+
+        assert result.proposal is not None
+        assert result.reply is not None and "pizarra" in result.reply.content
+
+    def test_a_suggestion_that_only_repeats_the_diagram_creates_no_draft(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        services.submit_commands(
+            organization=organization,
+            doc_id=document.id,
+            commands_to_apply=[
+                services.command_from_payload(schemas.AddClassIn(type="AddClass", class_id="id-Rol", name="Rol"))
+            ],
+            now=timezone.now(),
+        )
+
+        result = _post(organization, document, editor, "@IA agrega Rol", _suggest([{"name": "rol"}], reply="Ya existe."))
+
+        assert result.proposal is None
+        assert proposals.list_proposals(organization=organization, doc_id=document.id) == []
+        assert result.reply.content == "Ya existe."
+
+    def test_a_plain_answer_creates_no_draft(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+
+        result = _post(organization, document, editor, "@IA hola", _Model(reply="Hola"))
+
+        assert result.proposal is None
 
 
 @pytest.mark.django_db

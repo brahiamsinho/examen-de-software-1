@@ -67,6 +67,38 @@ class TestChatApi:
         assert body["reply"]["is_ai"] is True and body["reply"]["author"] == "IA"
         assert body["reply"]["content"] == "Con gusto"
 
+    def test_asking_the_ai_to_change_something_returns_a_draft_and_leaves_the_diagram_alone(self, auth_client):
+        organization, owner, editor, viewer, _outsider = make_org_with_roles()
+        document = _document(organization, owner)
+        auth_client.force_login(editor)
+        model = mock.Mock()
+        model.generate_function_calls.return_value = [
+            GeminiFunctionCall(name="reply_in_chat", args={"message": "Dejé el borrador."}),
+            GeminiFunctionCall(
+                name="suggest_uml_additions",
+                args={"classes": [{"name": "Rol", "attributes": [{"name": "nombre", "type": "String"}]}]},
+            ),
+        ]
+
+        body = _say(auth_client, organization, document.id, "@IA agrega Rol", model).json()
+
+        assert body["proposal"]["status"] == "pending"
+        assert [call["name"] for call in body["proposal"]["calls"]] == ["add_class", "add_attribute"]
+        assert body["reply"]["content"] == "Dejé el borrador."
+        after = services.get_document(organization=organization, doc_id=document.id)
+        assert after.revision == document.revision and after.model.classes == ()
+
+        auth_client.force_login(viewer)
+        listed = auth_client.get(f"/api/orgs/{organization.slug}/documents/{document.id}/ai-proposals")
+        assert [p["id"] for p in listed.json()] == [body["proposal"]["id"]]
+
+    def test_a_plain_message_comes_back_without_a_draft(self, auth_client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        auth_client.force_login(editor)
+
+        assert _say(auth_client, organization, document.id, "hola").json()["proposal"] is None
+
     def test_when_the_model_fails_the_message_is_kept_and_the_error_is_reported(self, auth_client):
         organization, owner, editor, *_ = make_org_with_roles()
         document = _document(organization, owner)

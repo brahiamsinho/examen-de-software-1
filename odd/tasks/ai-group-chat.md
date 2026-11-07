@@ -10,6 +10,7 @@ Branch: feature/ai-group-chat. Delivery: single PR per work unit group, `Closes 
 - S5 (decision, user: "usemos lo recomendado"): the AI answers only when a message mentions `@IA`; other messages are just stored and shown. Never to every message.
 - S6 (assumption): OWNER/EDITOR write; VIEWER only reads (same as AI proposals).
 - S7 (risk from the issue, "Límite de tokens del contexto y costo por organización"): the model only receives the last 30 messages, and a message is at most 2000 characters.
+- S8: "Creo que nos los esta implementando" (user, seeing the AI say "Voy a agregar las tablas 'Roles', 'Permisos' y 'Usuarios'" with nothing added). When the team asks the AI in the chat to add or change something, it leaves a pending draft on the board (never an applied change) and says so; it must never claim it already changed the diagram.
 - Out of scope (from the issue): approving proposals and the session log.
 
 ## Tasks
@@ -17,5 +18,8 @@ Branch: feature/ai-group-chat. Delivery: single PR per work unit group, `Closes 
 - T2 — S2,S5,S7 — inline — complete — `@IA` mention triggers one model reply through the `reply_in_chat` tool (no new client method); context with authors, capped at 30 messages; Risk: none (additive; voice/image/proposal paths untouched); evidence: tests for mention detection, authors in order, cap, model failure, empty reply; real OpenAI answered using the shared context; commit: see git log.
 - T3 — S1,S6 — inline — complete — Frontend: `lib/ai_chat.ts`, `ChatPanel`, live messages via `onChat` in `openDocumentSocket`/`useDocument`, mounted in the diagram page; Risk: none; evidence: RED then GREEN, frontend 75 files / 504 tests, `tsc` and ESLint clean; real browser with editor, owner and viewer: live delivery, same order for all three, viewer read-only; commit: see git log.
 
+- T4 — S8 — inline — complete — Chat suggestions become pending drafts (`proposals.propose_calls` shared with `create_proposal`; `suggest_uml_additions` offered next to `reply_in_chat`; `proposal` in the POST answer); Risk: none (additive; the panel's behavior is unchanged and the diagram still changes only on approval); evidence: RED (6 tests failed) then GREEN, backend 404 passed; real OpenAI left a draft, the diagram stayed at 6 classes until approval (then 7) and the viewer saw the draft without checkboxes; commit: see git log.
+
 ## Log
+- L2 (2026-11-07, user, after trying the chat): "Creo que nos los esta implementando" (screenshot: the AI answered "Voy a agregar las tablas 'Roles', 'Permisos' y 'Usuarios'" but the diagram did not change). Cause: the chat model had only `reply_in_chat`, so it promised changes it had no way to make. Fix: S8.
 - L1 (2026-11-07, user): issue #16 — "chat grupal con un único modelo de IA y contexto compartido"; chose "usemos lo recomendado" for when the AI answers (only when mentioned).

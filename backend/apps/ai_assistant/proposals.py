@@ -194,17 +194,36 @@ def create_proposal(
         transcript=f"{service.document_context(document)}\n\nA teammate asked: {prompt}",
         tools=tools.PROPOSAL_TOOLS,
     )
-    calls = _additions_only(document, list(calls))
-    if not calls:
+    proposal = propose_calls(
+        organization=organization, document=document, requested_by=requested_by, prompt=prompt, calls=list(calls)
+    )
+    if proposal is None:
         raise NoSuggestionsError()
+    return proposal
 
+
+def propose_calls(
+    *,
+    organization: Organization,
+    document,
+    requested_by,
+    prompt: str,
+    calls: list[GeminiFunctionCall],
+) -> AiProposal | None:
+    """Stores what the model wants to change as a pending draft and broadcasts
+    it. Anything the diagram already has is dropped first; when nothing is left
+    no draft is made (`None`). Never writes to the document. Shared by the
+    "Pide ideas" panel and by the chat, so both create the same kind of draft."""
+    calls = _additions_only(document, calls)
+    if not calls:
+        return None
     changes = [
         {"ok": item.ok, "message": item.message} for item in service.describe_calls(document, calls)
     ]
     with transaction.atomic():
         proposal = AiProposal.objects.for_organization(organization).create(
             organization=organization,
-            document_id=doc_id,
+            document_id=document.id,
             prompt=prompt,
             base_revision=document.revision,
             calls=[{"name": call.name, "args": dict(call.args)} for call in calls],

@@ -1,3 +1,4 @@
+import type { AiProposal } from "@/lib/ai_proposals";
 import { apiFetch } from "@/lib/api";
 
 /**
@@ -22,6 +23,8 @@ export type ChatPostResult = {
   reply: ChatMessage | null;
   /** Set when the message was kept but the AI could not answer it. */
   ai_error: string | null;
+  /** The draft the AI left on the board when the message asked it to change something. */
+  proposal: AiProposal | null;
 };
 
 const base = (orgSlug: string, docId: string) =>

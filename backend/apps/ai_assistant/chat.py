@@ -8,7 +8,9 @@ without spending tokens.
 
 Every message is its own database row ordered by its auto id and broadcast on
 the document socket, so two people writing at once never lose or mix messages.
-The chat never changes the diagram: ideas to apply go through AI proposals.
+The chat never changes the diagram itself: when the model wants to change
+something it leaves a draft proposal on the board (the same kind as "Pide
+ideas a la IA") that a developer approves.
 """
 import re
 from dataclasses import dataclass
@@ -16,11 +18,11 @@ from uuid import UUID
 
 from django.db import transaction
 
-from apps.ai_assistant import service, tools
+from apps.ai_assistant import proposals, service, tools
 from apps.ai_assistant.errors import GeminiRequestError, MissingApiKeyError
-from apps.ai_assistant.gemini_client import GeminiClientProtocol
+from apps.ai_assistant.gemini_client import GeminiClientProtocol, GeminiFunctionCall
 from apps.ai_assistant.llm_provider import get_active_llm_client
-from apps.ai_assistant.models import ChatMessage
+from apps.ai_assistant.models import AiProposal, ChatMessage
 from apps.organizations.models import Organization
 from apps.uml_documents import services
 
@@ -39,11 +41,17 @@ _CHAT_INSTRUCTION = (
     "a UML class diagram together. Each chat line is 'Author: text'. Several people "
     "talk; keep their contributions apart and answer the most recent message that "
     "mentions @IA, using what the others said earlier when it matters. Reply in the "
-    "language of the conversation, briefly, by calling reply_in_chat once. You cannot "
-    "edit the diagram from the chat: when you have concrete changes to suggest, "
-    "describe them and tell the team they can ask for them with 'Pide ideas a la IA', "
-    "which creates a draft someone approves. If you have nothing useful to add, make no call."
+    "language of the conversation, briefly, by calling reply_in_chat once. You never "
+    "edit the diagram directly. When the team asks you to add or change something, call "
+    "suggest_uml_additions with a COMPLETE suggestion (each new class with its attributes "
+    "and operations, and its relationships): it leaves a draft on the board that a "
+    "developer approves. Then say in reply_in_chat that you left a draft for them to "
+    "approve; never say you already added or changed anything. If you have nothing "
+    "useful to add, make no call."
 )
+
+# Said by the chat itself when the model left a draft but wrote no sentence.
+_DRAFT_NOTICE = "Dejé una propuesta en la pizarra para que el equipo la revise y la apruebe."
 
 
 class ChatError(ValueError):
@@ -59,6 +67,8 @@ class ChatResult:
     message: ChatMessage
     reply: ChatMessage | None = None
     ai_error: str | None = None
+    # The draft the AI left on the board when it was asked to change something.
+    proposal: AiProposal | None = None
 
 
 def mentions_ai(content: str) -> bool:
@@ -118,21 +128,27 @@ def _transcript(document, history: list[ChatMessage]) -> str:
     return f"{service.document_context(document)}\n\nGroup chat, oldest first:\n{lines}"
 
 
-def _ask_model(organization: Organization, doc_id: UUID, gemini: GeminiClientProtocol | None) -> str | None:
+def _ask_model(
+    organization: Organization, doc_id: UUID, gemini: GeminiClientProtocol | None
+) -> tuple[str | None, list[GeminiFunctionCall]]:
+    """Returns the model's chat sentence (if any) and the changes it wants to make."""
     gemini = gemini or get_active_llm_client()
     document = services.get_document(organization=organization, doc_id=doc_id)
     history = list_messages(organization=organization, doc_id=doc_id, limit=CONTEXT_MESSAGES)
     calls = gemini.generate_function_calls(
         system_instruction=_CHAT_INSTRUCTION,
         transcript=_transcript(document, history),
-        tools=tools.CHAT_TOOLS,
+        tools=tools.CHAT_TOOLS + tools.PROPOSAL_TOOLS,
     )
+    sentence = None
+    suggestions = []
     for call in calls:
-        if call.name == "reply_in_chat":
+        if call.name == "reply_in_chat" and sentence is None:
             text = str(call.args.get("message", "")).strip()
-            if text:
-                return text[:MAX_MESSAGE_LENGTH]
-    return None
+            sentence = text[:MAX_MESSAGE_LENGTH] if text else None
+        elif call.name == "suggest_uml_additions":
+            suggestions.append(call)
+    return sentence, suggestions
 
 
 def post_message(
@@ -157,12 +173,23 @@ def post_message(
         return ChatResult(message=message)
 
     try:
-        answer = _ask_model(organization, doc_id, gemini)
+        sentence, suggestions = _ask_model(organization, doc_id, gemini)
     except GeminiRequestError:
         return ChatResult(message=message, ai_error="The AI did not answer in time. Mention it again to retry.")
     except MissingApiKeyError:
         return ChatResult(message=message, ai_error="The AI is not configured for this workspace.")
-    if answer is None:
-        return ChatResult(message=message)
-    reply = _store(organization, doc_id, author=None, content=answer, is_ai=True)
-    return ChatResult(message=message, reply=reply)
+
+    # Changes become a draft on the board (the diagram only changes once a
+    # developer approves it), attributed to whoever asked.
+    proposal = None
+    if suggestions:
+        document = services.get_document(organization=organization, doc_id=doc_id)
+        proposal = proposals.propose_calls(
+            organization=organization, document=document, requested_by=author, prompt=text, calls=suggestions
+        )
+    if proposal is not None and sentence is None:
+        sentence = _DRAFT_NOTICE
+    if sentence is None:
+        return ChatResult(message=message, proposal=proposal)
+    reply = _store(organization, doc_id, author=None, content=sentence, is_ai=True)
+    return ChatResult(message=message, reply=reply, proposal=proposal)

@@ -228,6 +228,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
       // UI correct immediately and when the socket is momentarily down.
       applyChatMessage?.(result.message);
       if (result.reply) applyChatMessage?.(result.reply);
+      if (result.proposal) applyProposal(result.proposal);
       if (result.ai_error) setChatError("La IA no pudo responder ahora. Menciónala de nuevo para reintentar.");
     } catch (err) {
       setChatError(err instanceof ApiError ? err.detail : "No se pudo enviar el mensaje. Intenta de nuevo.");

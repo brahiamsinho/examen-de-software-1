@@ -74,12 +74,6 @@ class ChatMessageOut(Schema):
     created_at: str
 
 
-class ChatPostOut(Schema):
-    message: ChatMessageOut
-    reply: ChatMessageOut | None
-    ai_error: str | None
-
-
 class ApproveProposalIn(Schema):
     # Indices into the proposal's `changes`/`calls`; omitted or null applies all.
     selected: list[int] | None = None
@@ -103,3 +97,11 @@ class ProposalOut(Schema):
     decided_by: str | None
     created_at: str
     decided_at: str | None
+
+
+class ChatPostOut(Schema):
+    message: ChatMessageOut
+    reply: ChatMessageOut | None
+    ai_error: str | None
+    # The draft the AI left on the board when the message asked it to change something.
+    proposal: ProposalOut | None

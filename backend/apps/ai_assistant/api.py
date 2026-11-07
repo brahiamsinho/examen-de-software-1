@@ -181,6 +181,7 @@ def post_chat_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, payl
         "message": chat.serialize_message(result.message),
         "reply": chat.serialize_message(result.reply) if result.reply else None,
         "ai_error": result.ai_error,
+        "proposal": proposals.serialize_proposal(result.proposal) if result.proposal else None,
     }
 
 
