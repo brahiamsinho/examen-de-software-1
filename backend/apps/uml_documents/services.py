@@ -27,7 +27,7 @@ from apps.relational_mapping.mapping.profile_parser import (
 from apps.uml_commands.dispatcher import CommandResult, apply
 from apps.uml_documents import codec, schemas
 from apps.uml_documents.errors import InvalidCommandPayloadError
-from apps.uml_documents.models import UmlDocument
+from apps.uml_documents.models import UmlDocument, UmlVersion
 from apps.uml_modeling.documents import DiagramLayout, Position, ProjectDocument, ProjectMetadata
 from apps.uml_modeling.domain.elements import (
     Relationship,
@@ -81,6 +81,129 @@ def _get_row(
         return qs.get(id=doc_id)
     except UmlDocument.DoesNotExist as exc:
         raise Http404("Document not found") from exc
+
+
+def _get_version(*, organization: Organization, doc_id: UUID, version_id: UUID) -> UmlVersion:
+    try:
+        return UmlVersion.objects.for_organization(organization).get(document_id=doc_id, id=version_id)
+    except UmlVersion.DoesNotExist as exc:
+        raise Http404("Version not found") from exc
+
+
+def list_versions(*, organization: Organization, doc_id: UUID) -> list[UmlVersion]:
+    _get_row(organization=organization, doc_id=doc_id)
+    return list(UmlVersion.objects.for_organization(organization).filter(document_id=doc_id).order_by("-number"))
+
+
+def get_version(*, organization: Organization, doc_id: UUID, version_id: UUID) -> UmlVersion:
+    _get_row(organization=organization, doc_id=doc_id)
+    return _get_version(organization=organization, doc_id=doc_id, version_id=version_id)
+
+
+def compare_versions(
+    *, organization: Organization, doc_id: UUID, from_version_id: UUID, to_version_id: UUID
+) -> dict:
+    before = get_version(organization=organization, doc_id=doc_id, version_id=from_version_id)
+    after = get_version(organization=organization, doc_id=doc_id, version_id=to_version_id)
+    before_model = before.snapshot["model"]
+    after_model = after.snapshot["model"]
+    return {
+        "from_version_id": before.id,
+        "to_version_id": after.id,
+        "classes": _diff_elements(
+            [_class_summary(item) for item in before_model["classes"]],
+            [_class_summary(item) for item in after_model["classes"]],
+        ),
+        "attributes": _diff_attributes(before_model["classes"], after_model["classes"]),
+        "relationships": _diff_elements(
+            before_model["relationships"], after_model["relationships"]
+        ),
+    }
+
+
+def _diff_elements(before: list[dict], after: list[dict]) -> dict:
+    before_by_id = {item["id"]: item for item in before}
+    after_by_id = {item["id"]: item for item in after}
+    return {
+        "added": [
+            _diff_label(after_by_id[item_id]) for item_id in sorted(after_by_id.keys() - before_by_id.keys())
+        ],
+        "removed": [
+            _diff_label(before_by_id[item_id]) for item_id in sorted(before_by_id.keys() - after_by_id.keys())
+        ],
+        "modified": [
+            {"before": _diff_label(before_by_id[item_id]), "after": _diff_label(after_by_id[item_id])}
+            for item_id in sorted(before_by_id.keys() & after_by_id.keys())
+            if before_by_id[item_id] != after_by_id[item_id]
+        ],
+    }
+
+
+def _diff_attributes(before_classes: list[dict], after_classes: list[dict]) -> dict:
+    def flatten(classes: list[dict]) -> list[dict]:
+        return [
+            {**attribute, "class_id": uml_class["id"], "class_name": uml_class["name"]}
+            for uml_class in classes
+            for attribute in uml_class["attributes"]
+        ]
+
+    return _diff_elements(flatten(before_classes), flatten(after_classes))
+
+
+def _class_summary(item: dict) -> dict:
+    return {key: item[key] for key in ("id", "name", "visibility") if key in item}
+
+
+def _diff_label(item: dict) -> dict:
+    return {key: item[key] for key in ("id", "name", "class_id", "class_name") if key in item}
+
+
+@transaction.atomic
+def create_version(
+    *, organization: Organization, doc_id: UUID, created_by, description: str, expected_revision: int
+) -> UmlVersion:
+    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    if row.revision != expected_revision:
+        raise ValueError("The diagram changed before this version could be saved. Reload and try again.")
+    latest = (
+        UmlVersion.objects.for_organization(organization)
+        .filter(document_id=doc_id)
+        .order_by("-number")
+        .first()
+    )
+    return UmlVersion.objects.for_organization(organization).create(
+        organization=organization,
+        document=row,
+        number=(latest.number if latest else 0) + 1,
+        source_revision=row.revision,
+        description=description,
+        snapshot=row.data,
+        created_by=created_by,
+    )
+
+
+@transaction.atomic
+def restore_version(
+    *, organization: Organization, doc_id: UUID, version_id: UUID, expected_revision: int, now: datetime.datetime
+) -> ProjectDocument:
+    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    if row.revision != expected_revision:
+        raise ValueError("The diagram changed before this version could be restored. Reload and try again.")
+    version = _get_version(organization=organization, doc_id=doc_id, version_id=version_id)
+    metadata, model, layout = codec.from_json(version.snapshot)
+    restored = ProjectDocument(
+        id=row.id,
+        metadata=metadata,
+        owner_id=row.owner_id,
+        model=model,
+        layout=layout,
+        created_at=row.created_at,
+        updated_at=now,
+        revision=row.revision + 1,
+    )
+    _save(row, restored)
+    transaction.on_commit(lambda: broadcast_document(document=restored))
+    return restored
 
 
 def broadcast_document(*, document: ProjectDocument) -> None:

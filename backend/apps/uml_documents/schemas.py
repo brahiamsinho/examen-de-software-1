@@ -129,6 +129,15 @@ class DocumentCreateIn(Schema):
     name: str
 
 
+class VersionCreateIn(Schema):
+    description: str = ""
+    expected_revision: int
+
+
+class VersionRestoreIn(Schema):
+    expected_revision: int
+
+
 class MetadataOut(Schema):
     name: str
     description: str
@@ -154,6 +163,27 @@ class DocumentSummaryOut(Schema):
     name: str
     revision: int
     updated_at: datetime
+
+
+class VersionSummaryOut(Schema):
+    id: UUID
+    number: int
+    source_revision: int
+    description: str
+    created_by_id: UUID | None
+    created_at: datetime
+
+
+class VersionOut(VersionSummaryOut):
+    snapshot: dict
+
+
+class VersionDiffOut(Schema):
+    from_version_id: UUID
+    to_version_id: UUID
+    classes: dict
+    attributes: dict
+    relationships: dict
 
 
 class DiagnosticOut(Schema):

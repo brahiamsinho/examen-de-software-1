@@ -165,6 +165,156 @@ class TestGetDocument:
 
 
 @pytest.mark.django_db
+class TestDocumentVersions:
+    def _create(self, client, organization, user) -> tuple[str, str]:
+        client.force_login(user)
+        doc_id = client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "Versioned diagram"},
+            content_type="application/json",
+        ).json()["id"]
+        base = f"/api/orgs/{organization.slug}/documents/{doc_id}"
+        client.post(
+            f"{base}/commands",
+            data={"type": "AddClass", "class_id": "order", "name": "Order"},
+            content_type="application/json",
+        )
+        return doc_id, base
+
+    def test_editor_creates_an_immutable_snapshot_and_any_member_reads_it(self, auth_client):
+        organization, _owner, editor, viewer, _outsider = make_org_with_roles()
+        doc_id, base = self._create(auth_client, organization, editor)
+
+        created = auth_client.post(
+            f"{base}/versions",
+            data={"description": "Before adding customer", "expected_revision": 2},
+            content_type="application/json",
+        )
+
+        assert created.status_code == 201, created.content
+        version = created.json()
+        assert version["number"] == 1
+        assert version["source_revision"] == 2
+        assert version["description"] == "Before adding customer"
+        assert [item["name"] for item in version["snapshot"]["model"]["classes"]] == ["Order"]
+
+        auth_client.post(
+            f"{base}/commands",
+            data={"type": "AddClass", "class_id": "customer", "name": "Customer"},
+            content_type="application/json",
+        )
+        auth_client.force_login(viewer)
+        listed = auth_client.get(f"{base}/versions")
+        snapshot = auth_client.get(f"{base}/versions/{version['id']}")
+
+        assert listed.status_code == 200
+        assert listed.json()[0]["number"] == 1
+        assert snapshot.status_code == 200
+        assert [item["name"] for item in snapshot.json()["snapshot"]["model"]["classes"]] == ["Order"]
+        assert len(auth_client.get(base).json()["model"]["classes"]) == 2
+
+    def test_viewer_cannot_create_or_restore_and_other_organizations_cannot_read_versions(self, auth_client):
+        organization, owner, _editor, viewer, _outsider = make_org_with_roles()
+        other_organization, other_owner, *_rest = make_org_with_roles()
+        doc_id, base = self._create(auth_client, organization, owner)
+        version = auth_client.post(
+            f"{base}/versions", data={"expected_revision": 2}, content_type="application/json"
+        ).json()
+
+        auth_client.force_login(viewer)
+        assert auth_client.post(
+            f"{base}/versions", data={"expected_revision": 2}, content_type="application/json"
+        ).status_code == 403
+        assert auth_client.post(
+            f"{base}/versions/{version['id']}/restore",
+            data={"expected_revision": 2},
+            content_type="application/json",
+        ).status_code == 403
+
+        auth_client.force_login(other_owner)
+        assert auth_client.get(
+            f"/api/orgs/{other_organization.slug}/documents/{doc_id}/versions"
+        ).status_code == 404
+
+    def test_restore_creates_a_new_revision_and_rejects_a_stale_request(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        _doc_id, base = self._create(auth_client, organization, editor)
+        version = auth_client.post(
+            f"{base}/versions", data={"expected_revision": 2}, content_type="application/json"
+        ).json()
+        auth_client.post(
+            f"{base}/commands",
+            data={"type": "AddClass", "class_id": "customer", "name": "Customer"},
+            content_type="application/json",
+        )
+
+        stale = auth_client.post(
+            f"{base}/versions/{version['id']}/restore",
+            data={"expected_revision": 2},
+            content_type="application/json",
+        )
+        restored = auth_client.post(
+            f"{base}/versions/{version['id']}/restore",
+            data={"expected_revision": 3},
+            content_type="application/json",
+        )
+
+        assert stale.status_code == 409
+        assert restored.status_code == 200
+        assert restored.json()["revision"] == 4
+        assert [item["name"] for item in auth_client.get(base).json()["model"]["classes"]] == ["Order"]
+
+    def test_restore_keeps_the_snapshot_immutable_after_a_stale_rejection(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        _doc_id, base = self._create(auth_client, organization, editor)
+        version = auth_client.post(
+            f"{base}/versions", data={"expected_revision": 2}, content_type="application/json"
+        ).json()
+        original_snapshot = version["snapshot"]
+        auth_client.post(
+            f"{base}/commands",
+            data={"type": "AddClass", "class_id": "customer", "name": "Customer"},
+            content_type="application/json",
+        )
+        before_stale_restore = auth_client.get(base).json()
+
+        stale = auth_client.post(
+            f"{base}/versions/{version['id']}/restore",
+            data={"expected_revision": 2},
+            content_type="application/json",
+        )
+
+        assert stale.status_code == 409
+        assert auth_client.get(base).json() == before_stale_restore
+        assert auth_client.get(f"{base}/versions/{version['id']}").json()["snapshot"] == original_snapshot
+
+    def test_member_compares_structural_changes_between_two_versions(self, auth_client):
+        organization, _owner, editor, viewer, _outsider = make_org_with_roles()
+        _doc_id, base = self._create(auth_client, organization, editor)
+        first = auth_client.post(
+            f"{base}/versions", data={"expected_revision": 2}, content_type="application/json"
+        ).json()
+        auth_client.post(
+            f"{base}/commands",
+            data={"type": "AddClass", "class_id": "customer", "name": "Customer"},
+            content_type="application/json",
+        )
+        second = auth_client.post(
+            f"{base}/versions", data={"expected_revision": 3}, content_type="application/json"
+        ).json()
+
+        auth_client.force_login(viewer)
+        compared = auth_client.get(
+            f"{base}/versions/compare?from_version_id={first['id']}&to_version_id={second['id']}"
+        )
+
+        assert compared.status_code == 200
+        assert compared.json()["classes"]["added"] == [{"id": "customer", "name": "Customer"}]
+        assert compared.json()["attributes"] == {"added": [], "removed": [], "modified": []}
+        assert compared.json()["relationships"] == {"added": [], "removed": [], "modified": []}
+
+
+@pytest.mark.django_db
 class TestSubmitCommand:
     def test_sequential_commands_persist_across_calls(self, auth_client):
         organization, _owner, editor, _viewer, _outsider = make_org_with_roles()

@@ -10,6 +10,7 @@ from uuid import UUID
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Body, Path, Router, Status
+from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from apps.organizations.constants import Role
@@ -23,6 +24,11 @@ from apps.uml_documents.schemas import (
     DocumentCreateIn,
     DocumentOut,
     DocumentSummaryOut,
+    VersionCreateIn,
+    VersionDiffOut,
+    VersionOut,
+    VersionRestoreIn,
+    VersionSummaryOut,
 )
 
 documents_router = Router(auth=django_auth)
@@ -38,6 +44,17 @@ def _document_summary_out(document) -> dict:
         "name": document.metadata.name,
         "revision": document.revision,
         "updated_at": document.updated_at,
+    }
+
+
+def _version_summary_out(version) -> dict:
+    return {
+        "id": version.id,
+        "number": version.number,
+        "source_revision": version.source_revision,
+        "description": version.description,
+        "created_by_id": version.created_by_id,
+        "created_at": version.created_at,
     }
 
 
@@ -65,6 +82,80 @@ def create_document_view(request: HttpRequest, org_slug: Path[str], payload: Doc
 def get_document_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
     membership = resolve_membership(request, org_slug)
     document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    return _document_out(document)
+
+
+@documents_router.post("/{doc_id}/versions", response={201: VersionOut})
+def create_version_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: VersionCreateIn
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        version = services.create_version(
+            organization=membership.organization,
+            doc_id=doc_id,
+            created_by=request.user,
+            description=payload.description,
+            expected_revision=payload.expected_revision,
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return Status(201, {**_version_summary_out(version), "snapshot": version.snapshot})
+
+
+@documents_router.get("/{doc_id}/versions", response=list[VersionSummaryOut])
+def list_versions_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    return [_version_summary_out(version) for version in services.list_versions(organization=membership.organization, doc_id=doc_id)]
+
+
+@documents_router.get("/{doc_id}/versions/compare", response=VersionDiffOut)
+def compare_versions_view(
+    request: HttpRequest,
+    org_slug: Path[str],
+    doc_id: UUID,
+    from_version_id: UUID,
+    to_version_id: UUID,
+):
+    membership = resolve_membership(request, org_slug)
+    return services.compare_versions(
+        organization=membership.organization,
+        doc_id=doc_id,
+        from_version_id=from_version_id,
+        to_version_id=to_version_id,
+    )
+
+
+@documents_router.get("/{doc_id}/versions/{version_id}", response=VersionOut)
+def get_version_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, version_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    version = services.get_version(
+        organization=membership.organization, doc_id=doc_id, version_id=version_id
+    )
+    return {**_version_summary_out(version), "snapshot": version.snapshot}
+
+
+@documents_router.post("/{doc_id}/versions/{version_id}/restore", response=DocumentOut)
+def restore_version_view(
+    request: HttpRequest,
+    org_slug: Path[str],
+    doc_id: UUID,
+    version_id: UUID,
+    payload: VersionRestoreIn,
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        document = services.restore_version(
+            organization=membership.organization,
+            doc_id=doc_id,
+            version_id=version_id,
+            expected_revision=payload.expected_revision,
+            now=timezone.now(),
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
     return _document_out(document)
 
 

@@ -13,6 +13,7 @@ default manager used only by `all_objects`-aware call sites (never by
 """
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 from apps.organizations.models import TenantScopedManager, TenantScopedModel
@@ -32,3 +33,26 @@ class UmlDocument(TenantScopedModel):
     class Meta:
         base_manager_name = "all_objects"
         indexes = [models.Index(fields=["organization", "owner_id"])]
+
+
+class UmlVersion(TenantScopedModel):
+    """An immutable, tenant-bound snapshot of one UML document state."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(UmlDocument, on_delete=models.CASCADE, related_name="versions")
+    number = models.PositiveIntegerField()
+    source_revision = models.PositiveIntegerField()
+    description = models.CharField(max_length=500, blank=True, default="")
+    snapshot = models.JSONField(default=dict)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = TenantScopedManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        constraints = [models.UniqueConstraint(fields=["document", "number"], name="unique_uml_version_number")]
+        indexes = [models.Index(fields=["organization", "document", "-number"])]
