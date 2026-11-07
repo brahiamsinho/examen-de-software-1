@@ -1,5 +1,7 @@
 # Next Steps
 
+**AI participation 2026-11-07:** #15 (AI proposals on the board, trigger A) is implemented and committed on `feature/ai-board-proposals`. Next: push and open a PR with `Closes #15` once the user authorizes it, then #16 (group chat with one shared-context model), then #17 (session log). Add trigger B (the AI proposes on its own) as a follow-up over the same proposal pipeline. #18 and #19 have their own owners/decisions: #19 needs a push-service choice first. The real LLM provider call for proposals has not been exercised yet; try it once with a real key.
+
 **Second partial 2026-11-06:** implement T3 from `odd/tasks/second-partial-core.md`: tenant-scoped UML templates, catalogue, safe deep cloning with new IDs and organization visibility. Preserve the version-history API and do not copy snapshots by reference.
 
 **Second-partial issue map 2026-11-06:** use GitHub #8 for templates, #9 for relational preview/SQL, #10 for architecture audit and #11 for remote deployment governance. Do not contact a VM unless the user separately authorizes the exact destination, operation and credential/session.

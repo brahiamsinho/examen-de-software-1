@@ -270,3 +270,20 @@ EXTRACT_UML_DIAGRAM = {
 }
 
 IMAGE_IMPORT_TOOLS = [EXTRACT_UML_DIAGRAM]
+
+# AI board proposals (issue #15) use the same structured shape for the same
+# reason: asked for "one call per change", the real model stopped at
+# `add_class` and omitted every attribute and relationship. One object forces a
+# complete suggestion (classes WITH their members, plus relationships).
+SUGGEST_UML_ADDITIONS = {
+    "name": "suggest_uml_additions",
+    "description": (
+        "Suggest what to ADD to the UML class diagram. List each new class together "
+        "with its attributes and operations, and every relationship that connects "
+        "classes. You may also list an existing class to give it new attributes or "
+        "operations. Never repeat something the diagram already contains."
+    ),
+    "parameters": EXTRACT_UML_DIAGRAM["parameters"],
+}
+
+PROPOSAL_TOOLS = [SUGGEST_UML_ADDITIONS]

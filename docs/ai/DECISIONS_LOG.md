@@ -1854,3 +1854,9 @@ are the design-level ones that govern how the code is actually shaped.
   placeholder content. Documented in each file and in the root README;
   rename them locally (e.g. `mv env.example .env`) to restore the
   conventional dotfile name.
+
+## 2026-11-07 - AI board proposals (GitHub #15)
+- Decision: an AI suggestion is a persisted draft (`AiProposal`) that never touches the diagram until an OWNER/EDITOR approves it; it is shared with every member through the existing document socket (`proposal.update`) instead of the per-user cache plan used by voice/image previews, because it must outlive a request and be visible to all collaborators.
+- Decision: `apps.ai_assistant` is no longer database-free; only proposals are persisted, and every diagram change still goes through `uml_documents.services.submit_commands`.
+- Decision: trigger A first (a developer asks the AI); trigger B (the AI proposes on its own) comes later over the same pipeline, to keep token cost predictable.
+- Decision: a proposal written for an older revision becomes `stale` and cannot be approved, matching the voice/image plans' revision binding.

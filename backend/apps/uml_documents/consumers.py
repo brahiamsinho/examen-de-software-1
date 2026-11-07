@@ -220,6 +220,18 @@ class DocumentConsumer(JsonWebsocketConsumer):
     def node_unlocked(self, event):
         self.send_json({"type": "node.unlocked", "class_id": event["class_id"]})
 
+    def proposal_update(self, event):
+        """Relays an AI proposal event (issue #15) to every member, VIEWERs
+        included: proposals are read-only for them. Re-authorizes membership
+        first, exactly like `document_update`, so a revoked member stops
+        receiving proposal data immediately."""
+        try:
+            resolve_membership_for_user(self.scope["user"], self.org_slug)
+        except Http404:
+            self.close(4403)
+            return
+        self.send_json({"type": event["type"], "proposal": event["proposal"]})
+
     def document_update(self, event):
         """Group-message handler (DD7 — the `group_send` `type` dispatches
         here by Channels' dot-to-underscore convention). Re-authorizes

@@ -1,9 +1,11 @@
 """Django app registration shell for the ai_assistant domain (voice-driven
 diagram editing).
 
-Mirrors `apps.relational_mapping.apps`: a persisted-looking Django app with
-no `models.py` of its own (it never touches the database directly — every
-mutation flows through `apps.uml_documents.services.submit_command`).
+Voice and image plans stay in the cache and never touch the database. Only
+AI board proposals (`models.AiProposal`, issue #15) are persisted, because
+they must outlive a request and be visible to every collaborator. Every
+change to a diagram still flows through
+`apps.uml_documents.services.submit_commands`.
 """
 from django.apps import AppConfig
 

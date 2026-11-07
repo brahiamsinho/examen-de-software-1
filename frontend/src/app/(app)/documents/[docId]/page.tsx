@@ -3,7 +3,7 @@
 import { useAtomValue } from "jotai";
 import { AlertTriangle, FileUp, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
 import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
+import { AiProposalsPanel } from "@/components/workspace/AiProposalsPanel";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
 import { DeploymentActions, DeploymentNotices, DeploymentUrl } from "@/components/workspace/DeploymentControls";
 import { EditRelationshipDialog } from "@/components/workspace/EditRelationshipDialog";
@@ -29,6 +30,15 @@ import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert"
 import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
+import {
+  approveProposal,
+  buildAiDrafts,
+  rejectProposal,
+  requestProposal,
+  type AiDrafts,
+  type AiProposal,
+} from "@/lib/ai_proposals";
+import { ApiError } from "@/lib/api";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
@@ -38,6 +48,13 @@ import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
 import { useDocumentActions } from "@/state/documents";
 import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
+
+const NO_AI_DRAFTS: AiDrafts = { classes: [], relationships: [] };
+const NO_PROPOSALS: AiProposal[] = [];
+
+function proposalErrorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.detail : "No se pudo completar la acción con la IA. Intenta de nuevo.";
+}
 
 /**
  * Container (design.md DD11): stays `"use client"` and unwraps the Next 16
@@ -56,6 +73,8 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const {
     document,
     applyDocument,
+    applyProposal,
+    proposals = NO_PROPOSALS,
     refreshDocument,
     error,
     lastValidation,
@@ -76,6 +95,13 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const myRole = organizations.find((org) => org.slug === orgSlug)?.my_role ?? null;
   const canEdit = myRole === "OWNER" || myRole === "EDITOR";
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [askingAi, setAskingAi] = useState(false);
+  const [busyProposalId, setBusyProposalId] = useState<string | null>(null);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const aiDrafts = useMemo(
+    () => (document === null ? NO_AI_DRAFTS : buildAiDrafts(document.model, proposals)),
+    [document, proposals],
+  );
   const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
@@ -173,6 +199,35 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     const result = await confirmImageImport(orgSlug!, docId, planId);
     await refreshDocument();
     return result;
+  }
+
+  async function handleAskAi(prompt: string) {
+    setAskingAi(true);
+    setProposalError(null);
+    try {
+      applyProposal(await requestProposal(orgSlug!, docId, prompt));
+    } catch (err) {
+      setProposalError(proposalErrorMessage(err));
+      throw err; // keeps the typed text in the panel so the user can retry
+    } finally {
+      setAskingAi(false);
+    }
+  }
+
+  async function handleDecideProposal(
+    proposalId: string,
+    decide: (orgSlug: string, docId: string, proposalId: string) => Promise<AiProposal>,
+  ) {
+    setBusyProposalId(proposalId);
+    setProposalError(null);
+    try {
+      applyProposal(await decide(orgSlug!, docId, proposalId));
+      await refreshDocument();
+    } catch (err) {
+      setProposalError(proposalErrorMessage(err));
+    } finally {
+      setBusyProposalId(null);
+    }
   }
 
   const classIds = new Set(document.model.classes.map((c) => c.id));
@@ -290,12 +345,13 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               onNodeTap={handleNodeTap}
               onEdgeEdit={canEdit ? setEditingRelationshipId : undefined}
               joinTableHints={joinTableHints}
+              aiDrafts={aiDrafts}
               highlightedClassId={effectiveSourceId}
               onClaim={sendClaim}
               onLivePosition={sendPosition}
               onRelease={sendRelease}
             />
-            {isBlank && canEdit ? (
+            {isBlank && canEdit && aiDrafts.classes.length === 0 ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                 <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card/95 px-6 py-6 text-center shadow-xs">
                   <span className="flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">
@@ -338,6 +394,26 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
         <aside className="flex w-full flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
            <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>IA como compañera</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AiProposalsPanel
+                proposals={proposals}
+                canDecide={canEdit}
+                busyId={busyProposalId}
+                asking={askingAi}
+                error={proposalError}
+                onAsk={handleAskAi}
+                onApprove={(proposalId, selected) =>
+                  void handleDecideProposal(proposalId, (org, doc, id) => approveProposal(org, doc, id, selected))
+                }
+                onReject={(proposalId) => void handleDecideProposal(proposalId, rejectProposal)}
+              />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

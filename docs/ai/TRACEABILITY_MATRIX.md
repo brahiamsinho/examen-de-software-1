@@ -11,6 +11,19 @@ describe repository evidence, not promised completion.
 | S4 — Database preview | Partial | Authoritative `map_to_relational` pipeline and join-table hints | T4 | Preview and DDL derive from the same `RelationalModel`; no database mutation occurs. |
 | S5 — Architecture audit | Missing | Canonical UML validation and optional on-device local-assistant baseline | T5 | A deterministic cycle fixture produces a revision-bound finding offline; audit never changes UML. |
 
+# AI participation traceability (GitHub #15-#19)
+
+Source request: "la IA sera un desarrollador mas todas las ideas que la IA tenga se mostrara en la pizarra mientras un desarrollador lo permita". Feature document: `odd/tasks/ai-board-proposals.md`.
+
+| Issue | Status | Evidence |
+| --- | --- | --- |
+| #15 AI proposes changes on the board | Implemented on `feature/ai-board-proposals` (trigger A: a developer asks) | `apps/ai_assistant/proposals.py`, `models.AiProposal`, `POST/GET /ai-proposals`, `.../approve\|reject`, `proposal.update` socket event, `AiProposalsPanel`, dashed drafts in `DiagramCanvas`. Complete suggestions (classes with attributes, operations and relationships) and per-change selective approval added after trying it with the real AI. Backend ai_assistant + uml_documents + organizations 365 passed; frontend 476 passed; verified in a real browser with the real provider (viewer read-only, editor approves a selection, live update). |
+| #15 follow-up: trigger B (AI proposes on its own) | Planned | Agreed order: A first, then B as another trigger over the same proposal pipeline. |
+| #16 Group chat, one model, shared context | Planned | Depends on #15. |
+| #17 Session log | Planned | Depends on #15 and #16. |
+| #18 Optional local AI | Planned | Independent of #15. |
+| #19 Mobile collaboration and push notifications | Planned | Needs a push-service decision (e.g. FCM) and its credentials outside the repo. |
+
 ## Evidence conventions
 
 - Record the exact commit, command, environment and observed result when each

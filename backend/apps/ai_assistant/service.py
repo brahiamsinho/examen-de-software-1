@@ -306,6 +306,10 @@ def confirm_image_import(
     )
 
 
+# Public names for the helpers other modules of this package reuse.
+document_context = _document_context
+
+
 def _image_plan_key(plan_id: str) -> str:
     return f"ai_assistant:image-import-plan:{plan_id}"
 
@@ -323,6 +327,9 @@ def _describe_calls(document: ProjectDocument, calls: Sequence[GeminiFunctionCal
         except (TranslationError, KeyError, ValueError, TypeError) as exc:
             described.append(AppliedCommand(ok=False, message=str(exc)))
     return described
+
+
+describe_calls = _describe_calls
 
 
 def _reconcile_image_calls(
@@ -486,6 +493,9 @@ def _expand_image_extraction(calls: Sequence[GeminiFunctionCall]) -> list[Gemini
                 )
         expanded.append(GeminiFunctionCall(name="add_relationship", args=args))
     return expanded
+
+
+expand_extraction = _expand_image_extraction
 
 
 def _normalize_image_multiplicity(value: str) -> str:
