@@ -29,6 +29,10 @@ from apps.uml_documents.schemas import (
     VersionOut,
     VersionRestoreIn,
     VersionSummaryOut,
+    TemplateCreateIn,
+    TemplateInstantiateIn,
+    TemplateOut,
+    TemplateSummaryOut,
 )
 
 documents_router = Router(auth=django_auth)
@@ -58,6 +62,16 @@ def _version_summary_out(version) -> dict:
     }
 
 
+def _template_summary_out(template) -> dict:
+    return {
+        "id": template.id,
+        "name": template.name,
+        "source_document_id": template.source_document_id,
+        "created_by_id": template.created_by_id,
+        "created_at": template.created_at,
+    }
+
+
 @documents_router.get("", response=list[DocumentSummaryOut])
 def list_documents_view(request: HttpRequest, org_slug: Path[str]):
     membership = resolve_membership(request, org_slug)  # no require_role — DD3, any member reads
@@ -71,6 +85,47 @@ def create_document_view(request: HttpRequest, org_slug: Path[str], payload: Doc
     require_role(membership, Role.OWNER, Role.EDITOR)
     document = services.create_document(
         organization=membership.organization,
+        owner_id=str(request.user.id),
+        name=payload.name,
+        now=timezone.now(),
+    )
+    return Status(201, _document_out(document))
+
+
+@documents_router.get("/templates", response=list[TemplateSummaryOut])
+def list_templates_view(request: HttpRequest, org_slug: Path[str]):
+    membership = resolve_membership(request, org_slug)
+    return [_template_summary_out(template) for template in services.list_templates(organization=membership.organization)]
+
+
+@documents_router.get("/templates/{template_id}", response=TemplateOut)
+def get_template_view(request: HttpRequest, org_slug: Path[str], template_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    template = services.get_template(organization=membership.organization, template_id=template_id)
+    return {**_template_summary_out(template), "snapshot": template.snapshot}
+
+
+@documents_router.post("/{doc_id}/templates", response={201: TemplateOut})
+def create_template_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: TemplateCreateIn
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    template = services.create_template(
+        organization=membership.organization, doc_id=doc_id, created_by=request.user, name=payload.name
+    )
+    return Status(201, {**_template_summary_out(template), "snapshot": template.snapshot})
+
+
+@documents_router.post("/templates/{template_id}/instantiate", response={201: DocumentOut})
+def instantiate_template_view(
+    request: HttpRequest, org_slug: Path[str], template_id: UUID, payload: TemplateInstantiateIn
+):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    document = services.instantiate_template(
+        organization=membership.organization,
+        template_id=template_id,
         owner_id=str(request.user.id),
         name=payload.name,
         now=timezone.now(),

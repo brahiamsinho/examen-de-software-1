@@ -178,6 +178,18 @@ export type DocumentSummary = {
   updated_at: string;
 };
 
+export type UmlTemplateSummary = {
+  id: string;
+  name: string;
+  source_document_id: string | null;
+  created_by_id: string | null;
+  created_at: string;
+};
+
+export type UmlTemplate = UmlTemplateSummary & {
+  snapshot: Pick<UmlDocument, "metadata" | "model" | "layout">;
+};
+
 export type UmlVersionSummary = {
   id: string;
   number: number;
@@ -202,6 +214,32 @@ export type VersionDiff = {
 
 export async function listDocuments(orgSlug: string): Promise<DocumentSummary[]> {
   return apiFetch<DocumentSummary[]>(base(orgSlug));
+}
+
+export function listTemplates(orgSlug: string): Promise<UmlTemplateSummary[]> {
+  return apiFetch<UmlTemplateSummary[]>(`${base(orgSlug)}/templates`);
+}
+
+export function createTemplate(
+  orgSlug: string,
+  docId: string,
+  input: { name: string },
+): Promise<UmlTemplate> {
+  return apiFetch<UmlTemplate>(`${base(orgSlug)}/${encodeURIComponent(docId)}/templates`, {
+    method: "POST",
+    json: input,
+  });
+}
+
+export function instantiateTemplate(
+  orgSlug: string,
+  templateId: string,
+  input: { name: string },
+): Promise<UmlDocument> {
+  return apiFetch<UmlDocument>(`${base(orgSlug)}/templates/${encodeURIComponent(templateId)}/instantiate`, {
+    method: "POST",
+    json: input,
+  });
 }
 
 function versionsBase(orgSlug: string, docId: string): string {

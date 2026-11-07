@@ -11,6 +11,7 @@ import { DeleteDiagramDialog } from "@/components/workspace/DeleteDiagramDialog"
 import { DocumentGrid } from "@/components/workspace/DocumentGrid";
 import { ImportXmiControl } from "@/components/workspace/ImportXmiControl";
 import { NewDocumentDialog } from "@/components/workspace/NewDocumentDialog";
+import { TemplateCatalogDialog } from "@/components/workspace/TemplateCatalogDialog";
 import { OrgEmptyState } from "@/components/workspace/OrgEmptyState";
 import { ROLE_LABELS } from "@/components/workspace/roleLabels";
 import type { DocumentSummary } from "@/lib/uml_documents";
@@ -37,8 +38,9 @@ export default function DashboardPage() {
   const activeOrg = organizations.find((org) => org.slug === activeSlug) ?? null;
   const canCreateDocument = activeOrg?.my_role === "OWNER" || activeOrg?.my_role === "EDITOR";
   const { documents, loading } = useDocuments(activeOrg?.slug ?? null);
-  const { createDiagram, importDiagram, deleteDiagram } = useDocumentActions(activeOrg?.slug ?? null);
+  const { createDiagram, importDiagram, instantiateDiagram, deleteDiagram } = useDocumentActions(activeOrg?.slug ?? null);
   const [newDiagramOpen, setNewDiagramOpen] = useState(false);
+  const [templateCatalogOpen, setTemplateCatalogOpen] = useState(false);
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<DocumentSummary | null>(null);
 
@@ -63,7 +65,8 @@ export default function DashboardPage() {
 
   const actions = canCreateDocument ? (
     <>
-      <ImportXmiControl onImport={importDiagram} />
+       <ImportXmiControl onImport={importDiagram} />
+       <Button type="button" variant="outline" onClick={() => setTemplateCatalogOpen(true)}>Usar plantilla</Button>
       <Button type="button" onClick={() => setNewDiagramOpen(true)}>
         <Plus />
         Nuevo diagrama
@@ -114,6 +117,12 @@ export default function DashboardPage() {
             open={newDiagramOpen}
             onOpenChange={setNewDiagramOpen}
             onCreate={createDiagram}
+          />
+          <TemplateCatalogDialog
+            open={templateCatalogOpen}
+            onOpenChange={setTemplateCatalogOpen}
+            orgSlug={activeOrg.slug}
+            onInstantiate={instantiateDiagram}
           />
           <DeleteDiagramDialog
             open={pendingDelete !== null}

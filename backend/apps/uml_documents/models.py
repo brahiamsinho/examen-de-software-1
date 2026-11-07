@@ -56,3 +56,23 @@ class UmlVersion(TenantScopedModel):
         base_manager_name = "all_objects"
         constraints = [models.UniqueConstraint(fields=["document", "number"], name="unique_uml_version_number")]
         indexes = [models.Index(fields=["organization", "document", "-number"])]
+
+
+class UmlTemplate(TenantScopedModel):
+    """An organization-private reusable UML document snapshot."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    source_document = models.ForeignKey(UmlDocument, on_delete=models.SET_NULL, null=True, related_name="templates")
+    snapshot = models.JSONField(default=dict)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = TenantScopedManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+        indexes = [models.Index(fields=["organization", "name"])]

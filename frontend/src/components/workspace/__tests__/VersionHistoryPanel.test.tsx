@@ -2,12 +2,13 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
-import { createVersion, listVersions } from "@/lib/uml_documents";
+import { createTemplate, createVersion, listVersions } from "@/lib/uml_documents";
 
 vi.mock("@/lib/uml_documents", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/uml_documents")>()),
   listVersions: vi.fn(),
   createVersion: vi.fn(),
+  createTemplate: vi.fn(),
   compareVersions: vi.fn(),
   restoreVersion: vi.fn(),
 }));
@@ -26,6 +27,10 @@ describe("VersionHistoryPanel", () => {
     vi.mocked(listVersions).mockResolvedValue([version]);
     vi.mocked(createVersion).mockResolvedValue({
       ...version,
+      snapshot: { metadata: { name: "Diagram", description: "" }, model: { classes: [], enumerations: [], relationships: [], generation_metadata: {} }, layout: { positions: {} } },
+    });
+    vi.mocked(createTemplate).mockResolvedValue({
+      id: "template-1", name: "Sales starter", source_document_id: "doc-1", created_by_id: "user-1", created_at: "2026-11-07T00:00:00Z",
       snapshot: { metadata: { name: "Diagram", description: "" }, model: { classes: [], enumerations: [], relationships: [], generation_metadata: {} }, layout: { positions: {} } },
     });
   });
@@ -49,5 +54,15 @@ describe("VersionHistoryPanel", () => {
       description: "Before release",
       expected_revision: 2,
     }));
+  });
+
+  it("publishes the current document as a template", async () => {
+    render(<VersionHistoryPanel orgSlug="acme" docId="doc-1" revision={2} canEdit onRestored={async () => {}} />);
+    await screen.findByText("V1 · revisión 2 · Before customer");
+
+    fireEvent.change(screen.getByLabelText("Nombre de plantilla"), { target: { value: "Sales starter" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar plantilla" }));
+
+    await waitFor(() => expect(createTemplate).toHaveBeenCalledWith("acme", "doc-1", { name: "Sales starter" }));
   });
 });

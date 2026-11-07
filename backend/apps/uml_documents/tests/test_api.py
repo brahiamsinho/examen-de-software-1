@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 
 from apps.organizations.tests.factories import make_org_with_roles
-from apps.uml_documents.models import UmlDocument
+from apps.uml_documents.models import UmlDocument, UmlTemplate
 
 
 @pytest.mark.django_db
@@ -45,6 +45,75 @@ class TestCreateDocument:
 
         assert response.status_code == 403
         assert not UmlDocument.all_objects.filter(organization=organization).exists()
+
+
+@pytest.mark.django_db
+class TestUmlTemplates:
+    def test_editor_publishes_and_instantiates_an_independent_template(self, auth_client):
+        organization, _owner, editor, viewer, _outsider = make_org_with_roles()
+        auth_client.force_login(editor)
+        source = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "Sales"},
+            content_type="application/json",
+        ).json()
+        auth_client.post(
+            f"/api/orgs/{organization.slug}/documents/{source['id']}/commands",
+            data={"type": "AddClass", "class_id": "order", "name": "Order"},
+            content_type="application/json",
+        )
+
+        published = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents/{source['id']}/templates",
+            data={"name": "Sales starter"},
+            content_type="application/json",
+        )
+
+        assert published.status_code == 201
+        template_id = published.json()["id"]
+        auth_client.force_login(viewer)
+        assert auth_client.get(f"/api/orgs/{organization.slug}/documents/templates").json()[0]["id"] == template_id
+        assert auth_client.post(
+            f"/api/orgs/{organization.slug}/documents/templates/{template_id}/instantiate",
+            data={"name": "Q1 Sales"},
+            content_type="application/json",
+        ).status_code == 403
+
+        auth_client.force_login(editor)
+        created = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents/templates/{template_id}/instantiate",
+            data={"name": "Q1 Sales"},
+            content_type="application/json",
+        )
+
+        assert created.status_code == 201
+        body = created.json()
+        assert body["metadata"]["name"] == "Q1 Sales"
+        assert body["model"]["classes"][0]["name"] == "Order"
+        assert body["model"]["classes"][0]["id"] != "order"
+        assert UmlTemplate.all_objects.filter(id=template_id, organization=organization).exists()
+
+    def test_templates_are_invisible_across_organizations(self, auth_client):
+        organization, _owner, editor, _viewer, _outsider = make_org_with_roles()
+        other_organization, other_owner, *_rest = make_org_with_roles()
+        auth_client.force_login(editor)
+        document = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents",
+            data={"name": "Private"},
+            content_type="application/json",
+        ).json()
+        template = auth_client.post(
+            f"/api/orgs/{organization.slug}/documents/{document['id']}/templates",
+            data={"name": "Private template"},
+            content_type="application/json",
+        ).json()
+
+        auth_client.force_login(other_owner)
+        assert auth_client.get(f"/api/orgs/{other_organization.slug}/documents/templates").json() == []
+        assert (
+            auth_client.get(f"/api/orgs/{other_organization.slug}/documents/templates/{template['id']}").status_code
+            == 404
+        )
 
 
 @pytest.mark.django_db
