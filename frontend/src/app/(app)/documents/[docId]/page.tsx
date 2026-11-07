@@ -351,7 +351,7 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               onLivePosition={sendPosition}
               onRelease={sendRelease}
             />
-            {isBlank && canEdit ? (
+            {isBlank && canEdit && aiDrafts.classes.length === 0 ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                 <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card/95 px-6 py-6 text-center shadow-xs">
                   <span className="flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">
