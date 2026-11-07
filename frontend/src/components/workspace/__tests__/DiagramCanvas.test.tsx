@@ -528,6 +528,10 @@ const { cyMock } = vi.hoisted(() => ({
     // no-op here since none of these lifecycle tests pass `joinTableHints`.
     $: vi.fn(() => ({ remove: vi.fn() })),
     add: vi.fn(),
+    // Used when the AI draft set changes (issue #15): the canvas refits so a
+    // new draft is never left off-screen.
+    elements: vi.fn(() => ({})),
+    fit: vi.fn(),
     getElementById: vi.fn(
       (): {
         addClass: ReturnType<typeof vi.fn>;
@@ -592,6 +596,32 @@ describe("DiagramCanvas — Cytoscape lifecycle (mocked)", () => {
     cyMock.layout.mockClear();
     cyMock.nodes.mockClear();
     cyMock.getElementById.mockClear();
+  });
+
+  it("refits the view once when AI drafts appear, so a draft is never left off-screen", async () => {
+    const { DiagramCanvas } = await import("@/components/workspace/DiagramCanvas");
+    cyMock.fit.mockClear();
+    const drafts = {
+      classes: [{ id: "ai-draft:p1:pedido", name: "Pedido", attributes: [], proposalId: "p1" }],
+      relationships: [],
+    };
+
+    const { rerender } = render(<DiagramCanvas model={emptyModel} revision={1} />);
+    expect(cyMock.fit).not.toHaveBeenCalled();
+
+    rerender(<DiagramCanvas model={emptyModel} revision={1} aiDrafts={drafts} />);
+    expect(cyMock.fit).toHaveBeenCalledTimes(1);
+
+    // Same draft set, new object identity (a document refetch): the user's pan/zoom is left alone.
+    rerender(<DiagramCanvas model={emptyModel} revision={1} aiDrafts={{ ...drafts }} />);
+    expect(cyMock.fit).toHaveBeenCalledTimes(1);
+
+    // Decided: drafts clear and nothing is refit.
+    rerender(<DiagramCanvas model={emptyModel} revision={1} aiDrafts={{ classes: [], relationships: [] }} />);
+    expect(cyMock.fit).toHaveBeenCalledTimes(1);
+
+    // Keep the shared constructor-call counter clean for the next test.
+    vi.mocked((await import("cytoscape")).default).mockClear();
   });
 
   it("constructs the Cytoscape instance once on mount and destroys it on unmount", async () => {

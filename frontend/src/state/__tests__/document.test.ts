@@ -29,6 +29,11 @@ vi.mock("@/lib/uml_documents", async () => {
   };
 });
 
+vi.mock("@/lib/ai_proposals", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/ai_proposals")>("@/lib/ai_proposals");
+  return { ...actual, listProposals: vi.fn().mockResolvedValue([]) };
+});
+
 /** Returns the `handlers` object passed to the most recent `openDocumentSocket` call. */
 function lastSocketHandlers() {
   const calls = vi.mocked(docsLib.openDocumentSocket).mock.calls;
