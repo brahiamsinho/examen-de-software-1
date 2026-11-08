@@ -197,6 +197,70 @@ class TestAppendOnly:
 
         assert LogEntry.all_objects.get(pk=entry.pk).actor_id == editor.id
 
+    def _clone_of(self, entry, organization, document, **overrides):
+        values = dict(
+            id=entry.pk,
+            organization=organization,
+            document_id=document.id,
+            session=9,
+            kind="change",
+            actor_label="Z",
+            summary="HACK",
+            created_at=_T0,
+        )
+        values.update(overrides)
+        return LogEntry(**values)
+
+    def test_a_new_instance_with_an_existing_id_cannot_overwrite_that_entry(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        entry = _record(organization, document, editor, summary="original")
+
+        with pytest.raises(log.ImmutableLogError):
+            self._clone_of(entry, organization, document).save()
+
+        stored = LogEntry.all_objects.get(pk=entry.pk)
+        assert (stored.summary, stored.session, stored.actor_label) == (
+            "original",
+            1,
+            editor.full_name or editor.email,
+        )
+
+    @pytest.mark.parametrize("options", [{"update_conflicts": True}, {"ignore_conflicts": True}])
+    def test_a_bulk_insert_cannot_overwrite_or_shadow_an_existing_entry(self, options):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        entry = _record(organization, document, editor, summary="original")
+        extra = (
+            {"update_fields": ["summary"], "unique_fields": ["id"]} if options.get("update_conflicts") else {}
+        )
+
+        with pytest.raises(log.ImmutableLogError):
+            LogEntry.all_objects.bulk_create([self._clone_of(entry, organization, document)], **options, **extra)
+
+        assert LogEntry.all_objects.get(pk=entry.pk).summary == "original"
+
+    def test_entries_can_still_be_appended_one_by_one_and_in_bulk_without_an_id(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        _record(organization, document, editor)
+        fresh = [
+            LogEntry(
+                organization=organization,
+                document_id=document.id,
+                session=1,
+                kind="change",
+                actor_label="X",
+                summary=f"bulk {number}",
+                created_at=_T0,
+            )
+            for number in range(2)
+        ]
+
+        LogEntry.all_objects.bulk_create(fresh)
+
+        assert LogEntry.all_objects.filter(document_id=document.id).count() == 3
+
     def test_deleting_the_diagram_takes_its_log_with_it(self):
         organization, owner, *_ = make_org_with_roles()
         document = _document(organization, owner)
@@ -330,6 +394,15 @@ class TestExport:
         cells = [row[6] for row in self._rows(log.export_csv(_entries(organization, document)))[1:]]
 
         assert all(cell.startswith("'") for cell in cells)
+
+    def test_no_column_that_carries_text_can_start_a_formula(self):
+        organization, owner, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        _record(organization, document, owner, kind="=cmd", summary="plain")
+
+        row = self._rows(log.export_csv(_entries(organization, document)))[1]
+
+        assert row[3] == "'=cmd"
 
     def test_the_csv_respects_the_filters_it_is_given(self):
         organization, owner, editor, *_ = make_org_with_roles()

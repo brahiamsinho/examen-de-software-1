@@ -43,6 +43,14 @@ class LogQuerySet(TenantScopedQuerySet):
     def bulk_update(self, objs, fields, batch_size=None):
         raise ImmutableLogError()
 
+    def bulk_create(self, objs, *args, update_conflicts=False, **kwargs):
+        # An upsert, or an object that brings its own id, could overwrite or
+        # shadow an existing entry. New entries never bring an id.
+        objs = list(objs)
+        if update_conflicts or any(obj.pk is not None for obj in objs):
+            raise ImmutableLogError()
+        return super().bulk_create(objs, *args, update_conflicts=False, **kwargs)
+
     def delete(self):
         raise ImmutableLogError()
 
@@ -87,7 +95,9 @@ class LogEntry(TenantScopedModel):
         ]
 
     def save(self, *args, **kwargs):
-        if not self._state.adding:
+        # A saved entry is never saved again, and a NEW instance must not bring
+        # an id: Django would run an UPDATE first and overwrite that entry.
+        if not self._state.adding or self.pk is not None:
             raise ImmutableLogError()
         super().save(*args, **kwargs)
 

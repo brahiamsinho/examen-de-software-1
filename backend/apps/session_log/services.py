@@ -298,7 +298,7 @@ def export_csv(entries: Sequence[LogEntry]) -> str:
                 entry.id,
                 entry.session,
                 entry.created_at.isoformat(),
-                entry.kind,
+                _safe_cell(entry.kind),
                 _safe_cell(entry.actor_label),
                 "true" if entry.is_ai else "false",
                 _safe_cell(entry.summary),
