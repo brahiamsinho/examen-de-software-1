@@ -24,6 +24,7 @@ from apps.ai_assistant.gemini_client import GeminiClientProtocol, GeminiFunction
 from apps.ai_assistant.llm_provider import get_active_llm_client
 from apps.ai_assistant.models import AiProposal, ChatMessage
 from apps.organizations.models import Organization
+from apps.session_log import services as session_log
 from apps.uml_documents import services
 
 # Bounds the tokens (and so the cost) of one model call: only the latest
@@ -104,6 +105,16 @@ def _store(organization: Organization, doc_id: UUID, *, author, content: str, is
     with transaction.atomic():
         message = ChatMessage.objects.for_organization(organization).create(
             organization=organization, document_id=doc_id, author=author, is_ai=is_ai, content=content
+        )
+        session_log.record(
+            organization=organization,
+            document_id=doc_id,
+            kind=session_log.LogKind.CHAT_MESSAGE,
+            summary=content,
+            actor=author,
+            is_ai=is_ai,
+            data={"message_id": message.id},
+            now=message.created_at,
         )
         _broadcast(message)
     return message

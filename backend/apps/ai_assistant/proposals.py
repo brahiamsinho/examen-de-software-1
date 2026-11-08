@@ -23,6 +23,7 @@ from apps.ai_assistant.llm_provider import get_active_llm_client
 from apps.ai_assistant.models import AiProposal, ProposalStatus
 from apps.ai_assistant.translator import Translator
 from apps.organizations.models import Organization
+from apps.session_log import services as session_log
 from apps.uml_documents import services
 
 _PROPOSAL_INSTRUCTION = (
@@ -246,6 +247,19 @@ def propose_calls(
             changes=changes,
             requested_by=requested_by,
         )
+        session_log.record(
+            organization=organization,
+            document_id=document.id,
+            kind=session_log.LogKind.PROPOSAL_CREATED,
+            summary=f"AI proposed {len(calls)} changes",
+            is_ai=True,
+            data={
+                "proposal_id": str(proposal.id),
+                "requested_by": _label(requested_by),
+                "prompt": prompt[:500],
+                "changes": [change["message"] for change in changes][:50],
+            },
+        )
         _broadcast(proposal)
     return proposal
 
@@ -340,12 +354,26 @@ def approve_proposal(
             commands_to_apply=[services.command_from_payload(item.payload) for item in translated],
             now=now,
             expected_revision=locked.base_revision,
+            actor=decided_by,
         )
         locked.status = ProposalStatus.APPROVED
         locked.applied_indices = indices
         locked.decided_by = decided_by
         locked.decided_at = now
         locked.save(update_fields=["status", "applied_indices", "decided_by", "decided_at"])
+        session_log.record(
+            organization=organization,
+            document_id=doc_id,
+            kind=session_log.LogKind.PROPOSAL_APPROVED,
+            summary=f"Approved AI proposal ({len(indices)} of {len(locked.calls)} changes)",
+            actor=decided_by,
+            data={
+                "proposal_id": str(locked.id),
+                "applied_indices": indices,
+                "total_changes": len(locked.calls),
+            },
+            now=now,
+        )
         _broadcast(locked)
     return locked
 
@@ -372,5 +400,14 @@ def reject_proposal(
         locked.decided_by = decided_by
         locked.decided_at = now
         locked.save(update_fields=["status", "decided_by", "decided_at"])
+        session_log.record(
+            organization=organization,
+            document_id=doc_id,
+            kind=session_log.LogKind.PROPOSAL_REJECTED,
+            summary=f"Rejected AI proposal ({len(locked.calls)} changes)",
+            actor=decided_by,
+            data={"proposal_id": str(locked.id), "total_changes": len(locked.calls)},
+            now=now,
+        )
         _broadcast(locked)
     return locked

@@ -84,7 +84,11 @@ def voice_command_confirm_view(
     require_role(membership, Role.OWNER, Role.EDITOR)
     try:
         result = service.confirm_voice_command(
-            organization=membership.organization, doc_id=doc_id, plan_id=payload.plan_id, now=timezone.now()
+            organization=membership.organization,
+            doc_id=doc_id,
+            plan_id=payload.plan_id,
+            now=timezone.now(),
+            actor=request.user,
         )
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc
@@ -147,7 +151,11 @@ def image_import_confirm_view(
     require_role(membership, Role.OWNER, Role.EDITOR)
     try:
         result = service.confirm_image_import(
-            organization=membership.organization, doc_id=doc_id, plan_id=payload.plan_id, now=timezone.now()
+            organization=membership.organization,
+            doc_id=doc_id,
+            plan_id=payload.plan_id,
+            now=timezone.now(),
+            actor=request.user,
         )
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc

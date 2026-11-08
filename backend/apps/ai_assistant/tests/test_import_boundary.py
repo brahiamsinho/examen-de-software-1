@@ -33,6 +33,7 @@ _ALLOWED_PREFIXES = (
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.organizations",
+    "apps.session_log",  # issue #17: proposals append their decisions to the session log
     "apps.ai_assistant",  # self-package: these modules cross-import each other
     "django",
     "ninja",
