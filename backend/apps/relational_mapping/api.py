@@ -16,12 +16,13 @@ guarantee.
 from uuid import UUID
 
 from django.http import HttpRequest
-from ninja import Path, Router, Schema
+from ninja import Path, Router, Schema, Status
 from ninja.security import django_auth
 
 from apps.organizations.permissions import resolve_membership
 from apps.relational_mapping.mapping.errors import UnmappableModelError
 from apps.relational_mapping.mapping.mapper import map_to_relational
+from apps.relational_mapping.preview import relational_preview, relational_sql
 from apps.uml_documents import services
 
 relational_router = Router(auth=django_auth)
@@ -31,6 +32,34 @@ class JoinTableOut(Schema):
     relationship_id: str
     table_name: str
     columns: list[str]
+
+
+class PreviewColumnOut(Schema):
+    name: str
+    type: str
+    nullable: bool
+    primary_key: bool
+
+
+class PreviewForeignKeyOut(Schema):
+    name: str
+    columns: list[str]
+    referenced_table: str
+    referenced_columns: list[str]
+    on_delete: str
+    on_update: str
+    relationship_id: str | None
+
+
+class PreviewTableOut(Schema):
+    name: str
+    columns: list[PreviewColumnOut]
+    foreign_keys: list[PreviewForeignKeyOut]
+
+
+class RelationalPreviewOut(Schema):
+    tables: list[PreviewTableOut]
+    sql: str
 
 
 @relational_router.get("/{doc_id}/join-tables", response={200: list[JoinTableOut]})
@@ -59,3 +88,23 @@ def join_tables_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
         for table in relational.tables
         if not table.source_class_ids and len(table.foreign_keys) == 2
     ]
+
+
+@relational_router.get("/{doc_id}/relational-preview", response={200: RelationalPreviewOut, 422: dict})
+def relational_preview_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    """Map a persisted UML document in memory; never writes or executes SQL."""
+    membership = resolve_membership(request, org_slug)  # any member reads
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    if not document.model.classes:
+        return Status(422, {
+            "code": "empty_model",
+            "detail": "El diagrama no tiene clases. Agrega al menos una clase para generar la vista relacional.",
+        })
+    try:
+        relational = map_to_relational(document.model)
+    except UnmappableModelError as exc:
+        return Status(422, {
+            "code": "unmappable_model",
+            "detail": f"No se puede generar la vista relacional: {exc}. Corrige el elemento indicado e intenta de nuevo.",
+        })
+    return {**relational_preview(relational), "sql": relational_sql(relational)}

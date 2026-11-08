@@ -32,6 +32,8 @@ import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert"
 import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
+import { RelationalPreviewPanel } from "@/components/workspace/RelationalPreviewPanel";
+import { ArchitectureAuditPanel } from "@/components/workspace/ArchitectureAuditPanel";
 import {
   approveProposal,
   buildAiDrafts,
@@ -478,9 +480,15 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
             </CardContent>
           </Card>
 
-          <ValidationPanel lastValidation={lastValidation} />
+           <ValidationPanel lastValidation={lastValidation} />
 
-          <Tabs defaultValue="agregar">
+          <Card>
+            <CardContent className="pt-6">
+              <ArchitectureAuditPanel orgSlug={orgSlug} docId={docId} documentName={document.metadata.name} />
+            </CardContent>
+          </Card>
+
+           <Tabs defaultValue="agregar">
             <TabsList>
               <TabsTab value="agregar">Agregar</TabsTab>
               <TabsTab value="eliminar">Eliminar</TabsTab>
@@ -633,6 +641,11 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                     onSubmit={submitCommand}
                     disabled={isSubmitting}
                   />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <RelationalPreviewPanel orgSlug={orgSlug} docId={docId} documentName={document.metadata.name} />
                 </CardContent>
               </Card>
             </TabsPanel>

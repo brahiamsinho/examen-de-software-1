@@ -1,5 +1,20 @@
 # Decisions Log
 
+## 2026-11-08 — Architectural audit is a pure, read-only risk analysis (Issue #10)
+
+- The audit is an independent `apps.architecture_audit` package instead of new rules in `uml_modeling.validation`. Formal UML correctness and architectural guidance have different meanings: a recommendation must never be shown as an invalid UML construct.
+- The initial catalog is intentionally bounded to evidence available in `CanonicalUmlModel`: isolated classes, relation count >=5, inheritance depth >=4, attribute+operation count >=10, and directed cycles among non-generalization relationships. Generalization cycles remain the existing formal validation responsibility; dangling relationship endpoints are excluded rather than guessed.
+- Reports use contract and rules version `1.0`; no timestamps, random values or remote calls occur. Findings use a SHA-256-derived id from stable rule/evidence/element inputs and canonical ordering. This makes the result reproducible for a fixed document/revision and rule implementation.
+- The read endpoint is available to any authorized member, aligning with document visibility and relational preview. It resolves membership then retrieves through the organization-scoped document service; no audit history table or migration is justified because reports are pure derivations.
+- The backend lacks an appropriate local web LLM provider. The existing backend providers are remote and the local mobile chat is not a UML tool adapter, so no AI explanation was added. A future explanation must be strictly post-audit and non-authoritative.
+
+## 2026-11-07 — Read-only relational preview derives all output from `RelationalModel` (Issue #9)
+
+- The preview endpoint does not inspect UML naming, type or relationship rules itself. It loads the tenant-scoped document and calls the existing pure `map_to_relational` mapper exactly once; `preview.py` only serializes that returned `RelationalModel`. This prevents a second conversion path from drifting away from Spring generation.
+- PostgreSQL DDL is deterministic because it follows the mapper's stable enum/table/column/constraint order, has no time/random values, and always emits tables before ordered `ALTER TABLE ... FOREIGN KEY` clauses. Separating FK constraints keeps self-references and cycles valid without executing any SQL.
+- The route is GET and allows any organization member, matching document/read generation access. It has no command-bus call, row lock, save, broadcast, artifact creation or database execution path. Empty/unmappable models return Spanish actionable 422 responses instead of a partial SQL script.
+- The frontend download builds a Blob from the same `sql` string rendered in the panel, so the downloaded `.sql` cannot differ from the inspected output.
+
 ## 2026-09-29 — Association Class attributes now carry the real join-table columns (DD186, direct)
 
 - **DD186** The join/association class DD185 attaches to a both-ends-many relationship was always exported EMPTY on purpose (the join table is a relational concept, never part of the UML model) — but the user pointed out this looked incomplete next to Modelia's own canvas, which already previews those exact columns via the `/join-tables` hint. `xmi_interop/exporter.py` now reuses `apps.relational_mapping.mapping.mapper.map_to_relational` DIRECTLY (a deliberate, considered exception to this project's usual one-app-per-domain caution — the same reasoning `relational_mapping`'s own `/join-tables` endpoint already documents: reuse the real generator so the columns shown here never drift from what actually gets built) to find each join relationship's real computed `Table` (matched via `ForeignKey.source_relationship_id`) and writes its real columns as the association class's attributes. Best-effort: if the model doesn't map cleanly, the class is left empty exactly as before this existed — never crashes the export.
