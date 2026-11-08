@@ -30,6 +30,31 @@ class TestGetActiveLlmClient:
         with pytest.raises(MissingApiKeyError):
             get_active_llm_client()
 
+    @override_settings(
+        LLM_PROVIDER="local",
+        LOCAL_LLM_BASE_URL="http://ollama:11434/v1",
+        LOCAL_LLM_MODEL="llama3.1",
+        LOCAL_LLM_API_KEY="",
+    )
+    def test_selects_the_local_provider_when_configured(self):
+        client = get_active_llm_client()
+
+        assert isinstance(client, OpenAiClient)
+        assert client._base_url == "http://ollama:11434/v1"
+        assert client._model == "llama3.1"
+
+    @override_settings(LLM_PROVIDER="local", LOCAL_LLM_BASE_URL="", LOCAL_LLM_MODEL="llama3.1")
+    def test_local_without_a_base_url_raises_a_clear_whole_request_error(self):
+        with pytest.raises(MissingApiKeyError, match="LOCAL_LLM_BASE_URL"):
+            get_active_llm_client()
+
+    @override_settings(
+        LLM_PROVIDER="local", LOCAL_LLM_BASE_URL="http://ollama:11434/v1", LOCAL_LLM_MODEL=""
+    )
+    def test_local_without_a_model_raises_a_clear_whole_request_error(self):
+        with pytest.raises(MissingApiKeyError, match="LOCAL_LLM_MODEL"):
+            get_active_llm_client()
+
     @override_settings(LLM_PROVIDER="", GEMINI_API_KEY="a-key")
     def test_an_empty_provider_setting_defaults_to_gemini(self):
         assert isinstance(get_active_llm_client(), GeminiClient)

@@ -31,9 +31,41 @@ class OpenAiClient:
     directly, matching `gemini_client.get_gemini_client()`'s convention.
     """
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        base_url: str | None = None,
+        provider_label: str = "OpenAI",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
+    ):
         self._api_key = api_key
         self._model = model
+        # `None` keeps the hosted defaults (45s timeout, the SDK's retries).
+        self._timeout_seconds = timeout_seconds
+        self._max_retries = max_retries
+        # Set only for an OpenAI-compatible local server (Ollama, vLLM,
+        # llama.cpp...): the hosted path never sends a `base_url`.
+        self._base_url = base_url
+        self._provider_label = provider_label
+
+    def _sdk_client(self):
+        # Imported lazily, same reasoning as the methods below.
+        from openai import OpenAI
+
+        # `timeout` is seconds here (httpx convention), unlike Gemini's
+        # `HttpOptions.timeout` (milliseconds).
+        kwargs: dict[str, object] = {
+            "api_key": self._api_key,
+            "timeout": self._timeout_seconds or REQUEST_TIMEOUT_MS / 1000,
+        }
+        if self._max_retries is not None:
+            kwargs["max_retries"] = self._max_retries
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        return OpenAI(**kwargs)
 
     def generate_function_calls(
         self,
@@ -42,15 +74,11 @@ class OpenAiClient:
         transcript: str,
         tools: Sequence[Mapping[str, object]],
     ) -> list[GeminiFunctionCall]:
-        # Imported lazily, same reasoning as `gemini_client.py`: every test
-        # injects a fake `GeminiClientProtocol` and never constructs a real
-        # `OpenAiClient`, so the SDK only needs to be present in production.
-        from openai import OpenAI
-
-        # `timeout` is seconds here (httpx convention), unlike Gemini's
-        # `HttpOptions.timeout` (milliseconds) — same underlying no-default-
-        # timeout problem this project already hit once, avoided up front.
-        client = OpenAI(api_key=self._api_key, timeout=REQUEST_TIMEOUT_MS / 1000)
+        # The SDK is imported lazily (see `_sdk_client`), same reasoning as
+        # `gemini_client.py`: every test injects a fake
+        # `GeminiClientProtocol`, so the SDK only needs to be present in
+        # production.
+        client = self._sdk_client()
         try:
             response = client.chat.completions.create(
                 model=self._model,
@@ -61,7 +89,7 @@ class OpenAiClient:
                 tools=_as_openai_tools(tools),
             )
         except Exception as exc:  # the SDK raises several exception types; all map to one domain error
-            raise GeminiRequestError(f"OpenAI request failed: {exc}") from exc
+            raise GeminiRequestError(f"{self._provider_label} request failed: {exc}") from exc
 
         return _extract_function_calls(response)
 
@@ -82,9 +110,7 @@ class OpenAiClient:
         """
         import base64
 
-        from openai import OpenAI
-
-        client = OpenAI(api_key=self._api_key, timeout=REQUEST_TIMEOUT_MS / 1000)
+        client = self._sdk_client()
         image_b64 = base64.b64encode(image_bytes).decode("ascii")
         try:
             response = client.chat.completions.create(
@@ -109,7 +135,7 @@ class OpenAiClient:
                 tool_choice={"type": "function", "function": {"name": "extract_uml_diagram"}},
             )
         except Exception as exc:  # same one-domain-error mapping as the text path
-            raise GeminiRequestError(f"OpenAI request failed: {exc}") from exc
+            raise GeminiRequestError(f"{self._provider_label} request failed: {exc}") from exc
 
         return _extract_function_calls(response)
 
@@ -145,3 +171,32 @@ def get_openai_client() -> OpenAiClient:
     if not api_key:
         raise MissingApiKeyError("OPENAI_API_KEY is not configured.")
     return OpenAiClient(api_key, settings.OPENAI_MODEL)
+
+
+def get_local_llm_client() -> OpenAiClient:
+    """Factory for an OpenAI-compatible local server (issue #18). Reuses
+    `OpenAiClient` because Ollama, vLLM and llama.cpp all speak the same
+    Chat Completions protocol; everything comes from the environment, so
+    nothing here is tied to one host. Raises `MissingApiKeyError` (the
+    whole-request 503 `api.py` already handles) when the URL or the model
+    is missing, instead of failing later inside the SDK.
+    """
+    base_url = (settings.LOCAL_LLM_BASE_URL or "").strip()
+    if not base_url:
+        raise MissingApiKeyError("LOCAL_LLM_BASE_URL is not configured.")
+    model = (settings.LOCAL_LLM_MODEL or "").strip()
+    if not model:
+        raise MissingApiKeyError("LOCAL_LLM_MODEL is not configured.")
+    # The SDK refuses an empty key, but most local servers ignore it.
+    api_key = settings.LOCAL_LLM_API_KEY or "not-needed"
+    # No retries: a retry on a slow CPU model re-runs the whole generation and
+    # multiplies the wait. The timeout is configurable because a model on a
+    # CPU-only instance needs far longer than a hosted API.
+    return OpenAiClient(
+        api_key,
+        model,
+        base_url=base_url,
+        provider_label="Local LLM",
+        timeout_seconds=settings.LOCAL_LLM_TIMEOUT_SECONDS,
+        max_retries=0,
+    )

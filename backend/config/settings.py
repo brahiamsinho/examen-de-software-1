@@ -228,5 +228,14 @@ GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.6-flash")
 # while OpenAI answered in well under a second for the same request shape.
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_MODEL = env("OPENAI_MODEL", default="gpt-4o-mini")
-# "gemini" or "openai" — see apps/ai_assistant/llm_provider.py.
+# Optional local model behind an OpenAI-compatible server (Ollama, vLLM,
+# llama.cpp), used only when LLM_PROVIDER=local. Empty by default: nothing
+# changes unless it is configured (issue #18).
+LOCAL_LLM_BASE_URL = env("LOCAL_LLM_BASE_URL", default="")
+LOCAL_LLM_MODEL = env("LOCAL_LLM_MODEL", default="")
+LOCAL_LLM_API_KEY = env("LOCAL_LLM_API_KEY", default="")
+# Seconds to wait for one local-model answer. Generous by default because a
+# CPU-only instance is slow; lower it on a GPU instance.
+LOCAL_LLM_TIMEOUT_SECONDS = env.float("LOCAL_LLM_TIMEOUT_SECONDS", default=120.0)
+# "gemini", "openai" or "local" — see apps/ai_assistant/llm_provider.py.
 LLM_PROVIDER = env("LLM_PROVIDER", default="gemini")
