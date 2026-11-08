@@ -234,5 +234,8 @@ OPENAI_MODEL = env("OPENAI_MODEL", default="gpt-4o-mini")
 LOCAL_LLM_BASE_URL = env("LOCAL_LLM_BASE_URL", default="")
 LOCAL_LLM_MODEL = env("LOCAL_LLM_MODEL", default="")
 LOCAL_LLM_API_KEY = env("LOCAL_LLM_API_KEY", default="")
+# Seconds to wait for one local-model answer. Generous by default because a
+# CPU-only instance is slow; lower it on a GPU instance.
+LOCAL_LLM_TIMEOUT_SECONDS = env.float("LOCAL_LLM_TIMEOUT_SECONDS", default=120.0)
 # "gemini", "openai" or "local" — see apps/ai_assistant/llm_provider.py.
 LLM_PROVIDER = env("LLM_PROVIDER", default="gemini")

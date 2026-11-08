@@ -15,7 +15,7 @@ from django.test import override_settings
 
 from apps.ai_assistant.errors import GeminiRequestError, MissingApiKeyError
 from apps.ai_assistant.gemini_client import REQUEST_TIMEOUT_MS
-from apps.ai_assistant.openai_client import OpenAiClient, get_openai_client
+from apps.ai_assistant.openai_client import OpenAiClient, get_local_llm_client, get_openai_client
 
 
 class TestGetOpenaiClient:
@@ -58,6 +58,49 @@ class TestLocalProvider:
 
         _, kwargs = fake_client_class.call_args
         assert "base_url" not in kwargs
+
+    def test_the_local_client_never_retries_and_uses_its_own_timeout(self, monkeypatch):
+        # A slow local model would otherwise be asked again 2 more times
+        # (the SDK default), tripling the wait while the server keeps generating.
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=_fake_response(None))
+        )
+        client = OpenAiClient(
+            "unused",
+            "llama3.1",
+            base_url="http://ollama:11434/v1",
+            provider_label="Local LLM",
+            timeout_seconds=180,
+            max_retries=0,
+        )
+
+        client.generate_function_calls(system_instruction="system", transcript="hola", tools=[])
+
+        _, kwargs = fake_client_class.call_args
+        assert kwargs["timeout"] == 180
+        assert kwargs["max_retries"] == 0
+
+    def test_the_hosted_client_keeps_the_default_timeout_and_retries(self, monkeypatch):
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=_fake_response(None))
+        )
+
+        OpenAiClient("a-key", "a-model").generate_function_calls(
+            system_instruction="system", transcript="hola", tools=[]
+        )
+
+        _, kwargs = fake_client_class.call_args
+        assert kwargs["timeout"] == REQUEST_TIMEOUT_MS / 1000
+        assert "max_retries" not in kwargs
+
+    @override_settings(
+        LOCAL_LLM_BASE_URL="http://ollama:11434/v1", LOCAL_LLM_MODEL="m", LOCAL_LLM_TIMEOUT_SECONDS=240
+    )
+    def test_the_factory_reads_the_timeout_from_the_environment_and_disables_retries(self):
+        client = get_local_llm_client()
+
+        assert client._timeout_seconds == 240
+        assert client._max_retries == 0
 
     def test_a_local_failure_names_the_local_provider(self, monkeypatch):
         _install_fake_openai_module(

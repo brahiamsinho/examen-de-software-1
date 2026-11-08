@@ -38,9 +38,14 @@ class OpenAiClient:
         *,
         base_url: str | None = None,
         provider_label: str = "OpenAI",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ):
         self._api_key = api_key
         self._model = model
+        # `None` keeps the hosted defaults (45s timeout, the SDK's retries).
+        self._timeout_seconds = timeout_seconds
+        self._max_retries = max_retries
         # Set only for an OpenAI-compatible local server (Ollama, vLLM,
         # llama.cpp...): the hosted path never sends a `base_url`.
         self._base_url = base_url
@@ -54,8 +59,10 @@ class OpenAiClient:
         # `HttpOptions.timeout` (milliseconds).
         kwargs: dict[str, object] = {
             "api_key": self._api_key,
-            "timeout": REQUEST_TIMEOUT_MS / 1000,
+            "timeout": self._timeout_seconds or REQUEST_TIMEOUT_MS / 1000,
         }
+        if self._max_retries is not None:
+            kwargs["max_retries"] = self._max_retries
         if self._base_url:
             kwargs["base_url"] = self._base_url
         return OpenAI(**kwargs)
@@ -182,4 +189,14 @@ def get_local_llm_client() -> OpenAiClient:
         raise MissingApiKeyError("LOCAL_LLM_MODEL is not configured.")
     # The SDK refuses an empty key, but most local servers ignore it.
     api_key = settings.LOCAL_LLM_API_KEY or "not-needed"
-    return OpenAiClient(api_key, model, base_url=base_url, provider_label="Local LLM")
+    # No retries: a retry on a slow CPU model re-runs the whole generation and
+    # multiplies the wait. The timeout is configurable because a model on a
+    # CPU-only instance needs far longer than a hosted API.
+    return OpenAiClient(
+        api_key,
+        model,
+        base_url=base_url,
+        provider_label="Local LLM",
+        timeout_seconds=settings.LOCAL_LLM_TIMEOUT_SECONDS,
+        max_retries=0,
+    )

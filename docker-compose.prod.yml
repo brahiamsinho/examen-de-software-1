@@ -91,6 +91,7 @@ services:
       LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-}
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-}
       LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
+      LOCAL_LLM_TIMEOUT_SECONDS: ${LOCAL_LLM_TIMEOUT_SECONDS:-120}
     depends_on:
       db:
         condition: service_healthy
@@ -177,6 +178,8 @@ services:
     image: ollama/ollama
     profiles: ["local-ai"]
     restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
     volumes:
       - ollama_models:/root/.ollama
 

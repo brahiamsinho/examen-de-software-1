@@ -70,6 +70,8 @@ services:
   ollama:
     image: ollama/ollama
     profiles: ["local-ai"]
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
     volumes:
       - ollama_models:/root/.ollama
 
