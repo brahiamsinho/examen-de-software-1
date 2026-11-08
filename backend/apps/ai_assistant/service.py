@@ -184,7 +184,7 @@ def preview_voice_command(
 
 
 def confirm_voice_command(
-    *, organization: Organization, doc_id: UUID, plan_id: str, now: datetime.datetime
+    *, organization: Organization, doc_id: UUID, plan_id: str, now: datetime.datetime, actor=None
 ) -> VoiceCommandResult:
     plan = cache.get(_voice_plan_key(plan_id))
     if not isinstance(plan, _VoiceCommandPlan) or plan.document_id != doc_id or plan.organization_id != organization.id:
@@ -203,6 +203,7 @@ def confirm_voice_command(
         commands_to_apply=[services.command_from_payload(item.payload) for item in translated],
         now=now,
         expected_revision=plan.base_revision,
+        actor=actor,
     )
     return VoiceCommandResult(
         revision=result.document.revision,
@@ -280,7 +281,7 @@ def preview_image_import(
 
 
 def confirm_image_import(
-    *, organization: Organization, doc_id: UUID, plan_id: str, now: datetime.datetime
+    *, organization: Organization, doc_id: UUID, plan_id: str, now: datetime.datetime, actor=None
 ) -> VoiceCommandResult:
     plan = cache.get(_image_plan_key(plan_id))
     if not isinstance(plan, _ImageImportPlan) or plan.document_id != doc_id or plan.organization_id != organization.id:
@@ -299,11 +300,16 @@ def confirm_image_import(
         commands_to_apply=[services.command_from_payload(item.payload) for item in translated],
         now=now,
         expected_revision=plan.base_revision,
+        actor=actor,
     )
     return VoiceCommandResult(
         revision=result.document.revision,
         applied=[AppliedCommand(ok=True, message=item.description) for item in translated],
     )
+
+
+# Public names for the helpers other modules of this package reuse.
+document_context = _document_context
 
 
 def _image_plan_key(plan_id: str) -> str:
@@ -323,6 +329,9 @@ def _describe_calls(document: ProjectDocument, calls: Sequence[GeminiFunctionCal
         except (TranslationError, KeyError, ValueError, TypeError) as exc:
             described.append(AppliedCommand(ok=False, message=str(exc)))
     return described
+
+
+describe_calls = _describe_calls
 
 
 def _reconcile_image_calls(
@@ -486,6 +495,9 @@ def _expand_image_extraction(calls: Sequence[GeminiFunctionCall]) -> list[Gemini
                 )
         expanded.append(GeminiFunctionCall(name="add_relationship", args=args))
     return expanded
+
+
+expand_extraction = _expand_image_extraction
 
 
 def _normalize_image_multiplicity(value: str) -> str:

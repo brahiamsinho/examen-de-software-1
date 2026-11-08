@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { listChat, upsertChatMessage, type ChatMessage } from "@/lib/ai_chat";
+import { listProposals, upsertProposal, type AiProposal } from "@/lib/ai_proposals";
 import { ApiError } from "@/lib/api";
 import {
   getDocument as getDocumentApi,
@@ -78,6 +80,12 @@ export function useDocument(orgSlug: string | null, docId: string) {
   // Low-frequency (DD11) — genuinely belongs in render, unlike live
   // positions below.
   const [locks, setLocks] = useState<Record<string, LockState>>({});
+  // Pending AI proposals (issue #15): loaded on every socket (re)open so none
+  // is missed while disconnected, then kept live by `proposal.update` events.
+  const [proposals, setProposals] = useState<AiProposal[]>([]);
+  // Group chat (issue #16): history is loaded on every socket (re)open and merged
+  // (never replaced) so a live message that arrives meanwhile is not lost.
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const connectionRef = useRef<ReturnType<typeof openDocumentSocket> | null>(null);
   // Live positions bypass React state entirely (DD11): `DiagramCanvas`
@@ -105,6 +113,8 @@ export function useDocument(orgSlug: string | null, docId: string) {
     setLastValidation(null);
     setLoading(orgSlug !== null);
     setLocks({});
+    setProposals([]);
+    setChatMessages([]);
   }
 
   useEffect(() => {
@@ -191,6 +201,26 @@ export function useDocument(orgSlug: string | null, docId: string) {
               // A refetch failure on open is not fatal: the socket stays
               // open and later broadcasts still arrive.
             });
+          listProposals(orgSlug, docId)
+            .then((pending) => {
+              if (!cancelled) setProposals(pending);
+            })
+            .catch(() => {
+              // Same stance: the live `proposal.update` events still arrive.
+            });
+          listChat(orgSlug, docId)
+            .then((history) => {
+              if (!cancelled) setChatMessages((prev) => history.reduce(upsertChatMessage, prev));
+            })
+            .catch(() => {
+              // Same stance: the live `chat.message` events still arrive.
+            });
+        },
+        onProposal: (proposal) => {
+          if (!cancelled) setProposals((prev) => upsertProposal(prev, proposal));
+        },
+        onChat: (message) => {
+          if (!cancelled) setChatMessages((prev) => upsertChatMessage(prev, message));
         },
         onMessage: (incoming) => {
           if (!cancelled) mergeRemote(incoming);
@@ -376,9 +406,26 @@ export function useDocument(orgSlug: string | null, docId: string) {
     }
   }, [orgSlug, docId]);
 
+  /**
+   * Folds a proposal returned by an HTTP call into state. The same event also
+   * arrives over the socket, so this is idempotent: it only makes the UI
+   * correct immediately and when the socket is momentarily down.
+   */
+  const applyProposal = useCallback((proposal: AiProposal) => {
+    setProposals((prev) => upsertProposal(prev, proposal));
+  }, []);
+
+  /** Folds a message returned by an HTTP call into state (idempotent with the socket copy). */
+  const applyChatMessage = useCallback((message: ChatMessage) => {
+    setChatMessages((prev) => upsertChatMessage(prev, message));
+  }, []);
+
   return {
     document,
     applyDocument,
+    applyProposal,
+    applyChatMessage,
+    chatMessages,
     refreshDocument,
     loading,
     error,
@@ -386,6 +433,7 @@ export function useDocument(orgSlug: string | null, docId: string) {
     isSubmitting,
     submitCommand,
     locks,
+    proposals,
     positionListenerRef,
     claimRejectedListenerRef,
     sendClaim,

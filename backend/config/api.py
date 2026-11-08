@@ -27,6 +27,7 @@ from apps.organizations.api import (
     register_exception_handlers as register_organization_exception_handlers,
 )
 from apps.relational_mapping.api import relational_router
+from apps.session_log.api import log_router
 from apps.uml_documents.api import (
     documents_router,
     register_exception_handlers as register_uml_documents_exception_handlers,
@@ -53,6 +54,7 @@ api.add_router("/orgs/{org_slug}/documents", generation_router, tags=["generatio
 api.add_router("/orgs/{org_slug}/documents", deployments_router, tags=["deployments"])
 api.add_router("/orgs/{org_slug}/documents", relational_router, tags=["relational-mapping"])
 api.add_router("/orgs/{org_slug}/documents", ai_assistant_router, tags=["ai-assistant"])
+api.add_router("/orgs/{org_slug}/documents", log_router, tags=["session-log"])
 register_user_exception_handlers(api)
 register_organization_exception_handlers(api)
 register_uml_documents_exception_handlers(api)

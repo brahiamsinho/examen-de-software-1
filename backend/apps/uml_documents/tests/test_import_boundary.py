@@ -50,6 +50,11 @@ _ALLOWED_PREFIXES = (
     "apps.uml_modeling",
     "apps.uml_commands",
     "apps.organizations",
+    # Issue #17: `services.py` appends to the session log in the same
+    # transaction as the change it describes. `session_log` is a low-level
+    # tenant-scoped app (it depends only on `organizations` and `uml_commands`),
+    # so this dependency points downward, like `organizations`.
+    "apps.session_log",
     "apps.uml_documents",
     "django",
     "ninja",

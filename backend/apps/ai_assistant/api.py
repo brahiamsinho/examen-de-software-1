@@ -4,6 +4,7 @@ voice transcript into a sequence of applied UML commands. Thin, mirroring
 service function -> serialize shape.
 """
 import dataclasses
+import json
 from uuid import UUID
 
 from django.http import HttpRequest
@@ -11,12 +12,19 @@ from django.utils import timezone
 from ninja import File, Path, Router, UploadedFile
 from ninja.errors import HttpError
 from ninja.security import django_auth
+from pydantic import ValidationError
 
-from apps.ai_assistant import service
+from apps.ai_assistant import chat, proposals, service
 from apps.ai_assistant.errors import GeminiRequestError, InvalidImageError, MissingApiKeyError
 from apps.ai_assistant.schemas import (
+    ApproveProposalIn,
+    ChatMessageIn,
+    ChatMessageOut,
+    ChatPostOut,
     ImageImportConfirmIn,
     ImageImportPreviewOut,
+    ProposalOut,
+    ProposalRequestIn,
     VoiceCommandConfirmIn,
     VoiceCommandIn,
     VoiceCommandOut,
@@ -76,7 +84,11 @@ def voice_command_confirm_view(
     require_role(membership, Role.OWNER, Role.EDITOR)
     try:
         result = service.confirm_voice_command(
-            organization=membership.organization, doc_id=doc_id, plan_id=payload.plan_id, now=timezone.now()
+            organization=membership.organization,
+            doc_id=doc_id,
+            plan_id=payload.plan_id,
+            now=timezone.now(),
+            actor=request.user,
         )
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc
@@ -139,11 +151,122 @@ def image_import_confirm_view(
     require_role(membership, Role.OWNER, Role.EDITOR)
     try:
         result = service.confirm_image_import(
-            organization=membership.organization, doc_id=doc_id, plan_id=payload.plan_id, now=timezone.now()
+            organization=membership.organization,
+            doc_id=doc_id,
+            plan_id=payload.plan_id,
+            now=timezone.now(),
+            actor=request.user,
         )
     except ValueError as exc:
         raise HttpError(409, str(exc)) from exc
     return {"revision": result.revision, "applied": [dataclasses.asdict(item) for item in result.applied]}
+
+
+# --- AI board proposals (issue #15) ----------------------------------------
+
+
+@ai_assistant_router.get("/{doc_id}/chat", response=list[ChatMessageOut])
+def list_chat_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)  # any member reads
+    found = chat.list_messages(organization=membership.organization, doc_id=doc_id)
+    return [chat.serialize_message(item) for item in found]
+
+
+@ai_assistant_router.post("/{doc_id}/chat", response={201: ChatPostOut})
+def post_chat_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: ChatMessageIn):
+    """Posts to the diagram's group chat. A message that mentions `@IA` also
+    returns the model's reply; if the model fails the message is kept and the
+    failure is reported in `ai_error` instead of an HTTP error."""
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        result = chat.post_message(
+            organization=membership.organization, doc_id=doc_id, author=request.user, content=payload.content
+        )
+    except chat.ChatError as exc:
+        raise HttpError(422, str(exc)) from exc
+    return 201, {
+        "message": chat.serialize_message(result.message),
+        "reply": chat.serialize_message(result.reply) if result.reply else None,
+        "ai_error": result.ai_error,
+        "proposal": proposals.serialize_proposal(result.proposal) if result.proposal else None,
+    }
+
+
+@ai_assistant_router.post("/{doc_id}/ai-proposals", response={201: ProposalOut})
+def create_proposal_view(
+    request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: ProposalRequestIn
+):
+    """A teammate asks the AI for ideas. The answer is a draft: it is stored
+    and broadcast, and the diagram is not touched until someone approves it."""
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        proposal = proposals.create_proposal(
+            organization=membership.organization,
+            doc_id=doc_id,
+            requested_by=request.user,
+            prompt=payload.prompt,
+        )
+    except proposals.NoSuggestionsError as exc:
+        raise HttpError(422, str(exc)) from exc
+    return 201, proposals.serialize_proposal(proposal)
+
+
+@ai_assistant_router.get("/{doc_id}/ai-proposals", response=list[ProposalOut])
+def list_proposals_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)  # any member reads
+    found = proposals.list_proposals(organization=membership.organization, doc_id=doc_id)
+    return [proposals.serialize_proposal(item) for item in found]
+
+
+def _optional_approve_body(request: HttpRequest) -> ApproveProposalIn | None:
+    if request.content_type != "application/json" or not request.body:
+        return None
+    try:
+        return ApproveProposalIn.model_validate(json.loads(request.body))
+    except (ValueError, ValidationError) as exc:
+        raise HttpError(422, "The approval body must be JSON like {\"selected\": [0, 2]}.") from exc
+
+
+@ai_assistant_router.post("/{doc_id}/ai-proposals/{proposal_id}/approve", response=ProposalOut)
+def approve_proposal_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, proposal_id: UUID):
+    """Applies the chosen changes (`selected` indices in a JSON body) or, with
+    no body at all, every change. The unchosen ones are discarded with the
+    proposal. The body is read by hand because Ninja answers 400 to a missing
+    body, and "approve everything" must keep working as a bodyless POST."""
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    payload = _optional_approve_body(request)
+    try:
+        proposal = proposals.approve_proposal(
+            organization=membership.organization,
+            doc_id=doc_id,
+            proposal_id=proposal_id,
+            decided_by=request.user,
+            now=timezone.now(),
+            selected=payload.selected if payload is not None else None,
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return proposals.serialize_proposal(proposal)
+
+
+@ai_assistant_router.post("/{doc_id}/ai-proposals/{proposal_id}/reject", response=ProposalOut)
+def reject_proposal_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, proposal_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER, Role.EDITOR)
+    try:
+        proposal = proposals.reject_proposal(
+            organization=membership.organization,
+            doc_id=doc_id,
+            proposal_id=proposal_id,
+            decided_by=request.user,
+            now=timezone.now(),
+        )
+    except ValueError as exc:
+        raise HttpError(409, str(exc)) from exc
+    return proposals.serialize_proposal(proposal)
 
 
 # --- exception handlers ----------------------------------------------------

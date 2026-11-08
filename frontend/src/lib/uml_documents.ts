@@ -1,3 +1,5 @@
+import type { ChatMessage } from "@/lib/ai_chat";
+import type { AiProposal } from "@/lib/ai_proposals";
 import { apiFetch } from "@/lib/api";
 import { wsUrl } from "@/lib/env";
 
@@ -367,6 +369,9 @@ export type DocumentSocketHandlers = {
   onNodePosition?: (payload: NodePositionIn) => void;
   onNodeLocks?: (payload: NodeLocksIn) => void;
   onClaimRejected?: (payload: NodeClaimRejectedIn) => void;
+  /** An AI board proposal was created, decided or went stale (issue #15). */
+  onProposal?: (proposal: AiProposal) => void;
+  onChat?: (message: ChatMessage) => void;
 };
 
 /**
@@ -419,6 +424,12 @@ export function openDocumentSocket(
         break;
       case "node.claim_rejected":
         handlers.onClaimRejected?.(payload as unknown as NodeClaimRejectedIn);
+        break;
+      case "proposal.update":
+        handlers.onProposal?.((payload as unknown as { proposal: AiProposal }).proposal);
+        break;
+      case "chat.message":
+        handlers.onChat?.((payload as unknown as { message: ChatMessage }).message);
         break;
       default:
         break;

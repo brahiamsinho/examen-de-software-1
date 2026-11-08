@@ -4,6 +4,7 @@ import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useEffect, useRef, type RefObject } from "react";
 
+import { type AiDrafts } from "@/lib/ai_proposals";
 import { type JoinTableHint } from "@/lib/join_tables";
 import {
   attributeTypeLabel,
@@ -33,6 +34,7 @@ const EDGE_LINE = "#9CA3AF";
 const EDGE_TEXT = "#4B4B4B";
 const SELECTED_BORDER = "#3454D1"; // --primary
 const LOCKED_REMOTE_BORDER = "#D97706"; // amber-600, distinct from SELECTED_BORDER's blue
+const AI_DRAFT_BORDER = "#7C3AED"; // violet-600: "the AI suggested this", distinct from locks (amber) and selection (blue)
 
 const SANS_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const MONO_FONT_STACK = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
@@ -177,6 +179,14 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     style: { "border-width": 1.5, "border-color": EDGE_LINE, "border-style": "dashed" },
   },
   {
+    // A class an AI proposal would add (issue #15): a draft, not part of the
+    // model. Dashed violet reads as "suggested, awaiting approval", never
+    // confusable with a solid class box. Draggable like a join-table hint but
+    // never claims a collaboration lock.
+    selector: "node.ai-draft",
+    style: { "border-width": 2, "border-color": AI_DRAFT_BORDER, "border-style": "dashed" },
+  },
+  {
     // Foreign-held node (design.md DD12): `ungrabify()` on the same node
     // is what actually prevents a local drag (no `grab` event fires at
     // all) — this class is purely the visual affordance identifying it as
@@ -230,6 +240,14 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
     // asked for, instead of floating unconnected.
     selector: "edge.join-table-edge",
     style: { "line-style": "dashed", "line-color": EDGE_LINE, width: 1, "curve-style": "bezier" },
+  },
+  {
+    // A relationship an AI proposal would add (issue #15), drawn dashed in the
+    // same violet as its draft classes; it has no arrow, but it does carry the
+    // name and each end's multiplicity (from the generic `edge` style), since the
+    // approver must see what a relationship would be before approving it.
+    selector: "edge.ai-draft-edge",
+    style: { "line-style": "dashed", "line-color": AI_DRAFT_BORDER, width: 1.5, "curve-style": "bezier" },
   },
   {
     // A recursive/reflexive relationship (source === target, tagged in
@@ -428,6 +446,46 @@ export function joinTableHintElements(
   return elements;
 }
 
+const AI_DRAFT_ROW_GAP = 170;
+
+/**
+ * One visual-only box per class an AI proposal would add, plus a dashed edge
+ * per relationship it would add (issue #15). Like the join-table hints these
+ * are `synthetic`: never part of the model, never locked, never persisted.
+ * Boxes stack downward from `anchor` (the canvas places it clear of the real
+ * classes); `overridePositionOf` wins for a draft the user dragged.
+ */
+export function aiDraftElements(
+  drafts: AiDrafts,
+  anchor: { x: number; y: number },
+  overridePositionOf: (draftId: string) => { x: number; y: number } | null = () => null,
+): ElementDefinition[] {
+  const elements: ElementDefinition[] = drafts.classes.map((draft, index) => {
+    const box = classBoxSvgDataUri(draft.name, draft.attributes, draft.operations);
+    return {
+      data: { id: draft.id, label: "", bgImage: box.uri, width: box.width, height: box.height, synthetic: true },
+      position: overridePositionOf(draft.id) ?? { x: anchor.x, y: anchor.y + index * AI_DRAFT_ROW_GAP },
+      classes: "ai-draft",
+    } as ElementDefinition;
+  });
+  for (const relationship of drafts.relationships) {
+    elements.push({
+      data: {
+        id: relationship.id,
+        source: relationship.source,
+        target: relationship.target,
+        // The labels the generic `edge` style already draws for real relationships.
+        label: relationship.name,
+        sourceLabel: relationship.sourceMultiplicity,
+        targetLabel: relationship.targetMultiplicity,
+        synthetic: true,
+      },
+      classes: "ai-draft-edge",
+    } as ElementDefinition);
+  }
+  return elements;
+}
+
 type LockState = { ownerLabel: string; mine: boolean };
 
 type DiagramCanvasProps = {
@@ -446,9 +504,12 @@ type DiagramCanvasProps = {
   onRelease?: (classId: string, x: number, y: number) => void;
   /** Visual-only preview of the join tables both-ends-many associations imply. */
   joinTableHints?: JoinTableHint[];
+  /** Visual-only draft of what the pending AI proposals would add (issue #15). */
+  aiDrafts?: AiDrafts;
 };
 
 const EMPTY_JOIN_TABLE_HINTS: JoinTableHint[] = [];
+const EMPTY_AI_DRAFTS: AiDrafts = { classes: [], relationships: [] };
 
 const EDGE_DOUBLE_TAP_MS = 400;
 
@@ -476,6 +537,7 @@ export function DiagramCanvas({
   onLivePosition,
   onRelease,
   joinTableHints = EMPTY_JOIN_TABLE_HINTS,
+  aiDrafts = EMPTY_AI_DRAFTS,
 }: DiagramCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -520,6 +582,8 @@ export function DiagramCanvas({
   // neither of which may capture a stale closure.
   const modelRef = useRef(model);
   const joinTableHintsRef = useRef(joinTableHints);
+  const aiDraftsRef = useRef(aiDrafts);
+  const fittedDraftKeyRef = useRef("");
   // Session-only (design.md DD178): a join-table hint the user manually
   // dragged, keyed by its `join-table:<relationshipId>` id. Consulted by
   // `syncJoinTableHints` so a later resync (a class move, a model edit)
@@ -539,7 +603,39 @@ export function DiagramCanvas({
     onReleaseRef.current = onRelease;
     modelRef.current = model;
     joinTableHintsRef.current = joinTableHints;
+    aiDraftsRef.current = aiDrafts;
   });
+
+  // Redraws the AI draft boxes/edges (issue #15) from the CURRENT drafts. Safe
+  // to call any time; with no pending proposal it only clears leftovers. Draft
+  // boxes sit to the right of the real classes, and an edge is added only when
+  // both of its ends are on the canvas, so a draft that races a model refetch
+  // never makes Cytoscape throw.
+  const syncAiDrafts = (cy: Core) => {
+    cy.$(".ai-draft, .ai-draft-edge").remove();
+    const drafts = aiDraftsRef.current;
+    if (drafts.classes.length === 0 && drafts.relationships.length === 0) return;
+
+    const placed = modelRef.current.classes
+      .map((item) => cy.getElementById(item.id))
+      .filter((node) => node.length > 0)
+      .map((node) => node.position());
+    const anchor =
+      placed.length === 0
+        ? { x: 0, y: 0 }
+        : { x: Math.max(...placed.map((p) => p.x)) + 320, y: Math.min(...placed.map((p) => p.y)) };
+
+    const elements = aiDraftElements(drafts, anchor, (id) => hintPositionOverridesRef.current[id] ?? null);
+    const nodes = elements.filter((element) => element.classes === "ai-draft");
+    if (nodes.length > 0) cy.add(nodes);
+    const edges = elements.filter(
+      (element) =>
+        element.classes === "ai-draft-edge" &&
+        cy.getElementById(String(element.data.source)).length > 0 &&
+        cy.getElementById(String(element.data.target)).length > 0,
+    );
+    if (edges.length > 0) cy.add(edges);
+  };
 
   // Adds/repositions/removes the join-table hint nodes from the CURRENT
   // rendered positions of their two endpoint classes (never from `layout`
@@ -559,6 +655,10 @@ export function DiagramCanvas({
       (hintId) => hintPositionOverridesRef.current[hintId] ?? null,
     );
     if (elements.length > 0) cy.add(elements);
+    // Every place that resyncs the hints (model sync, class drop) also redraws
+    // the AI drafts: `cy.json({ elements })` drops all synthetic elements, and
+    // the drafts anchor to the real classes' current positions.
+    syncAiDrafts(cy);
   };
 
   // Ungrabifies + tags every foreign-held node (DD12): `ungrabify()` is
@@ -773,6 +873,22 @@ export function DiagramCanvas({
     if (cy) syncJoinTableHints(cy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joinTableHints]);
+
+  useEffect(() => {
+    // A proposal arrived, was decided or went stale (issue #15): redraw only
+    // the drafts, no re-layout of the real classes.
+    const cy = cyRef.current;
+    if (!cy) return;
+    syncAiDrafts(cy);
+    // Drafts are placed beside the real classes, which can be outside the
+    // current view: refit once when the SET of drafts changes, never on a
+    // mere refetch (same drafts, new identity), so the user's pan/zoom stays.
+    const draftKey = aiDrafts.classes.map((draft) => draft.id).join("|");
+    if (draftKey !== fittedDraftKeyRef.current) {
+      fittedDraftKeyRef.current = draftKey;
+      if (draftKey !== "") cy.fit(cy.elements(), 60);
+    }
+  }, [aiDrafts]);
 
   useEffect(() => {
     // Highlight only — no re-layout.

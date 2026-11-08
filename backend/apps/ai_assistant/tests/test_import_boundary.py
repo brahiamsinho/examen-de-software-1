@@ -24,6 +24,8 @@ _SCOPED_FILES = (
     _PACKAGE_DIR / "translator.py",
     _PACKAGE_DIR / "schemas.py",
     _PACKAGE_DIR / "service.py",
+    _PACKAGE_DIR / "models.py",
+    _PACKAGE_DIR / "proposals.py",
     _PACKAGE_DIR / "api.py",
 )
 _ALLOWED_PREFIXES = (
@@ -31,6 +33,7 @@ _ALLOWED_PREFIXES = (
     "apps.uml_commands",
     "apps.uml_documents",
     "apps.organizations",
+    "apps.session_log",  # issue #17: proposals append their decisions to the session log
     "apps.ai_assistant",  # self-package: these modules cross-import each other
     "django",
     "ninja",

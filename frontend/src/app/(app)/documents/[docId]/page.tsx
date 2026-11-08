@@ -1,9 +1,9 @@
 "use client";
 
 import { useAtomValue } from "jotai";
-import { AlertTriangle, FileUp, Trash2 } from "lucide-react";
+import { AlertTriangle, FileUp, ScrollText, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,9 @@ import { AddAttributeForm } from "@/components/workspace/AddAttributeForm";
 import { AddClassForm } from "@/components/workspace/AddClassForm";
 import { AddOperationForm } from "@/components/workspace/AddOperationForm";
 import { AddRelationshipControl } from "@/components/workspace/AddRelationshipControl";
+import { ActivityLogDialog } from "@/components/workspace/ActivityLogDialog";
+import { AiProposalsPanel } from "@/components/workspace/AiProposalsPanel";
+import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { DiagramCanvas } from "@/components/workspace/DiagramCanvas";
 import { DeploymentActions, DeploymentNotices, DeploymentUrl } from "@/components/workspace/DeploymentControls";
 import { EditRelationshipDialog } from "@/components/workspace/EditRelationshipDialog";
@@ -30,7 +33,18 @@ import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
 import { RelationalPreviewPanel } from "@/components/workspace/RelationalPreviewPanel";
+import {
+  approveProposal,
+  buildAiDrafts,
+  rejectProposal,
+  requestProposal,
+  type AiDrafts,
+  type AiProposal,
+} from "@/lib/ai_proposals";
+import { postChat, type ChatMessage } from "@/lib/ai_chat";
+import { ApiError } from "@/lib/api";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
+import { downloadLog } from "@/lib/session_log";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
 import { confirmVoiceCommand, previewVoiceCommand, type VoiceCommandResult } from "@/lib/voice_command";
@@ -38,7 +52,16 @@ import { exportXmi, importXmiIntoDocument, takeImportWarnings } from "@/lib/xmi_
 import { useBackendDeployment } from "@/state/backend_deployment";
 import { useDocument } from "@/state/document";
 import { useDocumentActions } from "@/state/documents";
+import { useSessionLog } from "@/state/session_log";
 import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
+
+const NO_AI_DRAFTS: AiDrafts = { classes: [], relationships: [] };
+const NO_PROPOSALS: AiProposal[] = [];
+const NO_CHAT: ChatMessage[] = [];
+
+function proposalErrorMessage(err: unknown): string {
+  return err instanceof ApiError ? err.detail : "No se pudo completar la acción con la IA. Intenta de nuevo.";
+}
 
 /**
  * Container (design.md DD11): stays `"use client"` and unwraps the Next 16
@@ -57,6 +80,10 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const {
     document,
     applyDocument,
+    applyProposal,
+    proposals = NO_PROPOSALS,
+    chatMessages = NO_CHAT,
+    applyChatMessage,
     refreshDocument,
     error,
     lastValidation,
@@ -77,6 +104,18 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const myRole = organizations.find((org) => org.slug === orgSlug)?.my_role ?? null;
   const canEdit = myRole === "OWNER" || myRole === "EDITOR";
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [exportingLog, setExportingLog] = useState(false);
+  const [logExportError, setLogExportError] = useState<string | null>(null);
+  const sessionLog = useSessionLog(orgSlug, docId, logOpen);
+  const [askingAi, setAskingAi] = useState(false);
+  const [busyProposalId, setBusyProposalId] = useState<string | null>(null);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const aiDrafts = useMemo(
+    () => (document === null ? NO_AI_DRAFTS : buildAiDrafts(document.model, proposals)),
+    [document, proposals],
+  );
   const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null);
   const [pendingSourceId, setPendingSourceId] = useState<string | null>(null);
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
@@ -176,6 +215,63 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     return result;
   }
 
+  async function handleAskAi(prompt: string) {
+    setAskingAi(true);
+    setProposalError(null);
+    try {
+      applyProposal(await requestProposal(orgSlug!, docId, prompt));
+    } catch (err) {
+      setProposalError(proposalErrorMessage(err));
+      throw err; // keeps the typed text in the panel so the user can retry
+    } finally {
+      setAskingAi(false);
+    }
+  }
+
+  async function handleExportLog() {
+    setExportingLog(true);
+    setLogExportError(null);
+    try {
+      await downloadLog(orgSlug!, docId, sessionLog.filters);
+    } catch {
+      setLogExportError("No se pudo exportar la bitácora. Intenta de nuevo.");
+    } finally {
+      setExportingLog(false);
+    }
+  }
+
+  async function handleSendChat(content: string) {
+    setChatError(null);
+    try {
+      const result = await postChat(orgSlug!, docId, content);
+      // The same messages also arrive over the socket; folding them in makes the
+      // UI correct immediately and when the socket is momentarily down.
+      applyChatMessage?.(result.message);
+      if (result.reply) applyChatMessage?.(result.reply);
+      if (result.proposal) applyProposal(result.proposal);
+      if (result.ai_error) setChatError("La IA no pudo responder ahora. Menciónala de nuevo para reintentar.");
+    } catch (err) {
+      setChatError(err instanceof ApiError ? err.detail : "No se pudo enviar el mensaje. Intenta de nuevo.");
+      throw err; // gives the typed text back to the panel
+    }
+  }
+
+  async function handleDecideProposal(
+    proposalId: string,
+    decide: (orgSlug: string, docId: string, proposalId: string) => Promise<AiProposal>,
+  ) {
+    setBusyProposalId(proposalId);
+    setProposalError(null);
+    try {
+      applyProposal(await decide(orgSlug!, docId, proposalId));
+      await refreshDocument();
+    } catch (err) {
+      setProposalError(proposalErrorMessage(err));
+    } finally {
+      setBusyProposalId(null);
+    }
+  }
+
   const classIds = new Set(document.model.classes.map((c) => c.id));
   const danglingRelationshipCount = document.model.relationships.filter(
     (r) => !classIds.has(r.source.class_id) || !classIds.has(r.target.class_id),
@@ -263,6 +359,10 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               label="Exportar XML"
               pendingLabel="Exportando..."
             />
+            <Button type="button" variant="outline" size="lg" onClick={() => setLogOpen(true)}>
+              <ScrollText />
+              Bitácora
+            </Button>
             {canEdit && !isBlank ? (
               <ImportXmiControl onImport={handleImportIntoDocument} disabled={isSubmitting} />
             ) : null}
@@ -291,12 +391,13 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               onNodeTap={handleNodeTap}
               onEdgeEdit={canEdit ? setEditingRelationshipId : undefined}
               joinTableHints={joinTableHints}
+              aiDrafts={aiDrafts}
               highlightedClassId={effectiveSourceId}
               onClaim={sendClaim}
               onLivePosition={sendPosition}
               onRelease={sendRelease}
             />
-            {isBlank && canEdit ? (
+            {isBlank && canEdit && aiDrafts.classes.length === 0 ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                 <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card/95 px-6 py-6 text-center shadow-xs">
                   <span className="flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">
@@ -339,6 +440,35 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
         <aside className="flex w-full flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto lg:pr-1">
            <ImportWarningsAlert warnings={importWarnings} onDismiss={() => setImportWarnings([])} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Chat del equipo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChatPanel messages={chatMessages} canWrite={canEdit} error={chatError} onSend={handleSendChat} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>IA como compañera</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AiProposalsPanel
+                proposals={proposals}
+                canDecide={canEdit}
+                busyId={busyProposalId}
+                asking={askingAi}
+                error={proposalError}
+                onAsk={handleAskAi}
+                onApprove={(proposalId, selected) =>
+                  void handleDecideProposal(proposalId, (org, doc, id) => approveProposal(org, doc, id, selected))
+                }
+                onReject={(proposalId) => void handleDecideProposal(proposalId, rejectProposal)}
+              />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -531,6 +661,20 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
         onOpenChange={setDeleteOpen}
         diagramName={document.metadata.name}
         onConfirm={handleDelete}
+      />
+      <ActivityLogDialog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        entries={sessionLog.entries}
+        sessions={sessionLog.sessions}
+        filters={sessionLog.filters}
+        loading={sessionLog.loading}
+        error={sessionLog.error}
+        exporting={exportingLog}
+        exportError={logExportError}
+        onFiltersChange={sessionLog.setFilters}
+        onExport={() => void handleExportLog()}
+        onReload={sessionLog.reload}
       />
     </div>
   );

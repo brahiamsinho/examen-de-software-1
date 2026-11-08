@@ -21,6 +21,7 @@ from django.http import Http404
 from apps.organizations.models import Organization
 from apps.uml_commands import commands
 from apps.uml_commands.commands import UmlCommand
+from apps.session_log import services as session_log
 from apps.relational_mapping.mapping.profile_parser import (
     InvalidGenerationProfileError,
     parse_column_profile,
@@ -285,7 +286,13 @@ def create_version(
 
 @transaction.atomic
 def restore_version(
-    *, organization: Organization, doc_id: UUID, version_id: UUID, expected_revision: int, now: datetime.datetime
+    *,
+    organization: Organization,
+    doc_id: UUID,
+    version_id: UUID,
+    expected_revision: int,
+    now: datetime.datetime,
+    actor=None,
 ) -> ProjectDocument:
     row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
     if row.revision != expected_revision:
@@ -303,6 +310,15 @@ def restore_version(
         revision=row.revision + 1,
     )
     _save(row, restored)
+    session_log.record(
+        organization=organization,
+        document_id=doc_id,
+        kind=session_log.LogKind.VERSION_RESTORED,
+        summary=f"Restored version {version.number}",
+        actor=actor,
+        data={"version_id": str(version_id), "version_number": version.number, "revision": restored.revision},
+        now=now,
+    )
     transaction.on_commit(lambda: broadcast_document(document=restored))
     return restored
 
@@ -328,6 +344,14 @@ def broadcast_document(*, document: ProjectDocument) -> None:
         f"uml-doc-{document.id}",
         {"type": "document.update", "document": payload},
     )
+
+
+def broadcast_event(*, document_id: UUID, payload: dict) -> None:
+    """Fans a JSON-safe, `type`-tagged event out to every socket subscribed
+    to this document's group. Used by features (e.g. AI proposals) that
+    share the document socket without owning it. Call via
+    `transaction.on_commit` so readers never see an uncommitted state."""
+    async_to_sync(get_channel_layer().group_send)(f"uml-doc-{document_id}", payload)
 
 
 def create_document(
@@ -375,6 +399,7 @@ def replace_document_content(
     model: CanonicalUmlModel,
     layout: DiagramLayout,
     now: datetime.datetime,
+    actor=None,
 ) -> ProjectDocument:
     """Loads a ready model (e.g. an XMI import) INTO an existing document,
     REPLACING whatever it currently has — used for the Modelia <-> Enterprise
@@ -395,6 +420,15 @@ def replace_document_content(
         document, model=model, layout=layout, revision=document.revision + 1, updated_at=now
     )
     _save(row, updated)
+    session_log.record(
+        organization=organization,
+        document_id=doc_id,
+        kind=session_log.LogKind.DIAGRAM_REPLACED,
+        summary="Replaced the diagram content with an import",
+        actor=actor,
+        data={"revision": updated.revision},
+        now=now,
+    )
     transaction.on_commit(lambda: broadcast_document(document=updated))
     return updated
 
@@ -420,7 +454,7 @@ def list_documents(*, organization: Organization) -> list[ProjectDocument]:
 
 @transaction.atomic
 def submit_command(
-    *, organization: Organization, doc_id: UUID, command: UmlCommand, now: datetime.datetime
+    *, organization: Organization, doc_id: UUID, command: UmlCommand, now: datetime.datetime, actor=None
 ) -> CommandResult:
     """Serialized under a per-document row lock (design.md DD1): the
     decorator opens the transaction `select_for_update()` needs, matching
@@ -437,6 +471,15 @@ def submit_command(
         _validate_relationship_update(document.model, command)
     result = apply(document, command, now=now)
     _save(row, result.document)
+    session_log.record_change(
+        organization=organization,
+        document_id=doc_id,
+        batch=[command],
+        model_before=document.model,
+        revision=result.document.revision,
+        actor=actor,
+        now=now,
+    )
     transaction.on_commit(lambda: broadcast_document(document=result.document))
     return result
 
@@ -449,14 +492,19 @@ def submit_commands(
     commands_to_apply: list[UmlCommand],
     now: datetime.datetime,
     expected_revision: int | None = None,
+    actor=None,
 ) -> CommandResult:
     """Apply a prevalidated batch under one lock, save, revision and broadcast.
 
     Image-reconciliation confirmation uses this instead of `submit_command`
     per item so observers never see a partially reconciled diagram.
+
+    `actor` is who made the change, for the session log; a change without a
+    known author is still logged (as the system), never skipped.
     """
     row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
     document = _to_project_document(row)
+    model_before = document.model
     if expected_revision is not None and document.revision != expected_revision:
         raise ValueError("The diagram changed after this preview. Upload the image again.")
     result: CommandResult | None = None
@@ -470,6 +518,15 @@ def submit_commands(
     if result is None:
         raise ValueError("A command batch cannot be empty")
     _save(row, result.document)
+    session_log.record_change(
+        organization=organization,
+        document_id=doc_id,
+        batch=commands_to_apply,
+        model_before=model_before,
+        revision=result.document.revision,
+        actor=actor,
+        now=now,
+    )
     transaction.on_commit(lambda: broadcast_document(document=result.document))
     return result
 
