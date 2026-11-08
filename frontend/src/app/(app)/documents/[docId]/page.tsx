@@ -29,6 +29,7 @@ import { ImportWarningsAlert } from "@/components/workspace/ImportWarningsAlert"
 import { ImageImportButton } from "@/components/workspace/ImageImportButton";
 import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
+import { RelationalPreviewPanel } from "@/components/workspace/RelationalPreviewPanel";
 import { downloadGeneratedBackend } from "@/lib/generation_export";
 import { confirmImageImport, previewImageImport } from "@/lib/image_command";
 import { getJoinTables, type JoinTableHint } from "@/lib/join_tables";
@@ -503,6 +504,11 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                     onSubmit={submitCommand}
                     disabled={isSubmitting}
                   />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <RelationalPreviewPanel orgSlug={orgSlug} docId={docId} documentName={document.metadata.name} />
                 </CardContent>
               </Card>
             </TabsPanel>

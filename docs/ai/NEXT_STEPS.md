@@ -1,5 +1,9 @@
 # Next Steps
 
+**Issue #9 verification follow-up 2026-11-08:** before opening the PR, repeat frontend Vitest on a runner with sufficient CPU/memory until the unmodified `npm test` suite completes. Current evidence isolates the failures as runner-timeout noise: many unrelated tests cross 5 s, while the AppSidebar correction, DocumentPage count case, relational-preview tests, TypeScript, targeted ESLint and relational mapper pass. Keep the full ESLint baseline issue (`page.tsx:86`) separate from issue #9 unless that page effect is deliberately refactored in its own change.
+
+**Issue #9 verification follow-up 2026-11-07:** before committing, re-run the focused frontend Vitest tests for `RelationalPreviewPanel` and `relational_preview`, `npx tsc --noEmit`, and targeted/full ESLint once Docker can create a frontend runner or host dependencies are installed. Then manually open a diagram with a viewer account, open `Generación` -> `Vista previa relacional`, verify PK/FK/table output, copy/download SQL equality, and confirm the document revision does not change. Test an empty diagram and an invalid mapper case for their actionable 422 feedback. No generated SQL should ever be executed against PostgreSQL.
+
 **Second partial 2026-11-06:** implement T3 from `odd/tasks/second-partial-core.md`: tenant-scoped UML templates, catalogue, safe deep cloning with new IDs and organization visibility. Preserve the version-history API and do not copy snapshots by reference.
 
 **Second-partial issue map 2026-11-06:** use GitHub #8 for templates, #9 for relational preview/SQL, #10 for architecture audit and #11 for remote deployment governance. Do not contact a VM unless the user separately authorizes the exact destination, operation and credential/session.

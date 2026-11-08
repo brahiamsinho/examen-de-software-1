@@ -6,7 +6,9 @@ import { AppSidebar } from "@/components/workspace/AppSidebar";
 import * as authLib from "@/lib/auth";
 import * as orgsLib from "@/lib/organizations";
 import * as docsLib from "@/lib/uml_documents";
+import { activeOrgSlugAtom, organizationsAtom } from "@/state/organizations";
 import { sessionAtom } from "@/state/session";
+import type { Organization } from "@/lib/organizations";
 
 const replace = vi.fn();
 const push = vi.fn();
@@ -34,12 +36,16 @@ vi.mock("@/lib/uml_documents", async () => {
 
 const acme = { id: "1", name: "Acme", slug: "acme", plan: "free", my_role: "OWNER" as const };
 
-function renderSidebar() {
+function renderSidebar(activeOrganization: Organization | null = null) {
   const store = createStore();
   store.set(sessionAtom, {
     status: "authenticated",
     user: { id: "u1", email: "ana@acme.test", full_name: "Ana Pérez", is_verified: true },
   });
+  if (activeOrganization) {
+    store.set(organizationsAtom, [activeOrganization]);
+    store.set(activeOrgSlugAtom, activeOrganization.slug);
+  }
   return render(
     <Provider store={store}>
       <AppSidebar />
@@ -61,7 +67,7 @@ describe("AppSidebar", () => {
   it("renders the organization switcher at the top with the active organization", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([acme]);
 
-    renderSidebar();
+    renderSidebar(acme);
 
     const trigger = await screen.findByRole("button", { name: /Acme/ });
     expect(trigger).toHaveAttribute("aria-haspopup", "menu");
@@ -70,7 +76,7 @@ describe("AppSidebar", () => {
   it("no longer renders an inline organization list or creation form", async () => {
     vi.mocked(orgsLib.listOrganizations).mockResolvedValueOnce([acme]);
 
-    renderSidebar();
+    renderSidebar(acme);
     await screen.findByRole("button", { name: /Acme/ });
 
     expect(screen.queryByRole("list", { name: "Organizaciones" })).not.toBeInTheDocument();
@@ -85,7 +91,7 @@ describe("AppSidebar", () => {
       { id: "doc-2", name: "", revision: 2, updated_at: "2026-09-12T10:06:00Z" },
     ]);
 
-    renderSidebar();
+    renderSidebar(acme);
 
     expect(await screen.findByRole("link", { name: "Ventas" })).toHaveAttribute(
       "href",
@@ -108,7 +114,7 @@ describe("AppSidebar", () => {
       updated_at: "2026-09-12T10:00:00Z",
     });
 
-    renderSidebar();
+    renderSidebar(acme);
     fireEvent.click(await screen.findByRole("button", { name: "Nuevo diagrama" }));
 
     fireEvent.change(await screen.findByLabelText("Nombre del diagrama"), {
@@ -127,7 +133,7 @@ describe("AppSidebar", () => {
       { ...acme, my_role: "VIEWER" as const },
     ]);
 
-    renderSidebar();
+    renderSidebar({ ...acme, my_role: "VIEWER" });
     await screen.findByRole("button", { name: /Acme/ });
 
     expect(screen.queryByRole("button", { name: "Nuevo diagrama" })).not.toBeInTheDocument();
