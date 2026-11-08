@@ -8,11 +8,12 @@ from django.conf import settings
 
 from apps.ai_assistant.errors import MissingApiKeyError
 from apps.ai_assistant.gemini_client import GeminiClientProtocol, get_gemini_client
-from apps.ai_assistant.openai_client import get_openai_client
+from apps.ai_assistant.openai_client import get_local_llm_client, get_openai_client
 
 _PROVIDERS = {
     "gemini": get_gemini_client,
     "openai": get_openai_client,
+    "local": get_local_llm_client,
 }
 
 

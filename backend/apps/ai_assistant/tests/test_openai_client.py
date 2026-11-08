@@ -33,6 +33,52 @@ class TestGetOpenaiClient:
         assert client._model == "gpt-test-model"
 
 
+class TestLocalProvider:
+    def test_passes_the_base_url_to_the_sdk_client(self, monkeypatch):
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=_fake_response(None))
+        )
+        client = OpenAiClient(
+            "unused", "llama3.1", base_url="http://ollama:11434/v1", provider_label="Local LLM"
+        )
+
+        client.generate_function_calls(system_instruction="system", transcript="hola", tools=[])
+
+        _, kwargs = fake_client_class.call_args
+        assert kwargs["base_url"] == "http://ollama:11434/v1"
+
+    def test_the_hosted_client_sends_no_base_url(self, monkeypatch):
+        fake_client_class = _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(return_value=_fake_response(None))
+        )
+
+        OpenAiClient("a-key", "a-model").generate_function_calls(
+            system_instruction="system", transcript="hola", tools=[]
+        )
+
+        _, kwargs = fake_client_class.call_args
+        assert "base_url" not in kwargs
+
+    def test_a_local_failure_names_the_local_provider(self, monkeypatch):
+        _install_fake_openai_module(
+            monkeypatch, create=mock.Mock(side_effect=RuntimeError("connection refused"))
+        )
+        client = OpenAiClient(
+            "unused", "llama3.1", base_url="http://ollama:11434/v1", provider_label="Local LLM"
+        )
+
+        with pytest.raises(GeminiRequestError, match="Local LLM request failed"):
+            client.generate_function_calls(system_instruction="system", transcript="hola", tools=[])
+
+    def test_a_hosted_failure_message_is_unchanged(self, monkeypatch):
+        _install_fake_openai_module(monkeypatch, create=mock.Mock(side_effect=RuntimeError("boom")))
+
+        with pytest.raises(GeminiRequestError, match="OpenAI request failed"):
+            OpenAiClient("a-key", "a-model").generate_function_calls(
+                system_instruction="system", transcript="hola", tools=[]
+            )
+
+
 def _fake_tool_call(name: str, arguments: str):
     function = mock.Mock()
     function.name = name

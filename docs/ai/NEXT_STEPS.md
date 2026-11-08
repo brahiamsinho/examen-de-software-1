@@ -1,5 +1,7 @@
 # Next Steps
 
+**Local LLM 2026-11-08:** #18 is implemented on `feature/local-llm-provider` (`LLM_PROVIDER=local`, env-configured, reuses the OpenAI client). Next: push and a PR with `Closes #18` once the user authorizes it, and one real try against a running Ollama. Only #9/#10 (Orlando), #11 (needs VM authorization) and #19 (needs push-service and mobile-login decisions) remain open.
+
 **AI participation 2026-11-07:** #15 (AI proposals on the board) is merged (PR #20). #16 (group chat, the AI answers when mentioned with `@IA`) is merged (PR #21). #17 (session log) is implemented and verified on `feature/session-log`; next: independent verification, then push and a PR with `Closes #17` once the user authorizes it. Add trigger B (the AI proposes on its own) as a follow-up over the same proposal pipeline. #18 and #19 have their own owners/decisions: #19 needs a push-service choice first. The real LLM provider call for proposals has not been exercised yet; try it once with a real key.
 
 **Second partial 2026-11-06:** implement T3 from `odd/tasks/second-partial-core.md`: tenant-scoped UML templates, catalogue, safe deep cloning with new IDs and organization visibility. Preserve the version-history API and do not copy snapshots by reference.
