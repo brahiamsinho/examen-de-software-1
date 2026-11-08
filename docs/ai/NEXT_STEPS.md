@@ -1,6 +1,6 @@
 # Next Steps
 
-**Local LLM 2026-11-08:** #18 is implemented on `feature/local-llm-provider` (`LLM_PROVIDER=local`, env-configured, reuses the OpenAI client). Next: push and a PR with `Closes #18` once the user authorizes it, and one real try against a running Ollama. Only #9/#10 (Orlando), #11 (needs VM authorization) and #19 (needs push-service and mobile-login decisions) remain open.
+**Local LLM 2026-11-08:** #18 is implemented on `feature/local-llm-provider` (`LLM_PROVIDER=local`, env-configured, reuses the OpenAI client). An optional `ollama` compose service (profile `local-ai`) is in both compose files. Next: start it once locally with a small model to prove the connection, pick the real model when the EC2 instance is defined, merge `main` (PR #23 landed), then push and a PR with `Closes #18` once the user authorizes it. Only #9/#10 (Orlando), #11 (needs VM authorization) and #19 (needs push-service and mobile-login decisions) remain open.
 
 **AI participation 2026-11-07:** #15 (AI proposals on the board) is merged (PR #20). #16 (group chat, the AI answers when mentioned with `@IA`) is merged (PR #21). #17 (session log) is implemented and verified on `feature/session-log`; next: independent verification, then push and a PR with `Closes #17` once the user authorizes it. Add trigger B (the AI proposes on its own) as a follow-up over the same proposal pipeline. #18 and #19 have their own owners/decisions: #19 needs a push-service choice first. The real LLM provider call for proposals has not been exercised yet; try it once with a real key.
 

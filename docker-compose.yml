@@ -60,6 +60,19 @@ services:
     ports:
       - "8000:8000"
 
+  # OPTIONAL local LLM for the assistant (GitHub #18). It only starts with
+  # `docker compose --profile local-ai up -d ollama`, so the default stack is
+  # unchanged. No port is published: the backend reaches it over the compose
+  # network as http://ollama:11434/v1 (set LLM_PROVIDER=local and
+  # LOCAL_LLM_BASE_URL/LOCAL_LLM_MODEL in the root .env). Models live in the
+  # `ollama_models` volume; download one once with
+  # `docker compose exec ollama ollama pull <model>`.
+  ollama:
+    image: ollama/ollama
+    profiles: ["local-ai"]
+    volumes:
+      - ollama_models:/root/.ollama
+
   # Builds and RUNS the Spring backend generated from a document (one Gradle
   # build container + one Postgres + one JRE container per deployment, on a
   # private network) and reverse-proxies /gen/<deployment-id>/... to it.
@@ -259,3 +272,4 @@ services:
 volumes:
   postgres_data:
   generated_project:
+  ollama_models:

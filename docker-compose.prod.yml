@@ -86,6 +86,11 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # Optional local model (LLM_PROVIDER=local), served by the `ollama`
+      # service below; all empty unless configured in the root .env.
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-}
+      LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -162,6 +167,19 @@ services:
       timeout: 5s
       retries: 10
 
+  # OPTIONAL local LLM (GitHub #18): only starts with
+  # `--profile local-ai`. No published port: only the backend reaches it, as
+  # http://ollama:11434/v1. Download a model once with
+  # `docker compose -f docker-compose.prod.yml exec ollama ollama pull <model>`.
+  # CPU only as written; a GPU instance also needs the NVIDIA Container
+  # Toolkit on the host and a `gpus: all` entry here.
+  ollama:
+    image: ollama/ollama
+    profiles: ["local-ai"]
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+
 networks:
   # No route out: only the runner and the proxy are members.
   docker_api:
@@ -169,5 +187,6 @@ networks:
 
 volumes:
   postgres_data:
+  ollama_models:
   caddy_data:
   caddy_config:
