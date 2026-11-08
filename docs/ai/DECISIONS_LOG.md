@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-11-07 — Read-only relational preview derives all output from `RelationalModel` (Issue #9)
+
+- The preview endpoint does not inspect UML naming, type or relationship rules itself. It loads the tenant-scoped document and calls the existing pure `map_to_relational` mapper exactly once; `preview.py` only serializes that returned `RelationalModel`. This prevents a second conversion path from drifting away from Spring generation.
+- PostgreSQL DDL is deterministic because it follows the mapper's stable enum/table/column/constraint order, has no time/random values, and always emits tables before ordered `ALTER TABLE ... FOREIGN KEY` clauses. Separating FK constraints keeps self-references and cycles valid without executing any SQL.
+- The route is GET and allows any organization member, matching document/read generation access. It has no command-bus call, row lock, save, broadcast, artifact creation or database execution path. Empty/unmappable models return Spanish actionable 422 responses instead of a partial SQL script.
+- The frontend download builds a Blob from the same `sql` string rendered in the panel, so the downloaded `.sql` cannot differ from the inspected output.
+
 ## 2026-09-29 — Association Class attributes now carry the real join-table columns (DD186, direct)
 
 - **DD186** The join/association class DD185 attaches to a both-ends-many relationship was always exported EMPTY on purpose (the join table is a relational concept, never part of the UML model) — but the user pointed out this looked incomplete next to Modelia's own canvas, which already previews those exact columns via the `/join-tables` hint. `xmi_interop/exporter.py` now reuses `apps.relational_mapping.mapping.mapper.map_to_relational` DIRECTLY (a deliberate, considered exception to this project's usual one-app-per-domain caution — the same reasoning `relational_mapping`'s own `/join-tables` endpoint already documents: reuse the real generator so the columns shown here never drift from what actually gets built) to find each join relationship's real computed `Table` (matched via `ForeignKey.source_relationship_id`) and writes its real columns as the association class's attributes. Best-effort: if the model doesn't map cleanly, the class is left empty exactly as before this existed — never crashes the export.
