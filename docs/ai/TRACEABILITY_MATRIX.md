@@ -9,7 +9,7 @@ describe repository evidence, not promised completion.
 | S2 — Generated backend in cloud VM | Partial | Spring ZIP generator, runner, deployment model/UI and production Compose | T6 | An authorized remote target records source revision, URL, health and sanitized events; stop/redeploy requires confirmation. |
 | S3 — Diagram templates | Missing | Canonical model codec, document creation and organization membership | T3 | A template creates an independent document with remapped IDs; inaccessible across organizations. |
 | S4 — Database preview | Implemented, frontend verification pending | Authoritative `map_to_relational` pipeline and join-table hints | T4 / Issue #9 | `GET .../relational-preview` maps in memory and emits deterministic DDL; relational mapping tests 192 passed. Focused frontend tests, TypeScript, lint and browser smoke remain pending because the frontend runner could not start. |
-| S5 — Architecture audit | Missing | Canonical UML validation and optional on-device local-assistant baseline | T5 | A deterministic cycle fixture produces a revision-bound finding offline; audit never changes UML. |
+| S5 — Architecture audit | Implemented, verification complete (uncommitted) | Canonical UML model, validation boundary and tenant-scoped document reads | T5 / Issue #10 | `apps.architecture_audit` produces stable report/rules versions and AR-001..AR-005 with real element evidence; member read/export endpoints and editor panel are added. Docker validation: backend 7 passed, focused frontend 4 passed, TypeScript passed; UML regression backend 89 passed and ValidationPanel 2 passed. Targeted ESLint retains only a pre-existing document-page effect error. |
 
 # AI participation traceability (GitHub #15-#19)
 

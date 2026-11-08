@@ -1,5 +1,13 @@
 # Decisions Log
 
+## 2026-11-08 — Architectural audit is a pure, read-only risk analysis (Issue #10)
+
+- The audit is an independent `apps.architecture_audit` package instead of new rules in `uml_modeling.validation`. Formal UML correctness and architectural guidance have different meanings: a recommendation must never be shown as an invalid UML construct.
+- The initial catalog is intentionally bounded to evidence available in `CanonicalUmlModel`: isolated classes, relation count >=5, inheritance depth >=4, attribute+operation count >=10, and directed cycles among non-generalization relationships. Generalization cycles remain the existing formal validation responsibility; dangling relationship endpoints are excluded rather than guessed.
+- Reports use contract and rules version `1.0`; no timestamps, random values or remote calls occur. Findings use a SHA-256-derived id from stable rule/evidence/element inputs and canonical ordering. This makes the result reproducible for a fixed document/revision and rule implementation.
+- The read endpoint is available to any authorized member, aligning with document visibility and relational preview. It resolves membership then retrieves through the organization-scoped document service; no audit history table or migration is justified because reports are pure derivations.
+- The backend lacks an appropriate local web LLM provider. The existing backend providers are remote and the local mobile chat is not a UML tool adapter, so no AI explanation was added. A future explanation must be strictly post-audit and non-authoritative.
+
 ## 2026-11-07 — Read-only relational preview derives all output from `RelationalModel` (Issue #9)
 
 - The preview endpoint does not inspect UML naming, type or relationship rules itself. It loads the tenant-scoped document and calls the existing pure `map_to_relational` mapper exactly once; `preview.py` only serializes that returned `RelationalModel`. This prevents a second conversion path from drifting away from Spring generation.
