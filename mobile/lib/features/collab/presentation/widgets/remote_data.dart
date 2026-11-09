@@ -50,7 +50,9 @@ class RemoteDataState<T> extends State<RemoteData<T>> {
     await _fetch(keepOldDataOnFailure: false);
   }
 
-  Future<void> _refresh() => _fetch(keepOldDataOnFailure: true);
+  /// Loads again keeping what is on screen (pull to refresh, or after the
+  /// person did something that changed the data).
+  Future<void> refresh() => _fetch(keepOldDataOnFailure: true);
 
   Future<void> _fetch({required bool keepOldDataOnFailure}) async {
     try {
@@ -93,7 +95,7 @@ class RemoteDataState<T> extends State<RemoteData<T>> {
     return ScrollConfiguration(
       behavior: const _AlwaysScrollable(),
       child: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: refresh,
         child: empty
             ? ListView(
                 children: [

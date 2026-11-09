@@ -74,6 +74,19 @@ void main() {
       expect(seen.url.toString(), 'https://modelia.test/api/orgs');
     });
 
+    test('a write can be given a longer timeout than the default (the AI may take a while to answer)', () async {
+      final client = _client(MockClient((r) async {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        return _json({'ok': true});
+      }));
+
+      await expectLater(client.postJson('/api/x', {}), throwsA(isA<ApiFailure>()));
+      expect(
+        await client.postJson('/api/x', {}, timeout: const Duration(seconds: 5)),
+        {'ok': true},
+      );
+    });
+
     test('a 204 answers null instead of failing to parse an empty body', () async {
       final client = _client(MockClient((r) async => http.Response('', 204)));
 

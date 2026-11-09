@@ -54,8 +54,10 @@ class ModeliaApiClient {
     }
   }
 
-  /// Never retried; see the class comment.
-  Future<Object?> postJson(String path, Object? body) => _send('POST', path, body: body);
+  /// Never retried; see the class comment. [timeout] overrides the default for
+  /// a call that legitimately takes long (the AI answering a chat message).
+  Future<Object?> postJson(String path, Object? body, {Duration? timeout}) =>
+      _send('POST', path, body: body, requestTimeout: timeout);
 
   bool _isTransient(ApiFailure failure) {
     if (failure.kind == ApiFailureKind.offline || failure.kind == ApiFailureKind.timeout) return true;
@@ -63,7 +65,13 @@ class ModeliaApiClient {
         (failure.statusCode == 502 || failure.statusCode == 503 || failure.statusCode == 504);
   }
 
-  Future<Object?> _send(String method, String path, {Map<String, String>? query, Object? body}) async {
+  Future<Object?> _send(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Object? body,
+    Duration? requestTimeout,
+  }) async {
     var uri = Uri.parse('$_baseUrl$path');
     if (query != null && query.isNotEmpty) uri = uri.replace(queryParameters: query);
     final token = tokenProvider();
@@ -78,7 +86,7 @@ class ModeliaApiClient {
       final request = method == 'POST'
           ? _httpClient.post(uri, headers: headers, body: body == null ? null : jsonEncode(body))
           : _httpClient.get(uri, headers: headers);
-      response = await request.timeout(timeout);
+      response = await request.timeout(requestTimeout ?? timeout);
     } on TimeoutException {
       throw const ApiFailure(ApiFailureKind.timeout);
     } catch (_) {

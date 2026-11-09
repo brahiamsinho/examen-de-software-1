@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/organization.dart';
+import 'diagram_page.dart';
 import 'format.dart';
 import 'session_controller.dart';
 import 'widgets/remote_data.dart';
@@ -30,6 +31,11 @@ class DocumentsPage extends StatelessWidget {
               leading: const Icon(Icons.account_tree_outlined),
               title: Text(document.displayName),
               subtitle: Text('rev. ${document.revision} · ${formatDateTime(document.updatedAt)}'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => DiagramPage(controller: controller, organization: organization, document: document),
+                ),
+              ),
             );
           },
         ),
