@@ -72,6 +72,25 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.email
 
 
+class MobileToken(models.Model):
+    """Bearer credential for the mobile app (GitHub #19). Like `EmailToken`
+    only the sha256 hash of the raw token is stored. A user may hold one per
+    device, and revoking one leaves the others alive.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey("users.User", on_delete=models.CASCADE, related_name="mobile_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)
+    device_name = models.CharField(max_length=100, blank=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.device_name or 'mobile'}"
+
+
 class EmailTokenPurpose(models.TextChoices):
     VERIFY = "verify", "Verify"
     RESET = "reset", "Reset"

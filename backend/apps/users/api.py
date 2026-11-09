@@ -22,10 +22,14 @@ from apps.users.errors import (
     UserError,
     UserNotFoundError,
 )
+from apps.users.middleware import bearer_token
+from apps.users.mobile_tokens import issue_mobile_token, revoke_mobile_token
 from apps.users.schemas import (
     CsrfOut,
     LoginIn,
     MessageOut,
+    MobileLoginIn,
+    MobileTokenOut,
     RegisterIn,
     ResetConfirmIn,
     ResetRequestIn,
@@ -84,6 +88,26 @@ def login_view(request: HttpRequest, payload: LoginIn):
     user = services.authenticate_user(email=payload.email, password=payload.password)
     login(request, user)
     return user
+
+
+@auth_router.post("/mobile-token", response=MobileTokenOut, auth=None)
+def mobile_login(request: HttpRequest, payload: MobileLoginIn):
+    """Token login for the mobile app (GitHub #19). No CSRF check and no
+    session: the credentials travel in the body and nothing ambient (a cookie)
+    authorizes the request, so there is nothing for CSRF to protect."""
+    user = services.authenticate_user(email=payload.email, password=payload.password)
+    raw, token = issue_mobile_token(user, device_name=payload.device_name)
+    return {"token": raw, "expires_at": token.expires_at, "user": user}
+
+
+@auth_router.post("/mobile-token/revoke", response={204: None, 400: dict}, auth=django_auth)
+def mobile_logout(request: HttpRequest):
+    """Revokes the one token used to make this call (logout on this device)."""
+    raw = bearer_token(request)
+    if raw is None:
+        return Status(400, {"detail": "A bearer token is required.", "code": "bearer_token_required"})
+    revoke_mobile_token(raw)
+    return Status(204, None)
 
 
 @auth_router.post("/logout", response={204: None}, auth=django_auth)

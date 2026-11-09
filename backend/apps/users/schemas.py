@@ -1,6 +1,7 @@
 """Ninja/Pydantic request and response schemas for the users domain.
 No ORM access here — `api.py` maps model instances onto these shapes.
 """
+from datetime import datetime
 from ninja import Schema
 from pydantic import EmailStr
 from uuid import UUID
@@ -26,6 +27,17 @@ class UserOut(Schema):
 
 class CsrfOut(Schema):
     csrf_token: str
+
+
+class MobileLoginIn(LoginIn):
+    # Free text shown nowhere yet; it lets a user tell their devices apart.
+    device_name: str = ""
+
+
+class MobileTokenOut(Schema):
+    token: str
+    expires_at: datetime
+    user: UserOut
 
 
 class VerifyIn(Schema):
