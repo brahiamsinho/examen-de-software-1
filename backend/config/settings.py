@@ -73,6 +73,8 @@ INSTALLED_APPS = [
 # "users" is generated — see backend/apps/users/migrations/.
 
 AUTH_USER_MODEL = "users.User"
+# Days a mobile bearer token stays valid (GitHub #19); logout revokes it sooner.
+MOBILE_TOKEN_TTL_DAYS = env.int("MOBILE_TOKEN_TTL_DAYS", default=30)
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -81,6 +83,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # After AuthenticationMiddleware: it overrides request.user for a valid
+    # mobile bearer token (GitHub #19).
+    "apps.users.middleware.BearerTokenMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
