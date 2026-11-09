@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/auth_repository.dart';
+import '../data/collab_repository.dart';
 import '../data/modelia_api_client.dart';
 import '../domain/api_failure.dart';
 import '../domain/auth_session.dart';
@@ -39,6 +40,15 @@ class SessionController extends ChangeNotifier {
   /// The client for the signed-in session, or `null` when signed out. A 401
   /// `invalid_token` through it ends the session.
   ModeliaApiClient? get api => _api;
+
+  /// Runs [action] against the signed-in session's repository. When the
+  /// session has already ended it fails as `unauthorized` instead of crashing
+  /// a screen that was still on its way out.
+  Future<T> run<T>(Future<T> Function(CollabRepository repository) action) {
+    final api = _api;
+    if (api == null) return Future.error(const ApiFailure(ApiFailureKind.unauthorized));
+    return action(CollabRepository(api));
+  }
 
   Future<void> restore() async {
     final stored = await _repository.restore();

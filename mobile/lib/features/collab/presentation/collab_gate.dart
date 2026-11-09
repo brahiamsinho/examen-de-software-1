@@ -17,10 +17,35 @@ class CollabGate extends StatefulWidget {
 }
 
 class _CollabGateState extends State<CollabGate> {
+  ModalRoute<dynamic>? _route;
+
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_closePagesWhenSignedOut);
     if (widget.controller.status == SessionStatus.restoring) widget.controller.restore();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_closePagesWhenSignedOut);
+    super.dispose();
+  }
+
+  // Pages pushed from the home sit above this route, so swapping the gate's
+  // body is not enough: when the session ends (logout, or the server rejects
+  // the token) they must be closed, or the person would keep reading data
+  // behind a login screen.
+  void _closePagesWhenSignedOut() {
+    final route = _route;
+    if (!mounted || route == null || widget.controller.status != SessionStatus.signedOut) return;
+    Navigator.of(context).popUntil((candidate) => candidate == route);
   }
 
   @override
