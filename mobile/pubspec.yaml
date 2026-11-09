@@ -51,6 +51,7 @@ dependencies:
   # LiteRT-LM engine for flutter_gemma: runs .litertlm model files (required —
   # flutter_gemma's core package ships no inference engine on its own).
   flutter_gemma_litertlm: ^1.8.0
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:
