@@ -2,6 +2,7 @@ import '../domain/activity_log.dart';
 import '../domain/api_failure.dart';
 import '../domain/chat.dart';
 import '../domain/organization.dart';
+import '../domain/proposal.dart';
 import 'modelia_api_client.dart';
 
 /// Reads and writes the collaborative data through the authenticated client
@@ -45,6 +46,30 @@ class CollabRepository {
     );
     entries.sort((a, b) => b.id.compareTo(a.id));
     return entries;
+  }
+
+  Future<List<Proposal>> listProposals(String orgSlug, String docId) async =>
+      _list(await _api.getJson('${_docPath(orgSlug, docId)}/ai-proposals'), Proposal.fromJson);
+
+  /// Applies every change of the draft to the shared diagram. Never retried:
+  /// repeating it after an unknown outcome could not be told from a second,
+  /// different decision.
+  Future<Proposal> approveProposal(String orgSlug, String docId, String proposalId) =>
+      _decide(orgSlug, docId, proposalId, 'approve');
+
+  Future<Proposal> rejectProposal(String orgSlug, String docId, String proposalId) =>
+      _decide(orgSlug, docId, proposalId, 'reject');
+
+  Future<Proposal> _decide(String orgSlug, String docId, String proposalId, String verb) async {
+    final body = await _api.postJson(
+      '${_docPath(orgSlug, docId)}/ai-proposals/${Uri.encodeComponent(proposalId)}/$verb',
+      null,
+    );
+    try {
+      return Proposal.fromJson(body);
+    } on FormatException {
+      throw const ApiFailure(ApiFailureKind.unexpected);
+    }
   }
 
   /// Longer than the server's own AI timeout (120 s by default), so the phone

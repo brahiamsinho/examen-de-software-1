@@ -60,7 +60,8 @@ class ApiFailure implements Exception {
       case ApiFailureKind.notFound:
         return 'No se encontró lo que buscas.';
       case ApiFailureKind.conflict:
-        return message ?? 'El cambio ya no es válido. Actualiza e intenta de nuevo.';
+        // The backend's detail is English; the screen speaks Spanish.
+        return 'El cambio ya no es válido. Actualiza e intenta de nuevo.';
       case ApiFailureKind.validation:
         return message ?? 'Revisa los datos e intenta de nuevo.';
       case ApiFailureKind.server:

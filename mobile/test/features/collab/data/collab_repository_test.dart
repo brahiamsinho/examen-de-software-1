@@ -76,6 +76,69 @@ void main() {
     });
   });
 
+  group('proposals', () {
+    Map<String, Object?> proposal(String status) => {
+      'id': 'p1',
+      'status': status,
+      'prompt': 'Agrega Rol',
+      'requested_by': 'Ana',
+      'created_at': '2026-11-08T17:05:00Z',
+      'changes': [
+        {'ok': true, 'message': 'Created class Rol'},
+        {'ok': false, 'message': 'Nope'},
+      ],
+    };
+
+    test('lists drafts with their changes and whether all can be applied', () async {
+      late http.Request seen;
+      final repo = _repo(MockClient((r) async {
+        seen = r;
+        return _json([proposal('pending')]);
+      }));
+
+      final drafts = await repo.listProposals('acme', 'd1');
+
+      expect(seen.url.path, '/api/orgs/acme/documents/d1/ai-proposals');
+      expect(drafts.single.requestedBy, 'Ana');
+      expect(drafts.single.changes.length, 2);
+      expect(drafts.single.isPending, isTrue);
+      expect(drafts.single.canApprove, isFalse); // one change is not ok
+    });
+
+    test('approve and reject post to their own paths and return the decided draft', () async {
+      final seen = <String>[];
+      final repo = _repo(MockClient((r) async {
+        seen.add('${r.method} ${r.url.path}');
+        return _json(proposal(r.url.path.endsWith('approve') ? 'approved' : 'rejected'));
+      }));
+
+      final approved = await repo.approveProposal('acme', 'd1', 'p1');
+      final rejected = await repo.rejectProposal('acme', 'd1', 'p1');
+
+      expect(seen, [
+        'POST /api/orgs/acme/documents/d1/ai-proposals/p1/approve',
+        'POST /api/orgs/acme/documents/d1/ai-proposals/p1/reject',
+      ]);
+      expect(approved.status, 'approved');
+      expect(rejected.status, 'rejected');
+    });
+
+    test('a draft with no changes cannot be approved', () async {
+      final repo = _repo(MockClient((r) async => _json([{...proposal('pending'), 'changes': []}])));
+
+      expect((await repo.listProposals('acme', 'd1')).single.canApprove, isFalse);
+    });
+
+    test('a malformed draft is unexpected, not a crash', () async {
+      final repo = _repo(MockClient((r) async => _json([{'id': 'p1'}])));
+
+      await expectLater(
+        repo.listProposals('acme', 'd1'),
+        throwsA(isA<ApiFailure>().having((e) => e.kind, 'kind', ApiFailureKind.unexpected)),
+      );
+    });
+  });
+
   group('documents', () {
     test('lists the diagrams of one organization, encoding the slug in the path', () async {
       late http.Request seen;
