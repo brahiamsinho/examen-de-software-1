@@ -147,6 +147,36 @@ class TestBearerAuthentication:
 
         assert response.status_code == 401
 
+    def test_a_token_in_the_query_string_or_a_cookie_neither_authenticates_nor_waives_csrf(self, client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        raw, _ = issue_mobile_token(editor)
+        url = f"/api/orgs/{organization.slug}/documents"
+        body = json.dumps({"name": "Smuggled"})
+
+        by_query = client.post(f"{url}?token={raw}", data=body, content_type="application/json")
+        client.cookies["Authorization"] = f"Bearer {raw}"
+        by_cookie = client.post(url, data=body, content_type="application/json")
+
+        assert by_query.status_code == by_cookie.status_code == 403
+        assert services.list_documents(organization=organization) == []
+
+    def test_an_extra_word_after_the_token_is_refused(self, client):
+        raw, _ = issue_mobile_token(make_user())
+
+        response = client.get("/api/auth/me", HTTP_AUTHORIZATION=f"Bearer {raw} extra")
+
+        assert response.status_code == 401 and response.json()["code"] == "invalid_token"
+
+    def test_a_valid_token_does_not_open_the_django_admin(self, client):
+        user = make_user()
+        user.is_staff = user.is_superuser = True
+        user.save(update_fields=["is_staff", "is_superuser"])
+        raw, _ = issue_mobile_token(user)
+
+        response = client.get("/admin/", **_bearer(raw))
+
+        assert response.status_code == 302 and "/login" in response["Location"]
+
     def test_an_expired_token_gets_401(self, client):
         from datetime import timedelta
 
