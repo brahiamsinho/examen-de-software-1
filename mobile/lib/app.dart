@@ -4,6 +4,7 @@ import 'core/config/app_config.dart';
 import 'features/api_connection/data/openapi_client.dart';
 import 'features/api_connection/presentation/connect_controller.dart';
 import 'features/api_connection/presentation/connect_page.dart';
+import 'features/collab/presentation/collab_entry.dart';
 import 'features/local_assistant/presentation/local_assistant_settings_page.dart';
 
 /// App root. `client` is injectable so tests (and, later, other entry
@@ -49,6 +50,18 @@ class ModeliaApp extends StatelessWidget {
             builder: (context) => Stack(
               children: [
                 ?child,
+                Positioned(
+                  right: 16,
+                  bottom: 72,
+                  child: FloatingActionButton.small(
+                    heroTag: 'collab_entry',
+                    tooltip: 'Modelia: colaborar',
+                    onPressed: () => _navigatorKey.currentState?.push(
+                      MaterialPageRoute(builder: (_) => const CollabEntry()),
+                    ),
+                    child: const Icon(Icons.groups_outlined),
+                  ),
+                ),
                 Positioned(
                   right: 16,
                   bottom: 16,
