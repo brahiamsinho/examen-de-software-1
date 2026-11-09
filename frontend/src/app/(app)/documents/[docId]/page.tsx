@@ -34,6 +34,7 @@ import { VoiceCommandButton } from "@/components/workspace/VoiceCommandButton";
 import { VersionHistoryPanel } from "@/components/workspace/VersionHistoryPanel";
 import { RelationalPreviewPanel } from "@/components/workspace/RelationalPreviewPanel";
 import { ArchitectureAuditPanel } from "@/components/workspace/ArchitectureAuditPanel";
+import { RemoteDeploymentPanel } from "@/components/workspace/RemoteDeploymentPanel";
 import {
   approveProposal,
   buildAiDrafts,
@@ -646,6 +647,11 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
               <Card>
                 <CardContent className="pt-6">
                   <RelationalPreviewPanel orgSlug={orgSlug} docId={docId} documentName={document.metadata.name} />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <RemoteDeploymentPanel orgSlug={orgSlug} docId={docId} canDeploy={myRole === "OWNER"} />
                 </CardContent>
               </Card>
             </TabsPanel>

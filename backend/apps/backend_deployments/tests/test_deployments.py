@@ -3,9 +3,14 @@ import datetime
 from uuid import uuid4
 
 import pytest
+from django.utils import timezone
 
 from apps.backend_deployments import service
 from apps.backend_deployments.models import Deployment, DeploymentStatus
+from apps.backend_deployments.models import RemoteDeploymentDestination, RemoteDeploymentRequest, RemoteDeploymentStatus
+from apps.backend_deployments import remote_service
+from apps.organizations.constants import Role
+from apps.organizations.models import Membership
 from apps.organizations.tests.factories import make_org_with_roles
 from apps.uml_documents import services as document_services
 from apps.uml_modeling.documents import ProjectDocument
@@ -196,3 +201,175 @@ class TestDeleteDocumentWithDeployment:
         assert response.status_code == 204  # a runner outage never blocks the delete
         assert fake_runner.stopped == ([] if runner_down else [deployment_id])
         assert not Deployment.all_objects.filter(document_id=doc_id).exists()  # cascaded
+
+
+@pytest.mark.django_db
+class TestRemoteDeploymentGovernance:
+    @pytest.fixture(autouse=True)
+    def _archive(self, monkeypatch):
+        monkeypatch.setattr(remote_service, "build_project_archive", lambda doc: b"safe-archive")
+
+    def _destination(self, organization, *, name="Testing VM"):
+        return RemoteDeploymentDestination.objects.unscoped().create(
+            organization=organization, name=name, environment="testing",
+            managed_config_id=f"managed-{name}", connectivity_config_ref="approved-profile",
+            capabilities=["containers"],
+        )
+
+    def _request(self, client, organization, doc_id, destination_id):
+        return client.post(
+            _api(organization, doc_id, "remote-deployments"),
+            data={"destination_id": str(destination_id)}, content_type="application/json",
+        )
+
+    def test_preview_is_local_and_creates_no_remote_request(self, monkeypatch):
+        organization, owner, *_ = make_org_with_roles()
+        document = document_services.create_document(organization=organization, owner_id=str(owner.id), name="Remote", now=datetime.datetime.now(datetime.UTC))
+        destination = RemoteDeploymentDestination.objects.unscoped().create(
+            organization=organization, name="Testing VM", environment="testing",
+            managed_config_id="managed-testing", connectivity_config_ref="approved-profile",
+            capabilities=["containers"],
+        )
+        monkeypatch.setattr(remote_service, "build_project_archive", lambda doc: b"safe-archive")
+
+        result = remote_service.preview(organization=organization, document=document, destination_id=destination.id)
+
+        assert result["can_request"] is True
+        assert result["artifact_sha256"]
+        assert not RemoteDeploymentRequest.objects.for_organization(organization).exists()
+
+    def test_confirmation_is_user_bound_one_use_and_does_not_execute(self, monkeypatch):
+        organization, owner, _editor, _viewer, *_ = make_org_with_roles()
+        document = document_services.create_document(organization=organization, owner_id=str(owner.id), name="Remote", now=datetime.datetime.now(datetime.UTC))
+        destination = RemoteDeploymentDestination.objects.unscoped().create(
+            organization=organization, name="Testing VM", environment="testing",
+            managed_config_id="managed-testing", connectivity_config_ref="approved-profile",
+        )
+        monkeypatch.setattr(remote_service, "build_project_archive", lambda doc: b"safe-archive")
+        remote = remote_service.request_deployment(organization=organization, document=document, user=owner, destination_id=destination.id)
+        token = remote_service.issue_confirmation(request=remote, user=owner)
+
+        authorized = remote_service.confirm(organization=organization, document=document, request_id=remote.id, user=owner, token=token)
+
+        assert authorized.status == RemoteDeploymentStatus.AUTHORIZED
+        assert authorized.confirmation_used_at is not None
+        assert list(authorized.events.values_list("new_status", flat=True)) == ["AWAITING_CONFIRMATION", "AUTHORIZED"]
+        with pytest.raises(remote_service.ConfirmationReused):
+            remote_service.confirm(organization=organization, document=document, request_id=remote.id, user=owner, token=token)
+
+    def test_only_owner_can_request_or_confirm(self, auth_client):
+        organization, owner, editor, viewer, _ = make_org_with_roles()
+        doc_id = _doc_with_class(auth_client, organization, owner)
+        destination = self._destination(organization)
+
+        for user in (editor, viewer):
+            auth_client.force_login(user)
+            assert self._request(auth_client, organization, doc_id, destination.id).status_code == 403
+
+        auth_client.force_login(owner)
+        requested = self._request(auth_client, organization, doc_id, destination.id)
+        assert requested.status_code == 202
+        request_id = requested.json()["id"]
+        proof = auth_client.post(_api(organization, doc_id, f"remote-deployments/{request_id}/confirmation"))
+        token = proof.json()["confirmation_token"]
+
+        for user in (editor, viewer):
+            auth_client.force_login(user)
+            response = auth_client.post(
+                _api(organization, doc_id, f"remote-deployments/{request_id}/confirm"),
+                data={"confirmation_token": token}, content_type="application/json",
+            )
+            assert response.status_code == 403
+
+    def test_non_member_cannot_read_destinations_requests_or_events(self, auth_client):
+        organization, owner, *_ = make_org_with_roles()
+        other_org, outsider, *_ = make_org_with_roles()
+        doc_id = _doc_with_class(auth_client, organization, owner)
+        destination = self._destination(organization)
+        requested = self._request(auth_client, organization, doc_id, destination.id)
+        request_id = requested.json()["id"]
+
+        auth_client.force_login(outsider)
+        assert auth_client.get(_api(organization, doc_id, "remote-destinations")).status_code == 404
+        assert auth_client.get(_api(organization, doc_id, f"remote-deployments/{request_id}")).status_code == 404
+        assert auth_client.get(_api(organization, doc_id, f"remote-deployments/{request_id}/events")).status_code == 404
+        assert auth_client.get(_api(other_org, doc_id, "remote-destinations")).status_code == 404
+
+    def test_expired_and_reused_confirmation_are_rejected(self, auth_client):
+        organization, owner, *_ = make_org_with_roles()
+        doc_id = _doc_with_class(auth_client, organization, owner)
+        destination = self._destination(organization)
+        requested = self._request(auth_client, organization, doc_id, destination.id)
+        request_id = requested.json()["id"]
+        token = auth_client.post(_api(organization, doc_id, f"remote-deployments/{request_id}/confirmation")).json()["confirmation_token"]
+        RemoteDeploymentRequest.objects.for_organization(organization).filter(id=request_id).update(
+            confirmation_expires_at=timezone.now() - datetime.timedelta(seconds=1)
+        )
+
+        expired = auth_client.post(
+            _api(organization, doc_id, f"remote-deployments/{request_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert expired.status_code == 409 and expired.json()["code"] == "confirmation_expired"
+        expired_request = RemoteDeploymentRequest.objects.for_organization(organization).get(id=request_id)
+        assert expired_request.status == RemoteDeploymentStatus.FAILED
+        assert expired_request.events.order_by("-id").first().error_code == "confirmation_expired"
+
+        requested = self._request(auth_client, organization, doc_id, destination.id)
+        assert requested.status_code == 202
+        request_id = requested.json()["id"]
+        token = auth_client.post(_api(organization, doc_id, f"remote-deployments/{request_id}/confirmation")).json()["confirmation_token"]
+        confirmed = auth_client.post(
+            _api(organization, doc_id, f"remote-deployments/{request_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert confirmed.status_code == 200 and confirmed.json()["status"] == "AUTHORIZED"
+        reused = auth_client.post(
+            _api(organization, doc_id, f"remote-deployments/{request_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert reused.status_code == 409 and reused.json()["code"] == "confirmation_reused"
+
+    def test_confirmation_is_bound_to_request_document_user_destination_and_revision(self, auth_client):
+        organization, owner, editor, *_ = make_org_with_roles()
+        Membership.objects.unscoped().filter(organization=organization, user=editor).update(role=Role.OWNER)
+        first_doc_id = _doc_with_class(auth_client, organization, owner, "First")
+        second_doc_id = _doc_with_class(auth_client, organization, owner, "Second")
+        first_destination = self._destination(organization, name="First VM")
+        second_destination = self._destination(organization, name="Second VM")
+        first = self._request(auth_client, organization, first_doc_id, first_destination.id)
+        first_id = first.json()["id"]
+        token = auth_client.post(_api(organization, first_doc_id, f"remote-deployments/{first_id}/confirmation")).json()["confirmation_token"]
+        second = self._request(auth_client, organization, second_doc_id, second_destination.id)
+        second_id = second.json()["id"]
+        auth_client.post(_api(organization, second_doc_id, f"remote-deployments/{second_id}/confirmation"))
+
+        wrong_document = auth_client.post(
+            _api(organization, second_doc_id, f"remote-deployments/{first_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert wrong_document.status_code == 404
+        wrong_destination = auth_client.post(
+            _api(organization, second_doc_id, f"remote-deployments/{second_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert wrong_destination.status_code == 409 and wrong_destination.json()["code"] == "confirmation_invalid"
+
+        auth_client.force_login(editor)
+        wrong_user = auth_client.post(
+            _api(organization, first_doc_id, f"remote-deployments/{first_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert wrong_user.status_code == 409 and wrong_user.json()["code"] == "confirmation_invalid"
+
+        auth_client.force_login(owner)
+        command_url = _api(organization, first_doc_id, "commands")
+        auth_client.post(command_url, data={"type": "AddClass", "class_id": "c2", "name": "Changed"}, content_type="application/json")
+        stale = auth_client.post(
+            _api(organization, first_doc_id, f"remote-deployments/{first_id}/confirm"),
+            data={"confirmation_token": token}, content_type="application/json",
+        )
+        assert stale.status_code == 409 and stale.json()["code"] == "remote_deployment_blocked"
+        remote = RemoteDeploymentRequest.objects.for_organization(organization).get(id=first_id)
+        assert remote.status == RemoteDeploymentStatus.FAILED
+        assert remote.events.order_by("-id").first().error_code == "stale_request"

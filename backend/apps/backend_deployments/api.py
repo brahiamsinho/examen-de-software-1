@@ -14,6 +14,8 @@ from ninja.security import django_auth
 
 from apps.backend_deployments import service
 from apps.backend_deployments.models import Deployment
+from apps.backend_deployments.models import RemoteDeploymentDestination, RemoteDeploymentRequest
+from apps.backend_deployments import remote_service
 from apps.backend_deployments.runner_client import RunnerRejectedError
 from apps.generation_export.api import GENERATION_ERRORS
 from apps.generation_export.service import NothingToGenerateError
@@ -36,6 +38,93 @@ class DeploymentOut(Schema):
     docs_url: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class RemoteDestinationIn(Schema):
+    name: str
+    environment: str
+    managed_config_id: str
+    connectivity_config_ref: str
+    capabilities: list[str] = []
+
+
+class RemoteDestinationOut(Schema):
+    id: UUID
+    name: str
+    destination_type: str
+    environment: str
+    managed_config_id: str
+    connectivity_config_ref: str
+    capabilities: list[str]
+    enabled: bool
+
+
+class RemotePreviewOut(Schema):
+    checks: list[dict]
+    warnings: list[str]
+    can_request: bool
+    artifact_sha256: str
+    document_revision: int
+
+
+class RemoteRequestIn(Schema):
+    destination_id: UUID
+
+
+class RemoteConfirmOut(Schema):
+    confirmation_token: str
+    expires_at: datetime
+
+
+class RemoteConfirmIn(Schema):
+    confirmation_token: str
+
+
+class RemoteRequestOut(Schema):
+    id: UUID
+    destination_id: UUID
+    destination_name: str
+    environment: str
+    action: str
+    status: str
+    document_revision: int
+    artifact_sha256: str
+    error_code: str
+    error_message: str
+    correlation_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class RemoteEventOut(Schema):
+    id: int
+    action: str
+    previous_status: str
+    new_status: str
+    result: str
+    error_code: str
+    message: str
+    correlation_id: UUID
+    created_at: datetime
+
+
+def _destination_out(destination: RemoteDeploymentDestination) -> RemoteDestinationOut:
+    return RemoteDestinationOut(
+        id=destination.id, name=destination.name, destination_type=destination.destination_type,
+        environment=destination.environment, managed_config_id=destination.managed_config_id,
+        connectivity_config_ref=destination.connectivity_config_ref,
+        capabilities=destination.capabilities, enabled=destination.enabled,
+    )
+
+
+def _remote_out(request: RemoteDeploymentRequest) -> RemoteRequestOut:
+    return RemoteRequestOut(
+        id=request.id, destination_id=request.destination_id, destination_name=request.destination.name,
+        environment=request.destination.environment, action=request.action, status=request.status,
+        document_revision=request.document_revision, artifact_sha256=request.artifact_sha256,
+        error_code=request.error_code, error_message=request.error_message,
+        correlation_id=request.correlation_id, created_at=request.created_at, updated_at=request.updated_at,
+    )
 
 
 def _out(deployment: Deployment) -> DeploymentOut:
@@ -105,3 +194,91 @@ def stop_deployment_view(
     except service.RunnerError as exc:
         return _error(502, str(exc), "runner_unavailable")
     return _out(deployment)
+
+
+@deployments_router.get("/{doc_id}/remote-destinations", response=list[RemoteDestinationOut])
+def list_remote_destinations_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    services.get_document(organization=membership.organization, doc_id=doc_id)
+    return [_destination_out(destination) for destination in remote_service.destinations(membership.organization)]
+
+
+@deployments_router.post("/remote-destinations", response={201: RemoteDestinationOut, 422: dict})
+def create_remote_destination_view(request: HttpRequest, org_slug: Path[str], payload: RemoteDestinationIn):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER)
+    if payload.environment not in {"development", "testing", "production"}:
+        return _error(422, "El entorno debe ser development, testing o production.", "invalid_destination")
+    destination = RemoteDeploymentDestination.objects.unscoped().create(
+        organization=membership.organization, name=payload.name, environment=payload.environment,
+        managed_config_id=payload.managed_config_id, connectivity_config_ref=payload.connectivity_config_ref,
+        capabilities=payload.capabilities,
+    )
+    return Status(201, _destination_out(destination))
+
+
+@deployments_router.post("/{doc_id}/remote-deployments/preview", response={200: RemotePreviewOut, 422: dict})
+def preview_remote_deployment_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: RemoteRequestIn):
+    membership = resolve_membership(request, org_slug)
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    preview = remote_service.preview(organization=membership.organization, document=document, destination_id=payload.destination_id)
+    return RemotePreviewOut(checks=preview["checks"], warnings=preview["warnings"], can_request=preview["can_request"], artifact_sha256=preview["artifact_sha256"], document_revision=preview["document_revision"])
+
+
+@deployments_router.post("/{doc_id}/remote-deployments", response={202: RemoteRequestOut, 403: dict, 409: dict})
+def request_remote_deployment_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, payload: RemoteRequestIn):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER)
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    try:
+        remote = remote_service.request_deployment(organization=membership.organization, document=document, user=request.user, destination_id=payload.destination_id)
+    except remote_service.RemoteDeploymentBlocked as exc:
+        return _error(409, str(exc), exc.code)
+    return Status(202, _remote_out(remote))
+
+
+@deployments_router.post("/{doc_id}/remote-deployments/{request_id}/confirmation", response={200: RemoteConfirmOut, 409: dict})
+def issue_remote_confirmation_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, request_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER)
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    remote = remote_service.get_request(membership.organization, document, request_id)
+    if remote.created_by_id != request.user.id:
+        return _error(409, "La solicitud pertenece a otro usuario.", "confirmation_invalid")
+    try:
+        token = remote_service.issue_confirmation(request=remote, user=request.user)
+    except remote_service.RemoteDeploymentError as exc:
+        return _error(409, str(exc), exc.code)
+    return RemoteConfirmOut(confirmation_token=token, expires_at=remote.confirmation_expires_at)
+
+
+@deployments_router.post("/{doc_id}/remote-deployments/{request_id}/confirm", response={200: RemoteRequestOut, 409: dict})
+def confirm_remote_deployment_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, request_id: UUID, payload: RemoteConfirmIn):
+    membership = resolve_membership(request, org_slug)
+    require_role(membership, Role.OWNER)
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    try:
+        remote = remote_service.confirm(organization=membership.organization, document=document, request_id=request_id, user=request.user, token=payload.confirmation_token)
+    except remote_service.RemoteDeploymentError as exc:
+        return _error(409, str(exc), exc.code)
+    return _remote_out(remote)
+
+
+@deployments_router.get("/{doc_id}/remote-deployments/{request_id}", response=RemoteRequestOut)
+def get_remote_deployment_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, request_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    return _remote_out(remote_service.get_request(membership.organization, document, request_id))
+
+
+@deployments_router.get("/{doc_id}/remote-deployments/{request_id}/events", response=list[RemoteEventOut])
+def remote_deployment_events_view(request: HttpRequest, org_slug: Path[str], doc_id: UUID, request_id: UUID):
+    membership = resolve_membership(request, org_slug)
+    document = services.get_document(organization=membership.organization, doc_id=doc_id)
+    remote = remote_service.get_request(membership.organization, document, request_id)
+    return [
+        RemoteEventOut(id=event.id, action=event.action, previous_status=event.previous_status,
+                       new_status=event.new_status, result=event.result, error_code=event.error_code,
+                       message=event.message, correlation_id=event.correlation_id, created_at=event.created_at)
+        for event in remote.events.all()
+    ]
