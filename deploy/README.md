@@ -36,7 +36,7 @@ sudo usermod -aG docker $USER   # log out and back in
 ```bash
 git clone <your-repo-url> modelia && cd modelia
 cp env.example .env
-# edit the root .env: APP_DOMAIN, and fill SECRET_KEY / POSTGRES_PASSWORD / RUNNER_TOKEN
+# edit the root .env: APP_DOMAIN, and fill SECRET_KEY / RUNNER_TOKEN
 # with `openssl rand -hex 32` (one value each). .env is git-ignored.
 
 # Optional but saves time on the first "Generate backend" (~1 GB of images):
@@ -63,7 +63,7 @@ Short alias for the commands below: `alias mc='docker compose -f docker-compose.
 | Stop (keeps data) | `mc stop` |
 | Running generated backends | `docker ps --filter label=modelia.managed=true` |
 
-Data lives in the named volumes `postgres_data` (database) and `caddy_data` (certificates). Do not
+Data lives in the named volumes `mongo_data` (database) and `caddy_data` (certificates). Do not
 delete them casually; never run `mc down -v`. Generated backends are removed after
 `RUNNER_MAX_LIFETIME_SECONDS` (6 h by default) and on every runner restart.
 
@@ -73,4 +73,4 @@ delete them casually; never run `mc down -v`. Generated backends are removed aft
 - The socket proxy limits which Docker API sections the runner can call, not what it puts in a
   container (it cannot read request bodies). The runner enforces the image allowlist, no
   privileged mode, no host mounts, resource limits and an internal-only network per deployment.
-- Backups are not set up: `docker compose ... exec db pg_dump -U app app > backup.sql` is the manual way.
+- Backups are not set up: `docker compose ... exec -T mongo mongodump --db modelia --archive > backup.archive` is the manual way (restore with `mongorestore --archive < backup.archive`).
