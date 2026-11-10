@@ -71,7 +71,10 @@ export type RelationshipEnd = {
   role: string | null;
 };
 
-export type RelationshipKind = "association" | "aggregation" | "composition" | "generalization";
+export type RelationshipKind = "association" | "aggregation" | "composition" | "generalization" | "dependency";
+
+/** Kinds that UML 2.5 defines without multiplicities: the server keeps a neutral 1..1 on their ends. */
+export const KINDS_WITHOUT_MULTIPLICITY: readonly RelationshipKind[] = ["generalization", "dependency"];
 
 export type Relationship = {
   id: string;

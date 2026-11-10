@@ -147,7 +147,9 @@ class TestEaConstructs:
         assert [c.name for c in result.model.classes] == ["Order"]
         assert result.model.relationships == ()
         joined = "\n".join(result.warnings)
-        assert "Actor" in joined and "Dependency" in joined and "dangling" in joined
+        # An Actor is still unsupported; a Dependency IS supported now, but this one has no
+        # client or supplier, so it is skipped with its own warning.
+        assert "Actor" in joined and "dependencia" in joined and "dangling" in joined
 
 
 class TestXmi21:

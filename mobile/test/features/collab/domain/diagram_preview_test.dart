@@ -105,6 +105,29 @@ void main() {
     expect(classes.last.isAbstract, isFalse); // no key at all
   });
 
+  test('reads a dependency, which UML 2.5 defines without multiplicities', () {
+    final json = _document();
+    ((json['model'] as Map)['relationships'] as List).first['kind'] = 'dependency';
+
+    final relationship = DiagramPreview.fromJson(json).relationships.single;
+
+    expect(relationship.kind, RelationshipKind.dependency);
+    expect(RelationshipKind.dependency.hasMultiplicity, isFalse);
+  });
+
+  test('only generalization and dependency go without multiplicities', () {
+    expect(
+      {for (final kind in RelationshipKind.values) kind: kind.hasMultiplicity},
+      {
+        RelationshipKind.association: true,
+        RelationshipKind.aggregation: true,
+        RelationshipKind.composition: true,
+        RelationshipKind.generalization: false,
+        RelationshipKind.dependency: false,
+      },
+    );
+  });
+
   test('an unknown relationship kind still reads, as a plain association', () {
     final json = _document();
     ((json['model'] as Map)['relationships'] as List).first['kind'] = 'something-new';

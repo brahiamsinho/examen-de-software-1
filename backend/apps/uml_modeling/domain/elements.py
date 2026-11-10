@@ -24,6 +24,9 @@ class RelationshipKind(StrEnum):
     AGGREGATION = "aggregation"
     COMPOSITION = "composition"
     GENERALIZATION = "generalization"
+    # UML 2.5 Dependency: `source` is the client, `target` the supplier. It has no
+    # multiplicity (the ends carry a neutral 1..1) and is never persisted or generated.
+    DEPENDENCY = "dependency"
 
 
 def _validate_attribute_type(type_value: object) -> None:

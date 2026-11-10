@@ -543,9 +543,9 @@ def _validate_relationship_update(
     changes_multiplicity = (
         command.source_multiplicity is not None or command.target_multiplicity is not None
     )
-    if changes_multiplicity and target.kind is RelationshipKind.GENERALIZATION:
+    if changes_multiplicity and target.kind in (RelationshipKind.GENERALIZATION, RelationshipKind.DEPENDENCY):
         raise InvalidCommandPayloadError(
-            f"Relationship {command.relationship_id!r} is a generalization and has no multiplicities"
+            f"Relationship {command.relationship_id!r} is a {target.kind.value} and has no multiplicities"
         )
 
 

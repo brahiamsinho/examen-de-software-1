@@ -9,6 +9,7 @@ import { type JoinTableHint } from "@/lib/join_tables";
 import {
   attributeTypeLabel,
   formatMultiplicity,
+  KINDS_WITHOUT_MULTIPLICITY,
   type DiagramLayout,
   type UmlModel,
   type Visibility,
@@ -305,6 +306,15 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
       "arrow-scale": 1.6,
     },
   },
+  {
+    // UML 2.5 Dependency: a dashed line with an open arrow at the supplier (`target`).
+    selector: 'edge[kind = "dependency"]',
+    style: {
+      "line-style": "dashed",
+      "target-arrow-shape": "vee",
+      "arrow-scale": 1.6,
+    },
+  },
 ];
 
 /**
@@ -358,8 +368,8 @@ export function toElements(
         // The relationship's own name (e.g. "Name A" from an Enterprise
         // Architect import) is the centered label; multiplicities go at the ends.
         label: r.name?.trim() ?? "",
-        sourceLabel: r.kind === "generalization" ? "" : formatMultiplicity(r.source.multiplicity),
-        targetLabel: r.kind === "generalization" ? "" : formatMultiplicity(r.target.multiplicity),
+        sourceLabel: KINDS_WITHOUT_MULTIPLICITY.includes(r.kind) ? "" : formatMultiplicity(r.source.multiplicity),
+        targetLabel: KINDS_WITHOUT_MULTIPLICITY.includes(r.kind) ? "" : formatMultiplicity(r.target.multiplicity),
       },
       // Recursive/reflexive relationship (a class related to itself):
       // needs explicit loop geometry, see the `edge.self-loop` selector.

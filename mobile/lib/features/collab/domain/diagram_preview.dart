@@ -1,7 +1,17 @@
 /// A read-only picture of a diagram for the phone (GitHub #19): just enough to
 /// draw it, parsed from the server's document (`model` + `layout`). Nothing here
 /// edits anything.
-enum RelationshipKind { association, aggregation, composition, generalization }
+enum RelationshipKind {
+  association,
+  aggregation,
+  composition,
+  generalization,
+  dependency;
+
+  /// UML 2.5 defines no multiplicity for these two; the server keeps a neutral 1..1
+  /// on their ends, which must never be drawn.
+  bool get hasMultiplicity => this != generalization && this != dependency;
+}
 
 class PreviewClass {
   const PreviewClass({

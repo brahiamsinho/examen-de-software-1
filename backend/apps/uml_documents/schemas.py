@@ -81,7 +81,7 @@ class RelationshipEndIn(Schema):
 
 class RelationshipIn(Schema):
     id: str
-    kind: Literal["association", "aggregation", "composition", "generalization"]
+    kind: Literal["association", "aggregation", "composition", "generalization", "dependency"]
     source: RelationshipEndIn
     target: RelationshipEndIn
     name: str | None = None

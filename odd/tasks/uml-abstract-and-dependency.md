@@ -11,8 +11,8 @@ Branch: feat/uml-abstract-and-dependency (from docs/uml-2-5-conformance). Strate
 ## Tasks
 - [x] T1 (S2): abstract classes in the backend: domain, codec, command, schemas, services, session log, XMI. Route: inline. Evidence: 18 new tests + backend suites for the touched apps (456 passed).
 - [x] T2 (S2): abstract classes in web and mobile preview. Evidence: vitest 564 passed, flutter test 214 passed, analyze clean.
-- T3 (S3): dependency in the backend (domain, validation, mapping/generator ignore it, XMI).
-- T4 (S3): dependency in web and mobile preview.
+- [x] T3 (S3): dependency in the backend (domain, validation, mapping ignores it, XMI both ways). Evidence: 18 new tests.
+- [x] T4 (S3): dependency in web and mobile preview. Evidence: vitest 569 passed, flutter test 216 passed, analyze clean.
 - T5 (S5): conformance document and final suites.
 
 ## Log
