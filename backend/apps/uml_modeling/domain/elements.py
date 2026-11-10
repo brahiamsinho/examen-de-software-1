@@ -68,6 +68,8 @@ class UmlClass:
     attributes: tuple[UmlAttribute, ...] = ()
     operations: tuple[UmlOperation, ...] = ()
     visibility: Visibility = Visibility.PUBLIC
+    # UML 2.5 `Class.isAbstract`. Last on purpose: callers build a class positionally.
+    is_abstract: bool = False
 
 
 @dataclass(frozen=True)

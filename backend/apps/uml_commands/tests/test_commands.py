@@ -27,6 +27,7 @@ from apps.uml_commands.commands import (
     RemoveOperation,
     RemoveRelationship,
     RenameClass,
+    SetClassAbstract,
     SetGenerationProfile,
     UmlCommand,
     UpdateRelationship,
@@ -195,13 +196,14 @@ def test_remove_relationship_is_frozen():
         command.relationship_id = new_id()
 
 
-def test_uml_command_union_covers_exactly_the_eleven_types():
+def test_uml_command_union_covers_exactly_the_twelve_types():
     members = set(typing.get_args(UmlCommand))
 
     assert members == {
         AddClass,
         RemoveClass,
         RenameClass,
+        SetClassAbstract,
         AddAttribute,
         RemoveAttribute,
         AddOperation,

@@ -272,7 +272,8 @@ def _write_class(
         parent,
         "UML:Class",
         {"name": _clean(uml_class.name), "xmi.id": class_ids[uml_class.id], "visibility": uml_class.visibility.value,
-         "namespace": package_id, "isRoot": "false", "isLeaf": "false", "isAbstract": "false", "isActive": "false"},
+         "namespace": package_id, "isRoot": "false", "isLeaf": "false",
+         "isAbstract": "true" if uml_class.is_abstract else "false", "isActive": "false"},
     )
     _tags(element, _class_tags(package_id, package_name, local_ids[uml_class.id], "Class"))
     features = SubElement(element, "UML:Classifier.feature")

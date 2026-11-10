@@ -29,6 +29,12 @@ class RenameClassIn(Schema):
     new_name: str
 
 
+class SetClassAbstractIn(Schema):
+    type: Literal["SetClassAbstract"]
+    class_id: str
+    is_abstract: bool
+
+
 class UmlAttributeIn(Schema):
     id: str
     name: str
@@ -112,6 +118,7 @@ CommandIn = Annotated[
         AddClassIn,
         RemoveClassIn,
         RenameClassIn,
+        SetClassAbstractIn,
         AddAttributeIn,
         RemoveAttributeIn,
         AddOperationIn,

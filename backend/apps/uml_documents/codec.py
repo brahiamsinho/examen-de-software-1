@@ -97,6 +97,7 @@ def _encode_class(uml_class: UmlClass) -> dict:
         "id": uml_class.id,
         "name": uml_class.name,
         "visibility": uml_class.visibility.value,
+        "is_abstract": uml_class.is_abstract,
         "attributes": [_encode_attribute(a) for a in uml_class.attributes],
         "operations": [_encode_operation(o) for o in uml_class.operations],
     }
@@ -109,6 +110,8 @@ def _decode_class(data: dict) -> UmlClass:
         visibility=Visibility(data["visibility"]),
         attributes=tuple(_decode_attribute(a) for a in data["attributes"]),
         operations=tuple(_decode_operation(o) for o in data["operations"]),
+        # Diagrams saved before this field existed have no key: concrete.
+        is_abstract=bool(data.get("is_abstract", False)),
     )
 
 

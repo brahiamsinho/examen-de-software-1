@@ -97,6 +97,7 @@ class _RawClass:
     operations: list[tuple[str, str | None, bool]] = field(default_factory=list)  # name, visibility, has_signature
     literals: list[str] | None = None  # not None => an enumeration
     visibility: str | None = None
+    is_abstract: bool = False
     # The `modelia_synthetic` tagged value (XMI 1.1/UML 1.3 only), OUR OWN
     # marker on a join-table association class (see
     # `exporter._MODELIA_SYNTHETIC_TAG`, design.md DD186) -- distinguishes
@@ -240,6 +241,7 @@ def _read_class_v1(el: Element, raw: _Raw) -> None:
     raw_class = _RawClass(
         el.get("xmi.id", ""), name, visibility=el.get("visibility"),
         modelia_synthetic=tags.get("modelia_synthetic") == "join_table",
+        is_abstract=el.get("isAbstract") == "true",
     )
     features = _kid(el, "Classifier.feature")
     for feature in features if features is not None else ():
@@ -356,7 +358,9 @@ def _type_of_v2(prop: Element) -> str | None:
 
 def _read_class_v2(el: Element, raw: _Raw, ends_by_id: dict[str, Element]) -> None:
     xid = _xmi(el, "id") or ""
-    raw_class = _RawClass(xid, el.get("name", ""), visibility=el.get("visibility"))
+    raw_class = _RawClass(
+        xid, el.get("name", ""), visibility=el.get("visibility"), is_abstract=el.get("isAbstract") == "true"
+    )
     for prop in _kids(el, "ownedAttribute"):
         if prop.get("association"):  # an association end owned by the class, not a real attribute
             ends_by_id[_xmi(prop, "id") or ""] = prop
@@ -492,7 +496,10 @@ def _build(raw: _Raw) -> tuple[CanonicalUmlModel, DiagramLayout, list[str]]:
         if any(sig for _n, _v, sig in c.operations):
             warnings.append(f"Los parámetros y tipos de retorno de las operaciones de '{c.name}' no se importan.")
         classes.append(
-            UmlClass(ids[c.xid], c.name, tuple(attributes), operations, _visibility(c.visibility) or Visibility.PUBLIC)
+            UmlClass(
+                ids[c.xid], c.name, tuple(attributes), operations,
+                _visibility(c.visibility) or Visibility.PUBLIC, c.is_abstract,
+            )
         )
 
     relationships = _build_relationships(raw, ids, {c.xid for c in raw.classes if c.literals is None}, warnings)

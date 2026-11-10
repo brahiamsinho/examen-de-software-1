@@ -687,6 +687,8 @@ def _command_from_payload(payload: "schemas.CommandIn") -> UmlCommand:
         return commands.RemoveClass(class_id=ElementId(payload.class_id))
     if isinstance(payload, schemas.RenameClassIn):
         return commands.RenameClass(class_id=ElementId(payload.class_id), new_name=payload.new_name)
+    if isinstance(payload, schemas.SetClassAbstractIn):
+        return commands.SetClassAbstract(class_id=ElementId(payload.class_id), is_abstract=payload.is_abstract)
     if isinstance(payload, schemas.AddAttributeIn):
         return commands.AddAttribute(
             class_id=ElementId(payload.class_id),

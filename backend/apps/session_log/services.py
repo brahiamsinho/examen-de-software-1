@@ -139,7 +139,7 @@ def describe_commands(batch: Sequence, model_before) -> list[dict]:
             label = command.name
         elif isinstance(command, commands.RenameClass):
             label = command.new_name
-        elif isinstance(command, commands.RemoveClass):
+        elif isinstance(command, (commands.RemoveClass, commands.SetClassAbstract)):
             label = names.get(command.class_id)
         elif isinstance(command, commands.AddAttribute):
             label = command.attribute.name

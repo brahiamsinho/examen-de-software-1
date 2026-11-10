@@ -201,7 +201,11 @@ class _ClassCard extends StatelessWidget {
               item.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onPrimaryContainer),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontStyle: item.isAbstract ? FontStyle.italic : FontStyle.normal,
+                color: scheme.onPrimaryContainer,
+              ),
             ),
           ),
           Padding(

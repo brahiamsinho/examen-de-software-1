@@ -9,6 +9,7 @@ class PreviewClass {
     required this.name,
     required this.attributes,
     required this.operations,
+    this.isAbstract = false,
     this.x,
     this.y,
   });
@@ -21,6 +22,9 @@ class PreviewClass {
 
   /// Ready to show, e.g. `+ cancelar()`.
   final List<String> operations;
+
+  /// UML 2.5 `isAbstract`; its name is written in italics.
+  final bool isAbstract;
 
   /// Where the web canvas put it; null when it has never been placed.
   final double? x;
@@ -106,6 +110,7 @@ PreviewClass _readClass(Map<String, Object?> json, Map<String, Object?> position
       for (final item in (json['operations'] as List?) ?? const [])
         if (item is Map) _operationLabel(item.cast<String, Object?>(), enumerations),
     ],
+    isAbstract: json['is_abstract'] == true,
     x: (point?['x'] as num?)?.toDouble(),
     y: (point?['y'] as num?)?.toDouble(),
   );

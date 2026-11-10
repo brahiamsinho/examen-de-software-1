@@ -77,6 +77,7 @@ const COMMAND_TEXT: Record<string, [string, string]> = {
   AddClass: ["Agregó la clase", "Agregó una clase"],
   RemoveClass: ["Eliminó la clase", "Eliminó una clase"],
   RenameClass: ["Renombró una clase a", "Renombró una clase"],
+  SetClassAbstract: ["Cambió la abstracción de la clase", "Cambió la abstracción de una clase"],
   AddAttribute: ["Agregó el atributo", "Agregó un atributo"],
   RemoveAttribute: ["Eliminó el atributo", "Eliminó un atributo"],
   AddOperation: ["Agregó la operación", "Agregó una operación"],

@@ -8,7 +8,7 @@ import dataclasses
 
 from apps.uml_modeling.domain.elements import UmlClass
 from apps.uml_modeling.domain.model import CanonicalUmlModel
-from apps.uml_commands.commands import AddClass, RemoveClass, RenameClass
+from apps.uml_commands.commands import AddClass, RemoveClass, RenameClass, SetClassAbstract
 from apps.uml_commands.handlers.generation_profile import prune_generation_metadata
 
 
@@ -34,6 +34,16 @@ def remove_class(model: CanonicalUmlModel, command: RemoveClass) -> CanonicalUml
     return dataclasses.replace(
         model, classes=classes, relationships=relationships, generation_metadata=metadata
     )
+
+
+def set_class_abstract(model: CanonicalUmlModel, command: SetClassAbstract) -> CanonicalUmlModel:
+    existing = model.class_by_id(command.class_id)
+    if existing is None:
+        return model
+
+    changed = dataclasses.replace(existing, is_abstract=command.is_abstract)
+    classes = tuple(changed if uml_class.id == command.class_id else uml_class for uml_class in model.classes)
+    return dataclasses.replace(model, classes=classes)
 
 
 def rename_class(model: CanonicalUmlModel, command: RenameClass) -> CanonicalUmlModel:

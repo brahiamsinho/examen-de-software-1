@@ -95,6 +95,16 @@ void main() {
     expect(preview.classes.last.x, isNull);
   });
 
+  test('reads whether a class is abstract, and treats a diagram saved before the flag as concrete', () {
+    final json = _document();
+    ((json['model'] as Map)['classes'] as List).first['is_abstract'] = true;
+
+    final classes = DiagramPreview.fromJson(json).classes;
+
+    expect(classes.first.isAbstract, isTrue);
+    expect(classes.last.isAbstract, isFalse); // no key at all
+  });
+
   test('an unknown relationship kind still reads, as a plain association', () {
     final json = _document();
     ((json['model'] as Map)['relationships'] as List).first['kind'] = 'something-new';

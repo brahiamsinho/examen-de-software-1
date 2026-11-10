@@ -59,6 +59,8 @@ export type UmlClass = {
   visibility: Visibility;
   attributes: UmlAttribute[];
   operations: UmlOperation[];
+  /** UML 2.5 `isAbstract`. Absent in diagrams saved before it existed: treat as false. */
+  is_abstract?: boolean;
 };
 
 export type Multiplicity = { lower: number; upper: number | null };
@@ -138,6 +140,7 @@ export type UmlCommandIn =
       };
     }
   | { type: "RemoveClass"; class_id: string }
+  | { type: "SetClassAbstract"; class_id: string; is_abstract: boolean }
   | { type: "RemoveAttribute"; class_id: string; attribute_id: string }
   | { type: "RemoveOperation"; class_id: string; operation_id: string }
   | { type: "RemoveRelationship"; relationship_id: string }
