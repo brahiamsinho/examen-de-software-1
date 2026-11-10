@@ -14,12 +14,14 @@ Boundaries that matter:
 """
 import logging
 import math
+import re
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from django.conf import settings
 from django.db import connections
 
 from apps.ai_assistant.models import ChatMessage
@@ -29,8 +31,6 @@ from apps.uml_documents import services
 logger = logging.getLogger(__name__)
 
 MEMORY_RESULTS = 4
-# Below this cosine similarity a message is not about the same thing.
-MIN_SIMILARITY = 0.35
 # Brute force over the latest messages is plenty for a team chat and needs no vector database.
 MAX_CANDIDATES = 500
 MAX_TEXT_LENGTH = 2000
@@ -51,6 +51,15 @@ class Memory:
     score: float
 
 
+# `@IA` is how someone calls the AI, not what the message is about. Left in, every
+# "@IA que..." would look alike and drag in unrelated conversations.
+_MENTION = re.compile(r"(?<![\w@])@ia(?!\w)", re.IGNORECASE)
+
+
+def _text_to_embed(content: str) -> str:
+    return " ".join(_MENTION.sub(" ", content).split())[:MAX_TEXT_LENGTH]
+
+
 def _run_in_background(job: Callable[[], None]) -> None:
     def target() -> None:
         try:
@@ -69,7 +78,8 @@ def _embedder(client):
 def remember(organization: Organization, messages: Iterable[ChatMessage], client) -> None:
     """Stores the vectors of `messages` without making the writer wait. Never raises."""
     embedder = _embedder(client)
-    items = [(message.id, message.content[:MAX_TEXT_LENGTH]) for message in messages if message.content.strip()]
+    items = [(message.id, _text_to_embed(message.content)) for message in messages]
+    items = [(message_id, text) for message_id, text in items if text]
     if embedder is None or not items:
         return
     organization_id = organization.id
@@ -105,7 +115,7 @@ def backfill(client, *, batch_size: int = 50) -> int:
         )
         if not batch:
             return done
-        vectors = embedder.embed([item.content[:MAX_TEXT_LENGTH] for item in batch])
+        vectors = embedder.embed([_text_to_embed(item.content) or item.content[:MAX_TEXT_LENGTH] for item in batch])
         for item, vector in zip(batch, vectors, strict=True):
             ChatMessage.all_objects.filter(pk=item.id).update(embedding=vector, embedding_model=embedder.embedding_model)
         done += len(batch)
@@ -140,7 +150,7 @@ def recall(
 ) -> list[Memory]:
     """The earlier messages closest in meaning to `question`, best first. Never raises."""
     embedder = _embedder(client)
-    text = (question or "").strip()[:MAX_TEXT_LENGTH]
+    text = _text_to_embed(question or "")
     if embedder is None or not text:
         return []
     try:
@@ -159,7 +169,8 @@ def recall(
             for item in candidates
             if isinstance(item.embedding, list)
         ]
-        best = sorted((pair for pair in scored if pair[0] >= MIN_SIMILARITY), key=lambda pair: -pair[0])[:MEMORY_RESULTS]
+        threshold = settings.CHAT_MEMORY_MIN_SIMILARITY
+        best = sorted((pair for pair in scored if pair[0] >= threshold), key=lambda pair: -pair[0])[:MEMORY_RESULTS]
         return [
             Memory(
                 content=item.content,

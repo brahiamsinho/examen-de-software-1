@@ -94,6 +94,7 @@ services:
       # Models behind the chat's semantic memory (see env.example).
       OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
       LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+      CHAT_MEMORY_MIN_SIMILARITY: ${CHAT_MEMORY_MIN_SIMILARITY:-0.45}
       # Push notifications (GitHub #19). Empty = off. The service-account file lives
       # outside git in ./backend/secrets on the host; set this to
       # /app/secrets/firebase-credentials.json to turn pushes on.

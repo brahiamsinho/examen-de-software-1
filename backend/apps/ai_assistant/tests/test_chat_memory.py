@@ -140,6 +140,44 @@ class TestRecall:
 
         assert "earlier team conversation" not in model.requests[-1].lower()
 
+    def test_the_at_ia_mention_is_not_part_of_the_meaning_that_is_stored_or_searched(self):
+        # Otherwise every message that starts with "@IA que..." would look alike.
+        organization, owner, editor, *_ = make_org_with_roles()
+        board = _document(organization, owner, "Tablero")
+        model = _Model()
+
+        _ask(organization, board, owner, "@IA que atributos lleva Persona, el carnet?", model)
+
+        assert model.embedded, "the question and the messages were embedded"
+        assert not any("@IA" in text or "@ia" in text.lower() for text in model.embedded)
+        assert "que atributos lleva Persona" in model.embedded[0]
+
+    def test_messages_that_only_share_the_at_ia_prefix_are_not_recalled(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        sales = _document(organization, owner, "Ventas")
+        library = _document(organization, owner, "Biblioteca")
+        model = _Model()
+        _say(organization, sales, editor, "@IA que cambios tenemos pendientes hoy", model)
+
+        _ask(organization, library, owner, "@IA que sabemos del correo de Cliente", model)
+
+        assert "cambios tenemos pendientes" not in model.requests[-1]
+
+    def test_how_similar_a_message_must_be_is_a_setting(self, settings):
+        organization, owner, editor, *_ = make_org_with_roles()
+        sales = _document(organization, owner, "Ventas")
+        library = _document(organization, owner, "Biblioteca")
+        model = _Model()
+        _say(organization, sales, editor, "Persona lleva carnet de identidad unico", model)
+
+        settings.CHAT_MEMORY_MIN_SIMILARITY = 0.99
+        _ask(organization, library, owner, "@IA que atributos lleva Persona, el carnet?", model)
+        assert "carnet de identidad unico" not in model.requests[-1]
+
+        settings.CHAT_MEMORY_MIN_SIMILARITY = 0.30
+        _ask(organization, library, owner, "@IA que atributos lleva Persona, el carnet?", model)
+        assert "carnet de identidad unico" in model.requests[-1]
+
     def test_vectors_from_a_different_embedding_model_are_ignored(self):
         organization, owner, editor, *_ = make_org_with_roles()
         sales = _document(organization, owner, "Ventas")

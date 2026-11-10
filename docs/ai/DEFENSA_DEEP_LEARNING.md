@@ -20,7 +20,7 @@ Hoja de una página para explicarlo y mostrarlo. Las rutas y líneas son de `bac
 | 4 | Comportamiento | `chat.py:40` `_CHAT_INSTRUCTION` | Instrucciones: mentor, llama por su nombre a quien pregunta, explica con ejemplos del diagrama |
 | 5 | Sabe quién pregunta | `chat.py` `_transcript` | Cada línea de la conversación lleva su autor (`Ana: ...`) |
 | 6 | Memoria corta | `chat.py:32` `CONTEXT_MESSAGES = 30` | Recibe los últimos 30 mensajes del chat |
-| 7 | Memoria semántica | `openai_client.py:62` `embed`, `memory.py:138` `recall`, `memory.py:114` `_cosine` | Texto → vector → similitud coseno → los mensajes más parecidos en significado (umbral `MIN_SIMILARITY` 0.35) |
+| 7 | Memoria semántica | `openai_client.py:62` `embed`, `memory.py:138` `recall`, `memory.py:114` `_cosine` | Texto → vector → similitud coseno → los mensajes más parecidos en significado (umbral configurable `CHAT_MEMORY_MIN_SIMILARITY`, 0.45: lo relacionado dio ~0.59 y lo no relacionado 0.24-0.36) |
 | 8 | Control humano | `proposals.py:320` `approve_proposal` | La IA solo crea borradores; aprobar o rechazar es de un EDITOR/OWNER |
 | 9 | Modelo en el celular | `mobile/lib/features/local_assistant/` | Un modelo corre dentro del teléfono (`flutter_gemma`), sin internet |
 

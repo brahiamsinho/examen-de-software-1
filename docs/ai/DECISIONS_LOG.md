@@ -6,6 +6,7 @@
 - Rules: only the caller's organization is searched (mutation-checked); vectors are only compared with vectors of the same embedding model; it is best-effort (Gemini has no embeddings here, and a failing provider just means no memory); the vector is written in a background thread so posting never waits.
 - Privacy note: every chat message (not only `@IA` ones) is now sent to the embedding provider.
 - Backfill: `python manage.py embed_chat_memory` embeds messages written before this existed.
+- Tuned after a real demo: the `@IA` mention is removed before embedding (otherwise every "@IA que..." looked alike); the similarity threshold is the setting `CHAT_MEMORY_MIN_SIMILARITY` = 0.45, chosen from measured scores (related 0.59, unrelated 0.24-0.36); and the chat instruction now says a plain question is answered in the chat and a draft is only for requests to add or change something (the model had answered a question with a draft).
 - Verified with the real provider: a message left in one diagram was recalled when asking from another, and an unrelated message was left out.
 
 ## 2026-11-10 - Push notifications: backend half (GitHub #19)
