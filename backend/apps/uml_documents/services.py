@@ -543,9 +543,9 @@ def _validate_relationship_update(
     changes_multiplicity = (
         command.source_multiplicity is not None or command.target_multiplicity is not None
     )
-    if changes_multiplicity and target.kind is RelationshipKind.GENERALIZATION:
+    if changes_multiplicity and target.kind in (RelationshipKind.GENERALIZATION, RelationshipKind.DEPENDENCY):
         raise InvalidCommandPayloadError(
-            f"Relationship {command.relationship_id!r} is a generalization and has no multiplicities"
+            f"Relationship {command.relationship_id!r} is a {target.kind.value} and has no multiplicities"
         )
 
 
@@ -687,6 +687,8 @@ def _command_from_payload(payload: "schemas.CommandIn") -> UmlCommand:
         return commands.RemoveClass(class_id=ElementId(payload.class_id))
     if isinstance(payload, schemas.RenameClassIn):
         return commands.RenameClass(class_id=ElementId(payload.class_id), new_name=payload.new_name)
+    if isinstance(payload, schemas.SetClassAbstractIn):
+        return commands.SetClassAbstract(class_id=ElementId(payload.class_id), is_abstract=payload.is_abstract)
     if isinstance(payload, schemas.AddAttributeIn):
         return commands.AddAttribute(
             class_id=ElementId(payload.class_id),

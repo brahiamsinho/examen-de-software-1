@@ -31,6 +31,12 @@ class RenameClass:
 
 
 @dataclass(frozen=True)
+class SetClassAbstract:
+    class_id: ElementId
+    is_abstract: bool
+
+
+@dataclass(frozen=True)
 class AddAttribute:
     class_id: ElementId
     attribute: UmlAttribute
@@ -97,6 +103,7 @@ UmlCommand = (
     AddClass
     | RemoveClass
     | RenameClass
+    | SetClassAbstract
     | AddAttribute
     | RemoveAttribute
     | AddOperation

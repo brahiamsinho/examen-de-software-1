@@ -159,7 +159,7 @@ describe("AddRelationshipControl", () => {
     const optionValues = within(select)
       .getAllByRole("option")
       .map((option) => (option as HTMLOptionElement).value);
-    expect(optionValues).toEqual(["association", "aggregation", "composition", "generalization"]);
+    expect(optionValues).toEqual(["association", "aggregation", "composition", "generalization", "dependency"]);
   });
 
   it.each(["association", "aggregation", "composition", "generalization"] as const)(

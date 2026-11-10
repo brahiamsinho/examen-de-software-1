@@ -156,7 +156,7 @@ def _plan_join_relationships(model: CanonicalUmlModel, local_ids: dict) -> dict[
     plans: dict[str, dict] = {}
     next_local = max(local_ids.values(), default=0) + 1
     for relationship in model.relationships:
-        if relationship.kind is RelationshipKind.GENERALIZATION:
+        if relationship.kind in (RelationshipKind.GENERALIZATION, RelationshipKind.DEPENDENCY):
             continue
         if not _is_join_relationship(relationship):
             continue
@@ -272,7 +272,8 @@ def _write_class(
         parent,
         "UML:Class",
         {"name": _clean(uml_class.name), "xmi.id": class_ids[uml_class.id], "visibility": uml_class.visibility.value,
-         "namespace": package_id, "isRoot": "false", "isLeaf": "false", "isAbstract": "false", "isActive": "false"},
+         "namespace": package_id, "isRoot": "false", "isLeaf": "false",
+         "isAbstract": "true" if uml_class.is_abstract else "false", "isActive": "false"},
     )
     _tags(element, _class_tags(package_id, package_name, local_ids[uml_class.id], "Class"))
     features = SubElement(element, "UML:Classifier.feature")
@@ -346,6 +347,16 @@ def _write_relationship(parent, relationship, model, class_ids, local_ids, *, jo
              "visibility": "public", "isSpecification": "false"},
         )
         _tags(element, [("ea_type", "Generalization"), ("direction", "Source -> Destination"), *endpoint_tags])
+        return
+
+    if relationship.kind is RelationshipKind.DEPENDENCY:
+        element = SubElement(
+            parent,
+            "UML:Dependency",
+            {"name": _clean(relationship.name or ""), "xmi.id": rel_id, "client": class_ids[source.class_id],
+             "supplier": class_ids[target.class_id], "visibility": "public", "isSpecification": "false"},
+        )
+        _tags(element, [("ea_type", "Dependency"), ("direction", "Source -> Destination"), *endpoint_tags])
         return
 
     element = SubElement(

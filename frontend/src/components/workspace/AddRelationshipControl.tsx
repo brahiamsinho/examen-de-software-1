@@ -8,7 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { ApiError } from "@/lib/api";
-import type { CommandResult, RelationshipKind, UmlClass, UmlCommandIn } from "@/lib/uml_documents";
+import {
+  KINDS_WITHOUT_MULTIPLICITY,
+  type CommandResult,
+  type RelationshipKind,
+  type UmlClass,
+  type UmlCommandIn,
+} from "@/lib/uml_documents";
 
 const MULTIPLICITY_OPTIONS = ["1", "0..1", "0..*", "1..*"] as const;
 type MultiplicityString = (typeof MULTIPLICITY_OPTIONS)[number];
@@ -18,6 +24,7 @@ const RELATIONSHIP_KIND_OPTIONS: readonly { value: RelationshipKind; label: stri
   { value: "aggregation", label: "Agregación" },
   { value: "composition", label: "Composición" },
   { value: "generalization", label: "Generalización" },
+  { value: "dependency", label: "Dependencia" },
 ];
 
 type AddRelationshipControlProps = {
@@ -103,14 +110,14 @@ export function AddRelationshipControl({
       // so it always sends the literal "1"/"1" regardless of any prior
       // selection. Kind is never reset on switch, so switching back to a
       // multiplicity-bearing kind restores the earlier choice.
-      const isGeneralization = kind === "generalization";
+      const noMultiplicity = KINDS_WITHOUT_MULTIPLICITY.includes(kind);
       await onSubmit({
         type: "AddRelationship",
         relationship: {
           id: crypto.randomUUID(),
           kind,
-          source: { class_id: sourceId, multiplicity: isGeneralization ? "1" : sourceMultiplicity },
-          target: { class_id: targetId, multiplicity: isGeneralization ? "1" : targetMultiplicity },
+          source: { class_id: sourceId, multiplicity: noMultiplicity ? "1" : sourceMultiplicity },
+          target: { class_id: targetId, multiplicity: noMultiplicity ? "1" : targetMultiplicity },
         },
       });
       onCancel();
@@ -144,7 +151,7 @@ export function AddRelationshipControl({
         </Select>
       </div>
 
-      {kind === "generalization" ? null : (
+      {KINDS_WITHOUT_MULTIPLICITY.includes(kind) ? null : (
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="relationship-source-multiplicity">Multiplicidad origen</Label>

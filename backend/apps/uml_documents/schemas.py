@@ -29,6 +29,12 @@ class RenameClassIn(Schema):
     new_name: str
 
 
+class SetClassAbstractIn(Schema):
+    type: Literal["SetClassAbstract"]
+    class_id: str
+    is_abstract: bool
+
+
 class UmlAttributeIn(Schema):
     id: str
     name: str
@@ -75,7 +81,7 @@ class RelationshipEndIn(Schema):
 
 class RelationshipIn(Schema):
     id: str
-    kind: Literal["association", "aggregation", "composition", "generalization"]
+    kind: Literal["association", "aggregation", "composition", "generalization", "dependency"]
     source: RelationshipEndIn
     target: RelationshipEndIn
     name: str | None = None
@@ -112,6 +118,7 @@ CommandIn = Annotated[
         AddClassIn,
         RemoveClassIn,
         RenameClassIn,
+        SetClassAbstractIn,
         AddAttributeIn,
         RemoveAttributeIn,
         AddOperationIn,

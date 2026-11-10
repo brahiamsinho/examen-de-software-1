@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api";
 import {
   formatMultiplicity,
   parseMultiplicityInput,
+  KINDS_WITHOUT_MULTIPLICITY,
   type CommandResult,
   type Relationship,
   type UmlClass,
@@ -71,7 +72,7 @@ function EditRelationshipForm({
   onSubmit,
   onClose,
 }: Omit<EditRelationshipDialogProps, "relationship"> & { relationship: Relationship }) {
-  const hasMultiplicity = relationship.kind !== "generalization";
+  const hasMultiplicity = !KINDS_WITHOUT_MULTIPLICITY.includes(relationship.kind);
   const [name, setName] = useState(relationship.name ?? "");
   const [source, setSource] = useState(formatMultiplicity(relationship.source.multiplicity));
   const [target, setTarget] = useState(formatMultiplicity(relationship.target.multiplicity));

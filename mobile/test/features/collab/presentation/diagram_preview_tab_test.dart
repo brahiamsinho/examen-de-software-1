@@ -6,11 +6,17 @@ import '../test_support.dart';
 
 const _docPath = '/api/orgs/acme/documents/d1';
 
-Map<String, Object?> _klass(String id, String name, {List<Map<String, Object?>> attributes = const []}) => {
+Map<String, Object?> _klass(
+  String id,
+  String name, {
+  List<Map<String, Object?>> attributes = const [],
+  bool abstract = false,
+}) => {
   'id': id,
   'name': name,
   'attributes': attributes,
   'operations': [],
+  'is_abstract': abstract,
 };
 
 Map<String, Object?> _document({List<Map<String, Object?>> classes = const [], List<Map<String, Object?>> relationships = const []}) => {
@@ -65,6 +71,16 @@ void main() {
     expect(find.text('+ nombre: String'), findsOneWidget);
     expect(find.text('2 clases · 1 relación'), findsOneWidget);
     expect(server.requests('GET', _docPath), hasLength(1));
+  });
+
+  testWidgets('writes the name of an abstract class in italics, as UML 2.5 asks', (tester) async {
+    await _openPreview(
+      tester,
+      _server((r) => jsonResponse(_document(classes: [_klass('c1', 'Forma', abstract: true), _klass('c2', 'Pedido')]))),
+    );
+
+    expect(tester.widget<Text>(find.text('Forma')).style?.fontStyle, FontStyle.italic);
+    expect(tester.widget<Text>(find.text('Pedido')).style?.fontStyle, isNot(FontStyle.italic));
   });
 
   testWidgets('says so when the diagram is still empty', (tester) async {

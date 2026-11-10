@@ -24,6 +24,7 @@ import { DownloadBackendButton } from "@/components/workspace/DownloadBackendBut
 import { ImportXmiControl } from "@/components/workspace/ImportXmiControl";
 import { RemoveAttributeControl } from "@/components/workspace/RemoveAttributeControl";
 import { RemoveClassControl } from "@/components/workspace/RemoveClassControl";
+import { SetClassAbstractControl } from "@/components/workspace/SetClassAbstractControl";
 import { RemoveOperationControl } from "@/components/workspace/RemoveOperationControl";
 import { RemoveRelationshipControl } from "@/components/workspace/RemoveRelationshipControl";
 import { GenerationProfilePanel } from "@/components/workspace/GenerationProfilePanel";
@@ -511,6 +512,19 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
                   </CardHeader>
                   <CardContent>
                     <AddClassForm onSubmit={submitCommand} disabled={isSubmitting} />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Clase abstracta</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <SetClassAbstractControl
+                      classes={document.model.classes}
+                      onSubmit={submitCommand}
+                      disabled={isSubmitting}
+                    />
                   </CardContent>
                 </Card>
 

@@ -97,6 +97,7 @@ class _RawClass:
     operations: list[tuple[str, str | None, bool]] = field(default_factory=list)  # name, visibility, has_signature
     literals: list[str] | None = None  # not None => an enumeration
     visibility: str | None = None
+    is_abstract: bool = False
     # The `modelia_synthetic` tagged value (XMI 1.1/UML 1.3 only), OUR OWN
     # marker on a join-table association class (see
     # `exporter._MODELIA_SYNTHETIC_TAG`, design.md DD186) -- distinguishes
@@ -131,6 +132,7 @@ class _Raw:
     classes: list[_RawClass] = field(default_factory=list)
     associations: list[_RawAssociation] = field(default_factory=list)
     generalizations: list[tuple[str | None, str | None]] = field(default_factory=list)  # child, parent
+    dependencies: list[tuple[str | None, str | None, str | None]] = field(default_factory=list)  # client, supplier, name
     datatypes: dict[str, str] = field(default_factory=dict)
     positions: dict[str, tuple[float, float]] = field(default_factory=dict)
     diagram_name: str | None = None
@@ -219,6 +221,10 @@ def _walk_v1(container: Element, raw: _Raw) -> None:
             child = el.get("child") or el.get("subtype") or _idref_below_kid(el, "Generalization.child")
             parent = el.get("parent") or el.get("supertype") or _idref_below_kid(el, "Generalization.parent")
             raw.generalizations.append((child, parent))
+        elif kind == "Dependency":
+            client = el.get("client") or _idref_below_kid(el, "Dependency.client")
+            supplier = el.get("supplier") or _idref_below_kid(el, "Dependency.supplier")
+            raw.dependencies.append((client, supplier, name or None))
         elif kind == "DataType":
             raw.datatypes[el.get("xmi.id", "")] = name
         elif kind not in _SILENT_ELEMENTS:
@@ -240,6 +246,7 @@ def _read_class_v1(el: Element, raw: _Raw) -> None:
     raw_class = _RawClass(
         el.get("xmi.id", ""), name, visibility=el.get("visibility"),
         modelia_synthetic=tags.get("modelia_synthetic") == "join_table",
+        is_abstract=el.get("isAbstract") == "true",
     )
     features = _kid(el, "Classifier.feature")
     for feature in features if features is not None else ():
@@ -338,10 +345,21 @@ def _walk_v2(container: Element, raw: _Raw, ends_by_id: dict[str, Element], asso
             raw.classes.append(_RawClass(xid, name, literals=literals))
         elif kind == "Association":
             associations.append(el)
+        elif kind == "Dependency":
+            raw.dependencies.append((_ref_v2(el, "client"), _ref_v2(el, "supplier"), name or None))
         elif kind in ("PrimitiveType", "DataType"):
             raw.datatypes[xid] = name
         else:
             raw.warnings.append(f"Se ignoró el elemento no soportado '{kind or 'desconocido'}' ({name or 'sin nombre'}).")
+
+
+def _ref_v2(el: Element, role: str) -> str | None:
+    """A reference such as a Dependency's `client`/`supplier`: an attribute (`client="id"`)
+    or a child element (`<client xmi:idref="id"/>`)."""
+    if el.get(role):
+        return el.get(role)
+    child = _kid(el, role)
+    return _xmi(child, "idref") if child is not None else None
 
 
 def _type_of_v2(prop: Element) -> str | None:
@@ -356,7 +374,9 @@ def _type_of_v2(prop: Element) -> str | None:
 
 def _read_class_v2(el: Element, raw: _Raw, ends_by_id: dict[str, Element]) -> None:
     xid = _xmi(el, "id") or ""
-    raw_class = _RawClass(xid, el.get("name", ""), visibility=el.get("visibility"))
+    raw_class = _RawClass(
+        xid, el.get("name", ""), visibility=el.get("visibility"), is_abstract=el.get("isAbstract") == "true"
+    )
     for prop in _kids(el, "ownedAttribute"):
         if prop.get("association"):  # an association end owned by the class, not a real attribute
             ends_by_id[_xmi(prop, "id") or ""] = prop
@@ -492,7 +512,10 @@ def _build(raw: _Raw) -> tuple[CanonicalUmlModel, DiagramLayout, list[str]]:
         if any(sig for _n, _v, sig in c.operations):
             warnings.append(f"Los parámetros y tipos de retorno de las operaciones de '{c.name}' no se importan.")
         classes.append(
-            UmlClass(ids[c.xid], c.name, tuple(attributes), operations, _visibility(c.visibility) or Visibility.PUBLIC)
+            UmlClass(
+                ids[c.xid], c.name, tuple(attributes), operations,
+                _visibility(c.visibility) or Visibility.PUBLIC, c.is_abstract,
+            )
         )
 
     relationships = _build_relationships(raw, ids, {c.xid for c in raw.classes if c.literals is None}, warnings)
@@ -572,6 +595,16 @@ def _build_relationships(
             )
         else:
             warnings.append("Se ignoró una generalización cuyos extremos no son clases soportadas.")
+    for client, supplier, name in raw.dependencies:
+        if client in class_xids and supplier in class_xids:
+            one = Multiplicity(1, 1)  # a dependency has no multiplicity: a neutral value
+            relationships.append(
+                Relationship(
+                    new_id(), RelationshipKind.DEPENDENCY, RelationshipEnd(ids[client], one), RelationshipEnd(ids[supplier], one), name
+                )
+            )
+        else:
+            warnings.append("Se ignoró una dependencia cuyos extremos no son clases soportadas.")
     for association in raw.associations:
         label = f"la asociación '{association.name or 'sin nombre'}'"
         if len(association.ends) != 2 or any(e.class_ref not in class_xids for e in association.ends):

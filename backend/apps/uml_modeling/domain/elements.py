@@ -24,6 +24,9 @@ class RelationshipKind(StrEnum):
     AGGREGATION = "aggregation"
     COMPOSITION = "composition"
     GENERALIZATION = "generalization"
+    # UML 2.5 Dependency: `source` is the client, `target` the supplier. It has no
+    # multiplicity (the ends carry a neutral 1..1) and is never persisted or generated.
+    DEPENDENCY = "dependency"
 
 
 def _validate_attribute_type(type_value: object) -> None:
@@ -68,6 +71,8 @@ class UmlClass:
     attributes: tuple[UmlAttribute, ...] = ()
     operations: tuple[UmlOperation, ...] = ()
     visibility: Visibility = Visibility.PUBLIC
+    # UML 2.5 `Class.isAbstract`. Last on purpose: callers build a class positionally.
+    is_abstract: bool = False
 
 
 @dataclass(frozen=True)

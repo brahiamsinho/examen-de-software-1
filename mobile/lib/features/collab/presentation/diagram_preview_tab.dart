@@ -201,7 +201,11 @@ class _ClassCard extends StatelessWidget {
               item.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onPrimaryContainer),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontStyle: item.isAbstract ? FontStyle.italic : FontStyle.normal,
+                color: scheme.onPrimaryContainer,
+              ),
             ),
           ),
           Padding(
@@ -256,11 +260,29 @@ class _RelationshipPainter extends CustomPainter {
 
       final start = _edge(from, to.center);
       final end = _edge(to, from.center);
-      canvas.drawLine(start, end, stroke);
+      if (relationship.kind == RelationshipKind.dependency) {
+        _dashedLine(canvas, start, end, stroke);
+      } else {
+        canvas.drawLine(start, end, stroke);
+      }
       _decorate(canvas, relationship.kind, start, end, stroke);
-      _label(canvas, relationship.sourceMultiplicity, start, end);
-      _label(canvas, relationship.targetMultiplicity, end, start);
+      if (relationship.kind.hasMultiplicity) {
+        _label(canvas, relationship.sourceMultiplicity, start, end);
+        _label(canvas, relationship.targetMultiplicity, end, start);
+      }
       if (relationship.name.isNotEmpty) _label(canvas, relationship.name, (start + end) / 2, (start + end) / 2, middle: true);
+    }
+  }
+
+  // A dashed line: 7 px drawn, 5 px skipped (UML draws a dependency this way).
+  void _dashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
+    final length = (end - start).distance;
+    if (length == 0) return;
+    final direction = (end - start) / length;
+    for (var travelled = 0.0; travelled < length; travelled += 12) {
+      final from = start + direction * travelled;
+      final to = start + direction * math.min(travelled + 7, length);
+      canvas.drawLine(from, to, paint);
     }
   }
 
@@ -279,6 +301,13 @@ class _RelationshipPainter extends CustomPainter {
     switch (kind) {
       case RelationshipKind.association:
         break;
+      case RelationshipKind.dependency:
+        // An open arrow at the supplier: two strokes forming a "V".
+        final direction = (start - end) / (start - end).distance;
+        final normal = Offset(-direction.dy, direction.dx);
+        final base = end + direction * 12;
+        canvas.drawLine(end, base + normal * 7, stroke);
+        canvas.drawLine(end, base - normal * 7, stroke);
       case RelationshipKind.generalization:
         canvas.drawPath(_arrowHead(end, start, 12, 7), fill);
         canvas.drawPath(_arrowHead(end, start, 12, 7), stroke);

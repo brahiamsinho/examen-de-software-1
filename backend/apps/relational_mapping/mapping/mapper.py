@@ -470,7 +470,9 @@ def _map_relationships(
     join_tables: list[Table] = []
 
     for relationship in model.relationships:
-        if relationship.kind is RelationshipKind.GENERALIZATION:
+        # Inheritance is handled by the hierarchy stage; a dependency only says "uses"
+        # and is never stored (no foreign key, no join table).
+        if relationship.kind in (RelationshipKind.GENERALIZATION, RelationshipKind.DEPENDENCY):
             continue
 
         source_class_id = relationship.source.class_id

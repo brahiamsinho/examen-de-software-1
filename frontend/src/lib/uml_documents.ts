@@ -59,6 +59,8 @@ export type UmlClass = {
   visibility: Visibility;
   attributes: UmlAttribute[];
   operations: UmlOperation[];
+  /** UML 2.5 `isAbstract`. Absent in diagrams saved before it existed: treat as false. */
+  is_abstract?: boolean;
 };
 
 export type Multiplicity = { lower: number; upper: number | null };
@@ -69,7 +71,10 @@ export type RelationshipEnd = {
   role: string | null;
 };
 
-export type RelationshipKind = "association" | "aggregation" | "composition" | "generalization";
+export type RelationshipKind = "association" | "aggregation" | "composition" | "generalization" | "dependency";
+
+/** Kinds that UML 2.5 defines without multiplicities: the server keeps a neutral 1..1 on their ends. */
+export const KINDS_WITHOUT_MULTIPLICITY: readonly RelationshipKind[] = ["generalization", "dependency"];
 
 export type Relationship = {
   id: string;
@@ -138,6 +143,7 @@ export type UmlCommandIn =
       };
     }
   | { type: "RemoveClass"; class_id: string }
+  | { type: "SetClassAbstract"; class_id: string; is_abstract: boolean }
   | { type: "RemoveAttribute"; class_id: string; attribute_id: string }
   | { type: "RemoveOperation"; class_id: string; operation_id: string }
   | { type: "RemoveRelationship"; relationship_id: string }

@@ -23,12 +23,13 @@ from apps.uml_commands.commands import (
     RemoveOperation,
     RemoveRelationship,
     RenameClass,
+    SetClassAbstract,
     SetGenerationProfile,
     UmlCommand,
     UpdateRelationship,
 )
 from apps.uml_commands.handlers.attributes import add_attribute, remove_attribute
-from apps.uml_commands.handlers.classes import add_class, remove_class, rename_class
+from apps.uml_commands.handlers.classes import add_class, remove_class, rename_class, set_class_abstract
 from apps.uml_commands.handlers.generation_profile import set_generation_profile
 from apps.uml_commands.handlers.operations import add_operation, remove_operation
 from apps.uml_commands.handlers.relationships import (
@@ -43,6 +44,7 @@ _HANDLERS: dict[type, Handler] = {
     AddClass: add_class,
     RemoveClass: remove_class,
     RenameClass: rename_class,
+    SetClassAbstract: set_class_abstract,
     AddAttribute: add_attribute,
     RemoveAttribute: remove_attribute,
     AddOperation: add_operation,

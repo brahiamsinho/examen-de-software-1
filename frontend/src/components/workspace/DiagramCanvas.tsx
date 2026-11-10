@@ -9,6 +9,7 @@ import { type JoinTableHint } from "@/lib/join_tables";
 import {
   attributeTypeLabel,
   formatMultiplicity,
+  KINDS_WITHOUT_MULTIPLICITY,
   type DiagramLayout,
   type UmlModel,
   type Visibility,
@@ -95,6 +96,7 @@ function classBoxSvgDataUri(
   name: string,
   attributeLines: string[],
   operationLines: string[] = [],
+  isAbstract = false,
 ): { uri: string; width: number; height: number } {
   const nameWidth = estimateTextWidth(name, NAME_FONT_SIZE, 0.58);
   const attrWidths = attributeLines.map((line) => estimateTextWidth(line, ATTR_FONT_SIZE, 0.62));
@@ -140,7 +142,8 @@ function classBoxSvgDataUri(
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
     `<rect x="0.75" y="0.75" width="${width - 1.5}" height="${height - 1.5}" fill="${CARD_BG}" stroke="${STRUCTURE_BORDER}" stroke-width="1.5"/>` +
-    `<text x="${width / 2}" y="${nameBaselineY}" font-family="${SANS_FONT_STACK}" font-size="${NAME_FONT_SIZE}" font-weight="700" fill="${INK}" text-anchor="middle">${escapeXml(name)}</text>` +
+    // UML 2.5: the name of an abstract class is written in italics.
+    `<text x="${width / 2}" y="${nameBaselineY}" font-family="${SANS_FONT_STACK}" font-size="${NAME_FONT_SIZE}" font-weight="700"${isAbstract ? ' font-style="italic"' : ""} fill="${INK}" text-anchor="middle">${escapeXml(name)}</text>` +
     `<line x1="0" y1="${dividerY}" x2="${width}" y2="${dividerY}" stroke="${STRUCTURE_BORDER}" stroke-width="1.5"/>` +
     attrText +
     opDivider +
@@ -303,6 +306,15 @@ export const STYLE: cytoscape.StylesheetStyle[] = [
       "arrow-scale": 1.6,
     },
   },
+  {
+    // UML 2.5 Dependency: a dashed line with an open arrow at the supplier (`target`).
+    selector: 'edge[kind = "dependency"]',
+    style: {
+      "line-style": "dashed",
+      "target-arrow-shape": "vee",
+      "arrow-scale": 1.6,
+    },
+  },
 ];
 
 /**
@@ -332,7 +344,7 @@ export function toElements(
       const returnSuffix = o.return_type === null ? "" : `: ${attributeTypeLabel(o.return_type, enumNames)}`;
       return `${VISIBILITY_SYMBOL[o.visibility]} ${o.name}(${params})${returnSuffix}`;
     });
-    const box = classBoxSvgDataUri(c.name, attributeLines, operationLines);
+    const box = classBoxSvgDataUri(c.name, attributeLines, operationLines, c.is_abstract === true);
     const position = layout.positions[c.id];
     return {
       data: { id: c.id, label: "", bgImage: box.uri, width: box.width, height: box.height },
@@ -356,8 +368,8 @@ export function toElements(
         // The relationship's own name (e.g. "Name A" from an Enterprise
         // Architect import) is the centered label; multiplicities go at the ends.
         label: r.name?.trim() ?? "",
-        sourceLabel: r.kind === "generalization" ? "" : formatMultiplicity(r.source.multiplicity),
-        targetLabel: r.kind === "generalization" ? "" : formatMultiplicity(r.target.multiplicity),
+        sourceLabel: KINDS_WITHOUT_MULTIPLICITY.includes(r.kind) ? "" : formatMultiplicity(r.source.multiplicity),
+        targetLabel: KINDS_WITHOUT_MULTIPLICITY.includes(r.kind) ? "" : formatMultiplicity(r.target.multiplicity),
       },
       // Recursive/reflexive relationship (a class related to itself):
       // needs explicit loop geometry, see the `edge.self-loop` selector.

@@ -99,8 +99,8 @@ def test_apply_always_populates_validation_result(monkeypatch):
     assert result.validation_result == validate(result.document.model, rules=RULES)
 
 
-def test_handlers_registry_has_exactly_eleven_entries():
-    assert len(dispatcher._HANDLERS) == 11
+def test_handlers_registry_has_exactly_twelve_entries():
+    assert len(dispatcher._HANDLERS) == 12
 
 
 def test_apply_set_generation_profile_through_the_real_dispatcher():
