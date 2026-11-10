@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 /// Central place for compile-time app configuration.
 ///
 /// The backend API base URL is never hardcoded in the app. Instead it is
@@ -11,6 +13,19 @@
 /// namespace, so `localhost` inside it would refer to the emulator
 /// itself, not your development machine running Django).
 class AppConfig {
+  /// Demo account prefilled on the collaboration login so a presentation does not
+  /// need typing. Debug builds only: a release build starts empty unless these are
+  /// passed explicitly, e.g. `--dart-define=DEMO_EMAIL=... --dart-define=DEMO_PASSWORD=...`.
+  /// These are the public seed accounts from the repo, never a real person's login.
+  static const String demoEmail = String.fromEnvironment(
+    'DEMO_EMAIL',
+    defaultValue: kDebugMode ? 'owner@demo.com' : '',
+  );
+  static const String demoPassword = String.fromEnvironment(
+    'DEMO_PASSWORD',
+    defaultValue: kDebugMode ? 'DemoPass123!' : '',
+  );
+
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000',

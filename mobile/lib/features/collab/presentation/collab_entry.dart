@@ -31,6 +31,11 @@ class _CollabEntryState extends State<CollabEntry> {
 
   @override
   Widget build(BuildContext context) {
-    return CollabGate(controller: _controller, initialServerUrl: AppConfig.apiBaseUrl);
+    return CollabGate(
+      controller: _controller,
+      initialServerUrl: AppConfig.apiBaseUrl,
+      initialEmail: AppConfig.demoEmail,
+      initialPassword: AppConfig.demoPassword,
+    );
   }
 }

@@ -11,11 +11,16 @@ class LoginPage extends StatefulWidget {
     super.key,
     required this.controller,
     required this.initialServerUrl,
+    this.initialEmail = '',
+    this.initialPassword = '',
     this.serverUrlStore = const ServerUrlStore(),
   });
 
   final SessionController controller;
   final String initialServerUrl;
+  // Prefilled only when the build provides them (see `AppConfig`): empty otherwise.
+  final String initialEmail;
+  final String initialPassword;
   final ServerUrlStore serverUrlStore;
 
   @override
@@ -24,8 +29,8 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   late final TextEditingController _server = TextEditingController(text: widget.initialServerUrl);
-  final _email = TextEditingController();
-  final _password = TextEditingController();
+  late final TextEditingController _email = TextEditingController(text: widget.initialEmail);
+  late final TextEditingController _password = TextEditingController(text: widget.initialPassword);
   bool _serverTouched = false;
 
   @override

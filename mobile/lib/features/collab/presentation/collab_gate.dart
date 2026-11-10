@@ -7,10 +7,18 @@ import 'session_controller.dart';
 /// Entry point of the collaborative features (issue #19): restores the saved
 /// session, then shows the login form or the signed-in home.
 class CollabGate extends StatefulWidget {
-  const CollabGate({super.key, required this.controller, required this.initialServerUrl});
+  const CollabGate({
+    super.key,
+    required this.controller,
+    required this.initialServerUrl,
+    this.initialEmail = '',
+    this.initialPassword = '',
+  });
 
   final SessionController controller;
   final String initialServerUrl;
+  final String initialEmail;
+  final String initialPassword;
 
   @override
   State<CollabGate> createState() => _CollabGateState();
@@ -57,7 +65,12 @@ class _CollabGateState extends State<CollabGate> {
           case SessionStatus.restoring:
             return const Scaffold(body: Center(child: CircularProgressIndicator()));
           case SessionStatus.signedOut:
-            return LoginPage(controller: widget.controller, initialServerUrl: widget.initialServerUrl);
+            return LoginPage(
+              controller: widget.controller,
+              initialServerUrl: widget.initialServerUrl,
+              initialEmail: widget.initialEmail,
+              initialPassword: widget.initialPassword,
+            );
           case SessionStatus.signedIn:
             return CollabHomePage(controller: widget.controller);
         }
