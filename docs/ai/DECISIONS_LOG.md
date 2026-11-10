@@ -1,5 +1,9 @@
 # Decisions Log
 
+## 2026-11-10 - The AI is asked only from the team chat (web)
+- Decision (user: "como ya tenemos la ia en el chat del grupo tenerlo ahi no es de buen funcionamiento"): the web's "Pide ideas a la IA" box and its "Pedir ideas" button were removed, because the team chat (`@IA`) already does the same and two entries confused people. The card is now "Propuestas de la IA" and only lists the AI's drafts, where an editor approves or rejects them; its empty state points to the chat.
+- Kept on purpose: the backend endpoint `POST .../ai-proposals` (the chat uses its logic and it is an API others may call). The unused frontend helper `requestProposal` was deleted.
+
 ## 2026-11-09 - Modelia's own database moves from PostgreSQL to MongoDB (branch `feature/mongodb-migration`)
 - Decision (user: "tenemos que migrar la base de datos a nosql osea mongodb, solo del proyecto, el backend que se genere se mantendra asi"; "no hay datos que quiera conservar"): only Modelia's Django backend changes. The Spring code it generates is untouched (no generator logic file changed; only `default_auto_field` in four `apps.py`). No data migration: the database starts empty and `seed_demo` recreates the demo data.
 - Driver: `django-mongodb-backend` (MongoDB's official one), which forces Django 5.0 -> 5.2 and `ObjectIdAutoField` everywhere. Every app config was changed, `config/mongo_apps.py` subclasses admin/auth/contenttypes, and `backend/mongo_migrations/` holds their ObjectId migrations. All migrations of our own apps were regenerated from scratch (nothing to migrate).

@@ -30,19 +30,8 @@ export type AiProposal = {
 const base = (orgSlug: string, docId: string) =>
   `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/ai-proposals`;
 
-// The model can take a while to answer; mirrors the other AI calls' generous timeout.
-const ASK_TIMEOUT_MS = 60_000;
-
 export function listProposals(orgSlug: string, docId: string): Promise<AiProposal[]> {
   return apiFetch<AiProposal[]>(base(orgSlug, docId));
-}
-
-export function requestProposal(orgSlug: string, docId: string, prompt: string): Promise<AiProposal> {
-  return apiFetch<AiProposal>(base(orgSlug, docId), {
-    method: "POST",
-    json: { prompt },
-    signal: AbortSignal.timeout(ASK_TIMEOUT_MS),
-  });
 }
 
 /** `selected` = indices of the changes to apply; omitted applies every change. */
