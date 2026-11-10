@@ -18,7 +18,7 @@ from uuid import UUID
 
 from django_mongodb_backend import transaction
 
-from apps.ai_assistant import proposals, service, tools
+from apps.ai_assistant import memory, proposals, service, tools
 from apps.ai_assistant.errors import GeminiRequestError, MissingApiKeyError
 from apps.ai_assistant.gemini_client import GeminiClientProtocol, GeminiFunctionCall
 from apps.ai_assistant.llm_provider import get_active_llm_client
@@ -45,7 +45,11 @@ _CHAT_INSTRUCTION = (
     "person who asked by name and answer their own question, not a generic one. When "
     "they ask why or how, explain why with a short reason and an example taken from "
     "this team's diagram, so they learn the modeling idea; for a simple request keep "
-    "it to a sentence or two. Reply in the language of the conversation by calling "
+    "it to a sentence or two. A plain question gets an answer in the chat; call "
+    "suggest_uml_additions only when they ask you to add or change something. "
+    "A section of earlier team conversation may be included; "
+    "use it only when it truly helps the current question, and say which diagram it "
+    "came from. Reply in the language of the conversation by calling "
     "reply_in_chat once. You never "
     "edit the diagram directly. When the team asks you to add or change something, call "
     "suggest_uml_additions with a COMPLETE suggestion (each new class with its attributes "
@@ -138,21 +142,30 @@ def list_messages(*, organization: Organization, doc_id: UUID, limit: int = HIST
     return list(reversed(list(latest)))
 
 
-def _transcript(document, history: list[ChatMessage]) -> str:
+def _transcript(document, history: list[ChatMessage], recalled: list[memory.Memory] | None = None) -> str:
     lines = "\n".join(f"{AI_LABEL if item.is_ai else _label(item.author)}: {item.content}" for item in history)
-    return f"{service.document_context(document)}\n\nGroup chat, oldest first:\n{lines}"
+    earlier = memory.render(recalled or [])
+    earlier_block = f"\n\n{earlier}" if earlier else ""
+    return f"{service.document_context(document)}{earlier_block}\n\nGroup chat, oldest first:\n{lines}"
 
 
 def _ask_model(
-    organization: Organization, doc_id: UUID, gemini: GeminiClientProtocol | None
+    organization: Organization, doc_id: UUID, gemini: GeminiClientProtocol | None, question: str
 ) -> tuple[str | None, list[GeminiFunctionCall]]:
     """Returns the model's chat sentence (if any) and the changes it wants to make."""
     gemini = gemini or get_active_llm_client()
     document = services.get_document(organization=organization, doc_id=doc_id)
     history = list_messages(organization=organization, doc_id=doc_id, limit=CONTEXT_MESSAGES)
+    recalled = memory.recall(
+        organization=organization,
+        doc_id=doc_id,
+        question=question,
+        already_shown={item.id for item in history},
+        client=gemini,
+    )
     calls = gemini.generate_function_calls(
         system_instruction=_CHAT_INSTRUCTION,
-        transcript=_transcript(document, history),
+        transcript=_transcript(document, history, recalled),
         tools=tools.CHAT_TOOLS + tools.PROPOSAL_TOOLS,
     )
     sentence = None
@@ -164,6 +177,15 @@ def _ask_model(
         elif call.name == "suggest_uml_additions":
             suggestions.append(call)
     return sentence, suggestions
+
+
+def _configured_client():
+    """The active provider, or `None` when it is not set up: remembering a message
+    must never fail the person who wrote it."""
+    try:
+        return get_active_llm_client()
+    except Exception:  # noqa: BLE001 - a misconfigured provider is reported when the AI is asked
+        return None
 
 
 def post_message(
@@ -184,11 +206,13 @@ def post_message(
     services.get_document(organization=organization, doc_id=doc_id)
 
     message = _store(organization, doc_id, author=author, content=text, is_ai=False)
+    embedder = gemini or _configured_client()
+    memory.remember(organization, [message], embedder)
     if not mentions_ai(text):
         return ChatResult(message=message)
 
     try:
-        sentence, suggestions = _ask_model(organization, doc_id, gemini)
+        sentence, suggestions = _ask_model(organization, doc_id, gemini, text)
     except GeminiRequestError:
         return ChatResult(message=message, ai_error="The AI did not answer in time. Mention it again to retry.")
     except MissingApiKeyError:
@@ -207,4 +231,5 @@ def post_message(
     if sentence is None:
         return ChatResult(message=message, proposal=proposal)
     reply = _store(organization, doc_id, author=None, content=sentence, is_ai=True)
+    memory.remember(organization, [reply], embedder)
     return ChatResult(message=message, reply=reply, proposal=proposal)

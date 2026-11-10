@@ -254,6 +254,17 @@ LOCAL_LLM_API_KEY = env("LOCAL_LLM_API_KEY", default="")
 # Seconds to wait for one local-model answer. Generous by default because a
 # CPU-only instance is slow; lower it on a GPU instance.
 LOCAL_LLM_TIMEOUT_SECONDS = env.float("LOCAL_LLM_TIMEOUT_SECONDS", default=120.0)
+
+# Embedding models behind the chat's semantic memory (they turn a message into a
+# vector of its meaning). Hosted OpenAI, or a model served next to the local LLM
+# (with Ollama: `ollama pull nomic-embed-text`). Gemini has no embeddings here:
+# the memory is simply off for that provider.
+OPENAI_EMBEDDING_MODEL = env("OPENAI_EMBEDDING_MODEL", default="text-embedding-3-small")
+LOCAL_EMBEDDING_MODEL = env("LOCAL_EMBEDDING_MODEL", default="nomic-embed-text")
+# Cosine similarity a past message needs to be recalled. Measured with OpenAI's
+# text-embedding-3-small: related messages scored ~0.59, unrelated ones 0.24-0.36.
+# Another embedding model has another scale: tune this when switching to it.
+CHAT_MEMORY_MIN_SIMILARITY = env.float("CHAT_MEMORY_MIN_SIMILARITY", default=0.45)
 # "gemini", "openai" or "local" â€” see apps/ai_assistant/llm_provider.py.
 LLM_PROVIDER = env("LLM_PROVIDER", default="gemini")
 

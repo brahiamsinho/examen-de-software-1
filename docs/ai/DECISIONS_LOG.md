@@ -1,5 +1,14 @@
 # Decisions Log
 
+## 2026-11-10 - Semantic memory for the team chat (embeddings)
+- Requirement (teacher): the AI "debe tener memoria" and know who asks. Decision (user chose it, with hours left): each chat message is turned into a vector of its meaning by an embedding model (a transformer encoder) and stored on `ChatMessage` (`embedding`, `embedding_model`). When someone asks `@IA`, the question is embedded and the closest earlier messages (other diagrams of the SAME organization, or older messages of this diagram beyond the 30-message window) are shown to the model with their author, diagram and date.
+- Why this and not training: no training data and no time; it needs no new heavy dependency (the vectors come from the same provider: OpenAI `text-embedding-3-small` or, locally, `nomic-embed-text` through Ollama). Brute-force cosine similarity over the latest 500 messages is enough for a team chat and needs no vector database.
+- Rules: only the caller's organization is searched (mutation-checked); vectors are only compared with vectors of the same embedding model; it is best-effort (Gemini has no embeddings here, and a failing provider just means no memory); the vector is written in a background thread so posting never waits.
+- Privacy note: every chat message (not only `@IA` ones) is now sent to the embedding provider.
+- Backfill: `python manage.py embed_chat_memory` embeds messages written before this existed.
+- Tuned after a real demo: the `@IA` mention is removed before embedding (otherwise every "@IA que..." looked alike); the similarity threshold is the setting `CHAT_MEMORY_MIN_SIMILARITY` = 0.45, chosen from measured scores (related 0.59, unrelated 0.24-0.36); and the chat instruction now says a plain question is answered in the chat and a draft is only for requests to add or change something (the model had answered a question with a draft).
+- Verified with the real provider: a message left in one diagram was recalled when asking from another, and an unrelated message was left out.
+
 ## 2026-11-10 - Push notifications: backend half (GitHub #19)
 - Decision: new app `apps/notifications` with `DeviceToken` (one Firebase token per phone, owned by whoever logged in last), `POST/DELETE /api/devices` (bearer auth) and an FCM sender (`firebase-admin`). Credentials come from `FIREBASE_CREDENTIALS_PATH`; the file lives in `backend/secrets/` (git-ignored). Without the path every push is a no-op, so dev and tests need no Firebase.
 - Who is notified: members of the organization, read at send time (a removed member stops receiving), minus whoever caused the event. Failures retry up to 3 times only for the tokens that failed, dead tokens are deleted, and a push can never break the request that triggered it.

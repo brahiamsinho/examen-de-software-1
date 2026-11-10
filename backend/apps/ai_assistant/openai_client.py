@@ -40,9 +40,11 @@ class OpenAiClient:
         provider_label: str = "OpenAI",
         timeout_seconds: float | None = None,
         max_retries: int | None = None,
+        embedding_model: str = "text-embedding-3-small",
     ):
         self._api_key = api_key
         self._model = model
+        self._embedding_model = embedding_model
         # `None` keeps the hosted defaults (45s timeout, the SDK's retries).
         self._timeout_seconds = timeout_seconds
         self._max_retries = max_retries
@@ -50,6 +52,24 @@ class OpenAiClient:
         # llama.cpp...): the hosted path never sends a `base_url`.
         self._base_url = base_url
         self._provider_label = provider_label
+
+    @property
+    def embedding_model(self) -> str:
+        """Names the vectors this client makes: vectors of different models are
+        never compared with each other."""
+        return self._embedding_model
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """One vector per text, in order, from the provider's embeddings API (a
+        transformer encoder: texts that mean the same land close together)."""
+        if not texts:
+            return []
+        client = self._sdk_client()
+        try:
+            response = client.embeddings.create(model=self._embedding_model, input=list(texts))
+        except Exception as exc:  # the SDK raises several exception types; all map to one domain error
+            raise GeminiRequestError(f"{self._provider_label} embeddings request failed: {exc}") from exc
+        return [list(item.embedding) for item in response.data]
 
     def _sdk_client(self):
         # Imported lazily, same reasoning as the methods below.
@@ -183,7 +203,7 @@ def get_openai_client() -> OpenAiClient:
     api_key = settings.OPENAI_API_KEY
     if not api_key:
         raise MissingApiKeyError("OPENAI_API_KEY is not configured.")
-    return OpenAiClient(api_key, settings.OPENAI_MODEL)
+    return OpenAiClient(api_key, settings.OPENAI_MODEL, embedding_model=settings.OPENAI_EMBEDDING_MODEL)
 
 
 def get_local_llm_client() -> OpenAiClient:
@@ -212,4 +232,5 @@ def get_local_llm_client() -> OpenAiClient:
         provider_label="Local LLM",
         timeout_seconds=settings.LOCAL_LLM_TIMEOUT_SECONDS,
         max_retries=0,
+        embedding_model=settings.LOCAL_EMBEDDING_MODEL,
     )

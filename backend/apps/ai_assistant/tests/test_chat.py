@@ -78,6 +78,17 @@ class TestMentorInstruction:
         assert "by name" in system  # answers the person who asked, not a generic audience
         assert "briefly" not in system  # a short answer must not cut an explanation
 
+    def test_a_plain_question_is_answered_in_the_chat_and_never_turned_into_a_draft(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        model = _Model()
+
+        _post(organization, document, editor, "@IA que sabemos del correo de Cliente?", model)
+
+        system = " ".join(model.requests[0]["system"].lower().split())
+        assert "plain question" in system
+        assert "only when they ask you to add or change" in system
+
 
 @pytest.mark.django_db
 class TestPostingMessages:
