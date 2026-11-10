@@ -1,5 +1,10 @@
 # Decisions Log
 
+## 2026-11-10 - Known limit: the AI may leave a draft next to a chat answer
+- Found while testing end to end with the real hosted model (gpt-4o-mini): when the AI remembers something (e.g. "Cliente must have a unique email") and is asked a plain question in a diagram that lacks that class, it answers correctly in the chat and sometimes ALSO leaves a draft to add the class (5 of 5 in one run, 0 of 1 in another: it varies).
+- Tried and reverted: making the draft tool's description say "only when asked to add or change something". It did not change the model's behavior (still 5 of 5), so it was not kept. A keyword rule was rejected because it would also block "@IA que le falta al diagrama?", which is meant to leave a draft.
+- Harmless: a draft never changes the diagram until a person approves it. A real fix would be a separate intent-classification call before the chat call (extra latency and cost); not done.
+
 ## 2026-11-10 - UML 2.5: abstract classes and dependency
 - Requirement: the teacher asked for UML 2.5. `docs/ai/UML_2_5_CONFORMANCE.md` measured Modelia against UML 2.5.1 (a subset of the class diagram, XMI 1.1/UML 1.3 on export). The user asked to implement it; with hours left the two safest slices were done: abstract classes (`UmlClass.is_abstract`, command `SetClassAbstract`) and the Dependency relationship (`RelationshipKind.DEPENDENCY`). Interfaces, navigability and XMI 2.5.1 stay documented as future work.
 - Compatibility: both are optional additions. A diagram saved before has no `is_abstract` key and decodes as concrete; the flag is the LAST field of `UmlClass` because the XMI importer builds it positionally.
