@@ -97,7 +97,7 @@ class RemoteRequestOut(Schema):
 
 
 class RemoteEventOut(Schema):
-    id: int
+    id: str
     action: str
     previous_status: str
     new_status: str
@@ -277,7 +277,7 @@ def remote_deployment_events_view(request: HttpRequest, org_slug: Path[str], doc
     document = services.get_document(organization=membership.organization, doc_id=doc_id)
     remote = remote_service.get_request(membership.organization, document, request_id)
     return [
-        RemoteEventOut(id=event.id, action=event.action, previous_status=event.previous_status,
+        RemoteEventOut(id=str(event.id), action=event.action, previous_status=event.previous_status,
                        new_status=event.new_status, result=event.result, error_code=event.error_code,
                        message=event.message, correlation_id=event.correlation_id, created_at=event.created_at)
         for event in remote.events.all()

@@ -202,7 +202,7 @@ class TestProposalsApi:
         response = auth_client.post(_url(organization, document.id, f"/{proposal_id}/approve"))
 
         assert response.status_code == 409
-        assert "changed" in response.json()["detail"]
+        assert "desactualizado" in response.json()["detail"]
         names = [c.name for c in services.get_document(organization=organization, doc_id=document.id).model.classes]
         assert names == ["Persona"]
 
@@ -214,7 +214,7 @@ class TestProposalsApi:
         response = _propose(auth_client, organization, document.id, calls=[])
 
         assert response.status_code == 422
-        assert "no suggestions" in response.json()["detail"]
+        assert "no tuvo sugerencias" in response.json()["detail"]
 
     def test_an_empty_prompt_is_rejected_before_calling_the_model(self, auth_client):
         organization, owner, editor, *_ = make_org_with_roles()

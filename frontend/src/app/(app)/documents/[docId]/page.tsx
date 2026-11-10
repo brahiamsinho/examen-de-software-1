@@ -39,7 +39,6 @@ import {
   approveProposal,
   buildAiDrafts,
   rejectProposal,
-  requestProposal,
   type AiDrafts,
   type AiProposal,
 } from "@/lib/ai_proposals";
@@ -110,7 +109,6 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
   const [exportingLog, setExportingLog] = useState(false);
   const [logExportError, setLogExportError] = useState<string | null>(null);
   const sessionLog = useSessionLog(orgSlug, docId, logOpen);
-  const [askingAi, setAskingAi] = useState(false);
   const [busyProposalId, setBusyProposalId] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -215,19 +213,6 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
     const result = await confirmImageImport(orgSlug!, docId, planId);
     await refreshDocument();
     return result;
-  }
-
-  async function handleAskAi(prompt: string) {
-    setAskingAi(true);
-    setProposalError(null);
-    try {
-      applyProposal(await requestProposal(orgSlug!, docId, prompt));
-    } catch (err) {
-      setProposalError(proposalErrorMessage(err));
-      throw err; // keeps the typed text in the panel so the user can retry
-    } finally {
-      setAskingAi(false);
-    }
   }
 
   async function handleExportLog() {
@@ -454,16 +439,14 @@ export default function DocumentPage({ params }: { params: Promise<{ docId: stri
 
           <Card>
             <CardHeader>
-              <CardTitle>IA como compañera</CardTitle>
+              <CardTitle>Propuestas de la IA</CardTitle>
             </CardHeader>
             <CardContent>
               <AiProposalsPanel
                 proposals={proposals}
                 canDecide={canEdit}
                 busyId={busyProposalId}
-                asking={askingAi}
                 error={proposalError}
-                onAsk={handleAskAi}
                 onApprove={(proposalId, selected) =>
                   void handleDecideProposal(proposalId, (org, doc, id) => approveProposal(org, doc, id, selected))
                 }

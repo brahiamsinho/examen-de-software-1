@@ -160,6 +160,35 @@ class TestDecideProposal:
                 organization=organization, doc_id=document.id, proposal_id=proposal.id, decided_by=editor, now=timezone.now()
             )
 
+    def test_an_outdated_draft_is_refused_in_spanish_and_says_what_to_do(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _suggest(organization, document.id, owner)
+        _add_class(organization, document.id)  # the diagram moves on: the draft is now outdated
+
+        with pytest.raises(proposals.StaleProposalError) as refused:
+            proposals.approve_proposal(
+                organization=organization, doc_id=document.id, proposal_id=proposal.id, decided_by=editor, now=timezone.now()
+            )
+
+        assert "desactualizado" in str(refused.value)
+        assert "IA" in str(refused.value)
+
+    def test_a_draft_that_was_already_decided_is_refused_in_spanish(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        proposal = _suggest(organization, document.id, owner)
+        proposals.reject_proposal(
+            organization=organization, doc_id=document.id, proposal_id=proposal.id, decided_by=editor, now=timezone.now()
+        )
+
+        with pytest.raises(proposals.ProposalAlreadyDecidedError) as refused:
+            proposals.approve_proposal(
+                organization=organization, doc_id=document.id, proposal_id=proposal.id, decided_by=editor, now=timezone.now()
+            )
+
+        assert str(refused.value) == "Este borrador ya fue rechazado."
+
     def test_a_proposal_with_unapplicable_changes_cannot_be_approved(self):
         organization, owner, editor, *_ = make_org_with_roles()
         document = _document(organization, owner)

@@ -34,17 +34,21 @@ class TestRegisterUserSchedulesVerificationEmail:
         assert len(mail.outbox) == 1
         assert mail.outbox[0].to == ["verify-me@example.com"]
 
-    def test_no_email_is_sent_before_commit_within_the_capture_block(
-        self, django_capture_on_commit_callbacks
-    ):
-        with django_capture_on_commit_callbacks() as callbacks:
-            user = services.register_user(
-                email="deferred@example.com", password="a-very-strong-pass-1"
-            )
-            # Not executed yet: the callback is only captured, not run.
-            assert len(mail.outbox) == 0
+    def test_the_email_is_sent_only_after_the_transaction_commits(self, monkeypatch):
+        # MongoDB tests do not run inside an outer transaction, so the commit
+        # really happens here: the email must go out after it, never inside.
+        from django.db import connection
 
-        assert len(callbacks) == 1
+        seen_inside_transaction = []
+        monkeypatch.setattr(
+            services,
+            "send_verification_email",
+            lambda *, user, raw_token: seen_inside_transaction.append(connection.in_atomic_block_mongo),
+        )
+
+        services.register_user(email="deferred@example.com", password="a-very-strong-pass-1")
+
+        assert seen_inside_transaction == [False]
 
     def test_rolled_back_registration_creates_no_token_and_sends_no_email(
         self, django_capture_on_commit_callbacks, monkeypatch

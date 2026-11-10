@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Sparkles } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -9,13 +9,11 @@ import { defaultSelection, toggleChange, type AiProposal } from "@/lib/ai_propos
 
 type Props = {
   proposals: AiProposal[];
-  /** OWNER/EDITOR: may ask the AI and approve or reject. The backend re-checks it. */
+  /** OWNER/EDITOR: may approve or reject. The backend re-checks it. */
   canDecide: boolean;
   /** The proposal currently being approved/rejected, if any. */
   busyId: string | null;
-  asking: boolean;
   error: string | null;
-  onAsk: (prompt: string) => Promise<void>;
   /** `selected` = indices of the changes to apply, in order. */
   onApprove: (proposalId: string, selected: number[]) => void;
   onReject: (proposalId: string) => void;
@@ -106,46 +104,14 @@ function ProposalCard({ proposal, canDecide, busy, onApprove, onReject }: CardPr
 
 /**
  * Presentational: lists the AI's pending drafts for everyone on the diagram and
- * lets an editor decide. The container owns the API calls, so this component
+ * lets an editor decide. Drafts are asked for in the team chat (`@IA`), not here. The container owns the API calls, so this component
  * never imports the transport. Nothing here changes the diagram: a proposal is
  * a draft (also drawn dashed on the canvas) until someone approves it.
  */
-export function AiProposalsPanel({ proposals, canDecide, busyId, asking, error, onAsk, onApprove, onReject }: Props) {
-  const [prompt, setPrompt] = useState("");
-
-  async function ask() {
-    const text = prompt.trim();
-    if (!text) return;
-    try {
-      await onAsk(text);
-      setPrompt("");
-    } catch {
-      // The container surfaces the error; keep the text so the user can retry.
-    }
-  }
-
+export function AiProposalsPanel({ proposals, canDecide, busyId, error, onApprove, onReject }: Props) {
   return (
     <div className="flex flex-col gap-3">
-      {canDecide ? (
-        <div className="flex flex-col gap-2">
-          <label htmlFor="ai-proposal-prompt" className="text-sm font-medium">
-            Pide ideas a la IA
-          </label>
-          <textarea
-            id="ai-proposal-prompt"
-            className="min-h-16 w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            placeholder="Ej.: ¿Qué clases o relaciones le faltan a este diagrama?"
-            maxLength={2000}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            disabled={asking}
-          />
-          <Button type="button" size="sm" onClick={() => void ask()} disabled={asking || prompt.trim() === ""}>
-            <Sparkles />
-            {asking ? "Pensando..." : "Pedir ideas"}
-          </Button>
-        </div>
-      ) : (
+      {canDecide ? null : (
         <p className="text-xs text-muted-foreground">
           Solo un editor puede aprobar o rechazar las propuestas de la IA.
         </p>
@@ -160,7 +126,8 @@ export function AiProposalsPanel({ proposals, canDecide, busyId, asking, error, 
 
       {proposals.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No hay propuestas pendientes. Lo que proponga la IA aparecerá aquí y en el diagrama como borrador.
+          No hay propuestas pendientes. Pídele ideas a la IA en el chat del equipo mencionando @IA: lo que proponga
+          aparecerá aquí y en el diagrama como borrador.
         </p>
       ) : (
         <ul className="flex flex-col gap-3">

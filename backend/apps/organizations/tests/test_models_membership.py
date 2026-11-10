@@ -2,7 +2,8 @@
 cascade on organization delete, and equal field visibility across roles.
 """
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
 
 from apps.organizations.constants import Role
 from apps.organizations.models import Membership, Organization

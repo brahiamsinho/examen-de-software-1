@@ -49,7 +49,7 @@ class Command(BaseCommand):
             except DuplicateEmailError:
                 self.stdout.write(f"User {email} already exists, skipping")
 
-        owner = User.objects.get(email__iexact=DEMO_USERS[0][0])
+        owner = User.objects.get(email=DEMO_USERS[0][0].lower())
 
         try:
             create_organization(

@@ -9,6 +9,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django_mongodb_backend.fields import ObjectIdAutoField
 
 from apps.organizations.models import TenantScopedManager, TenantScopedModel
 
@@ -134,7 +135,7 @@ class RemoteDeploymentRequest(TenantScopedModel):
 class RemoteDeploymentEvent(TenantScopedModel):
     """Append-only audit trail. Payload is intentionally limited to safe metadata."""
 
-    id = models.BigAutoField(primary_key=True)
+    id = ObjectIdAutoField(primary_key=True)
     request = models.ForeignKey(RemoteDeploymentRequest, on_delete=models.CASCADE, related_name="events")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
     action = models.CharField(max_length=32)

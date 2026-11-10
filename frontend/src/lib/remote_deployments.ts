@@ -35,7 +35,7 @@ export type RemoteRequest = {
   updated_at: string;
 };
 
-export type RemoteEvent = { id: number; action: string; previous_status: string; new_status: string; result: string; error_code: string; message: string; correlation_id: string; created_at: string };
+export type RemoteEvent = { id: string; action: string; previous_status: string; new_status: string; result: string; error_code: string; message: string; correlation_id: string; created_at: string };
 
 function base(org: string, doc: string) {
   return `/api/orgs/${encodeURIComponent(org)}/documents/${encodeURIComponent(doc)}`;

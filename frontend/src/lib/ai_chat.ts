@@ -8,8 +8,12 @@ import { apiFetch } from "@/lib/api";
  * socket (`chat.message`); VIEWERs read but cannot write.
  */
 export type ChatMessage = {
-  /** Database-assigned and strictly increasing: the one ordering of the chat. */
-  id: number;
+  /**
+   * Database-assigned MongoDB ObjectId, as 24 lowercase hex characters. They are
+   * fixed-width and start with the creation time, so comparing them as text
+   * gives the one ordering of the chat (the same one the backend sorts by).
+   */
+  id: string;
   document_id: string;
   author: string;
   author_id: string | null;
@@ -55,7 +59,7 @@ export function postChat(orgSlug: string, docId: string, content: string): Promi
  */
 export function upsertChatMessage(messages: ChatMessage[], incoming: ChatMessage): ChatMessage[] {
   const others = messages.filter((item) => item.id !== incoming.id);
-  const next = [...others, incoming].sort((a, b) => a.id - b.id);
+  const next = [...others, incoming].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return next.length > MAX_CHAT_MESSAGES ? next.slice(next.length - MAX_CHAT_MESSAGES) : next;
 }
 

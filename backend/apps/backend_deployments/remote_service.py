@@ -8,7 +8,9 @@ import hashlib
 import secrets
 from datetime import timedelta
 
-from django.db import transaction
+from django_mongodb_backend import transaction
+
+from config.transactions import run_atomic
 from django.http import Http404
 from django.utils import timezone
 
@@ -142,9 +144,16 @@ def issue_confirmation(*, request, user):
 
 def confirm(*, organization, document, request_id, user, token):
     rejected = None
-    with transaction.atomic():
+    request = None
+
+    def _confirm() -> None:
+        # The request row is rewritten on every path that matters, so two
+        # confirmations at once conflict and the loser runs again, finding the
+        # confirmation already used (`run_atomic` retries it).
+        nonlocal rejected, request
+        rejected = None
         try:
-            request = RemoteDeploymentRequest.objects.for_organization(organization).select_for_update().select_related("destination").get(id=request_id, document_id=document.id)
+            request = RemoteDeploymentRequest.objects.for_organization(organization).select_related("destination").get(id=request_id, document_id=document.id)
         except RemoteDeploymentRequest.DoesNotExist as exc:
             raise Http404("Remote deployment request not found") from exc
         if request.created_by_id != user.id:
@@ -177,6 +186,7 @@ def confirm(*, organization, document, request_id, user, token):
                 request.status = RemoteDeploymentStatus.AUTHORIZED
                 request.save(update_fields=["confirmation_used_at", "status", "updated_at"])
                 _event(request, user, action="confirm", previous=RemoteDeploymentStatus.AWAITING_CONFIRMATION, new=request.status, result="authorized", message="Autorización registrada. La ejecución remota permanece deshabilitada.")
+    run_atomic(_confirm)
     if rejected is not None:
         raise rejected
     return request

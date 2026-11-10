@@ -20,7 +20,7 @@ vi.mock("@/lib/save_blob", () => ({ saveBlobAsFile: vi.fn() }));
 
 function entry(overrides: Partial<LogEntry> = {}): LogEntry {
   return {
-    id: 1,
+    id: "000000000000000000000001",
     session: 1,
     kind: "change",
     author: "Ana",

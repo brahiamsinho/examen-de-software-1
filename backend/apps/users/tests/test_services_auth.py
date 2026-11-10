@@ -79,6 +79,16 @@ class TestAuthenticateUser:
 
         assert result.pk == user.pk
 
+    def test_the_email_is_matched_whatever_its_letter_case(self):
+        # Emails are stored lowercased (MongoDB has no case-insensitive unique
+        # index), so a person who registered as "Ana@Example.com" must still get
+        # in by typing it exactly that way.
+        user = make_user(email="Mixed.Case@Example.com", password="a-very-strong-pass-1")
+
+        for typed in ("Mixed.Case@Example.com", "mixed.case@example.com", "  MIXED.CASE@EXAMPLE.COM "):
+            result = services.authenticate_user(email=typed, password="a-very-strong-pass-1")
+            assert result.pk == user.pk
+
     def test_wrong_password_rejected_generically(self):
         make_user(email="valid2@example.com", password="a-very-strong-pass-1")
 

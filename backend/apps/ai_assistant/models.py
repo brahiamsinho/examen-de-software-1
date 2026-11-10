@@ -9,6 +9,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django_mongodb_backend.fields import ObjectIdAutoField
 
 from apps.organizations.models import TenantScopedManager, TenantScopedModel
 
@@ -25,7 +26,7 @@ class ChatMessage(TenantScopedModel):
     the same kind of row; the database-assigned `id` is the single ordering, so
     simultaneous writers never overwrite or interleave each other's messages."""
 
-    id = models.BigAutoField(primary_key=True)
+    id = ObjectIdAutoField(primary_key=True)
     document = models.ForeignKey(
         "uml_documents.UmlDocument", on_delete=models.CASCADE, related_name="chat_messages"
     )

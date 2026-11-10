@@ -10,9 +10,9 @@ beforeAll(() => {
 });
 
 const messages: ChatMessage[] = [
-  { id: 1, document_id: "d1", author: "Ana", author_id: "u1", is_ai: false, content: "¿Quién toma Pedido?", created_at: "2026-11-07T10:00:00Z" },
-  { id: 2, document_id: "d1", author: "Luis", author_id: "u2", is_ai: false, content: "Yo, @IA ¿qué falta?", created_at: "2026-11-07T10:01:00Z" },
-  { id: 3, document_id: "d1", author: "IA", author_id: null, is_ai: true, content: "Falta Cliente.", created_at: "2026-11-07T10:02:00Z" },
+  { id: "000000000000000000000001", document_id: "d1", author: "Ana", author_id: "u1", is_ai: false, content: "¿Quién toma Pedido?", created_at: "2026-11-07T10:00:00Z" },
+  { id: "000000000000000000000002", document_id: "d1", author: "Luis", author_id: "u2", is_ai: false, content: "Yo, @IA ¿qué falta?", created_at: "2026-11-07T10:01:00Z" },
+  { id: "000000000000000000000003", document_id: "d1", author: "IA", author_id: null, is_ai: true, content: "Falta Cliente.", created_at: "2026-11-07T10:02:00Z" },
 ];
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof ChatPanel>> = {}) {

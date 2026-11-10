@@ -2,7 +2,8 @@
 import uuid
 
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
 
 from apps.organizations.constants import Plan
 from apps.organizations.models import Organization

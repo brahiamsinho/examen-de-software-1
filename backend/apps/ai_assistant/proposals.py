@@ -13,7 +13,9 @@ import datetime
 from collections.abc import Sequence
 from uuid import UUID
 
-from django.db import transaction
+from django_mongodb_backend import transaction
+
+from config.transactions import run_atomic
 from django.http import Http404
 
 from apps.ai_assistant import service, tools
@@ -46,17 +48,21 @@ class ProposalError(ValueError):
 
 class NoSuggestionsError(ProposalError):
     def __init__(self) -> None:
-        super().__init__("The AI had no suggestions for this diagram right now. Try asking in a different way.")
+        super().__init__("La IA no tuvo sugerencias para este diagrama por ahora. Prueba a pedirlo de otra forma.")
 
 
 class StaleProposalError(ProposalError):
     def __init__(self) -> None:
-        super().__init__("The diagram changed after this proposal was made. Ask the AI again.")
+        super().__init__("Este borrador quedó desactualizado porque el diagrama cambió. Pídele a la IA otra vez.")
+
+
+# Spanish wording of a decided proposal, keyed by the stored status value.
+_DECIDED_LABEL = {"approved": "aprobado", "rejected": "rechazado", "stale": "descartado por desactualizado"}
 
 
 class ProposalAlreadyDecidedError(ProposalError):
     def __init__(self, status: str) -> None:
-        super().__init__(f"This proposal was already {status}.")
+        super().__init__(f"Este borrador ya fue {_DECIDED_LABEL.get(status, status)}.")
 
 
 class InvalidSelectionError(ProposalError):
@@ -66,7 +72,7 @@ class InvalidSelectionError(ProposalError):
 
 class UnapplicableProposalError(ProposalError):
     def __init__(self) -> None:
-        super().__init__("This proposal contains changes that cannot be applied. Reject it and ask the AI again.")
+        super().__init__("Este borrador tiene cambios que no se pueden aplicar. Recházalo y pídele a la IA otra vez.")
 
 
 def _label(user) -> str | None:
@@ -289,7 +295,7 @@ def _decidable(proposal: AiProposal) -> None:
     if proposal.status == ProposalStatus.STALE:
         raise StaleProposalError()
     if proposal.status != ProposalStatus.PENDING:
-        raise ProposalAlreadyDecidedError(proposal.get_status_display().lower())
+        raise ProposalAlreadyDecidedError(proposal.status)
 
 
 def _normalize_selection(selected: Sequence[int] | None, total: int) -> list[int]:
@@ -326,10 +332,12 @@ def approve_proposal(
     if not indices or any(not proposal.changes[index]["ok"] for index in indices):
         raise UnapplicableProposalError()
 
-    with transaction.atomic():
+    def _decide() -> AiProposal:
+        # Two people deciding at once both rewrite this row, so MongoDB aborts
+        # one and `run_atomic` runs it again: it then finds the proposal
+        # already decided and `_decidable` refuses it.
         locked = (
             AiProposal.objects.for_organization(organization)
-            .select_for_update(of=("self",))
             .select_related("requested_by", "decided_by")
             .get(id=proposal_id)
         )
@@ -375,7 +383,9 @@ def approve_proposal(
             now=now,
         )
         _broadcast(locked)
-    return locked
+        return locked
+
+    return run_atomic(_decide)
 
 
 def reject_proposal(
@@ -388,10 +398,9 @@ def reject_proposal(
 ) -> AiProposal:
     proposal = get_proposal(organization=organization, doc_id=doc_id, proposal_id=proposal_id)
     _decidable(proposal)
-    with transaction.atomic():
+    def _reject() -> AiProposal:
         locked = (
             AiProposal.objects.for_organization(organization)
-            .select_for_update(of=("self",))
             .select_related("requested_by", "decided_by")
             .get(id=proposal_id)
         )
@@ -410,4 +419,6 @@ def reject_proposal(
             now=now,
         )
         _broadcast(locked)
-    return locked
+        return locked
+
+    return run_atomic(_reject)

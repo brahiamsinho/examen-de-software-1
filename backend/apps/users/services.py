@@ -9,7 +9,8 @@ from datetime import timedelta
 
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
 from django.utils import timezone
 
 from apps.organizations.services import create_organization, derive_workspace_name, generate_unique_slug
@@ -48,8 +49,8 @@ def register_user(*, email: str, password: str, full_name: str = "") -> User:
     """
     from django.contrib.auth.password_validation import validate_password
 
-    normalized_email = User.objects.normalize_email(email)
-    if User.objects.filter(email__iexact=normalized_email).exists():
+    normalized_email = User.objects.normalize_email(email).strip().lower()
+    if User.objects.filter(email=normalized_email).exists():
         raise DuplicateEmailError(f"A user with email '{email}' already exists.")
 
     try:
@@ -80,7 +81,8 @@ def authenticate_user(*, email: str, password: str) -> User:
     an unknown email and a wrong password (user-authentication spec: no
     email enumeration).
     """
-    user = authenticate(username=email, password=password)
+    # Stored emails are lowercased (see `User.save`), so match the same way.
+    user = authenticate(username=email.strip().lower(), password=password)
     if user is None:
         raise InvalidCredentialsError("Invalid email or password.")
     return user
@@ -152,9 +154,9 @@ def request_password_reset(*, email: str) -> None:
     time of the hit path's real SMTP send (password-reset spec § "Fixed
     timing-parity delay").
     """
-    normalized_email = User.objects.normalize_email(email)
+    normalized_email = User.objects.normalize_email(email).strip().lower()
     try:
-        user = User.objects.get(email__iexact=normalized_email)
+        user = User.objects.get(email=normalized_email)
     except User.DoesNotExist:
         time.sleep(_RESET_ANTI_ENUMERATION_DELAY_SECONDS)
         return None

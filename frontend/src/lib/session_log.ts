@@ -7,7 +7,7 @@ import { saveBlobAsFile } from "@/lib/save_blob";
  * entries cannot be edited. Any member of the organization may read and export it.
  */
 export type LogEntry = {
-  id: number;
+  id: string; // MongoDB ObjectId (24 hex characters)
   /** Numbered per diagram; a new one starts after 30 minutes without activity. */
   session: number;
   kind: string;

@@ -56,6 +56,9 @@ _ALLOWED_PREFIXES = (
     # so this dependency points downward, like `organizations`.
     "apps.session_log",
     "apps.uml_documents",
+    # MongoDB has no row locks: services retry a transaction that loses a write
+    # conflict through this tiny shared helper (no app code, only Django).
+    "config.transactions",
     "django",
     "ninja",
     "pydantic",

@@ -8,7 +8,8 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
 from django.utils import timezone
 
 from apps.users.models import EmailToken, User

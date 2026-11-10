@@ -8,7 +8,8 @@ const _logPath = '/api/orgs/acme/documents/d1/log';
 const _chatPath = '/api/orgs/acme/documents/d1/chat';
 
 Map<String, Object?> _entry(int id, String kind, String author, String summary, {bool ai = false}) => {
-  'id': id,
+  // ObjectIds are 24 hex characters; this builds a sortable one from a small number.
+  'id': id.toRadixString(16).padLeft(24, '0'),
   'session': 1,
   'kind': kind,
   'author': author,

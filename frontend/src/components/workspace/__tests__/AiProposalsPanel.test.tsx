@@ -33,9 +33,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof AiProposalsP
     proposals: [proposal],
     canDecide: true,
     busyId: null,
-    asking: false,
     error: null,
-    onAsk: vi.fn().mockResolvedValue(undefined),
     onApprove: vi.fn(),
     onReject: vi.fn(),
     ...overrides,
@@ -124,28 +122,13 @@ describe("AiProposalsPanel", () => {
     expect(props.onReject).toHaveBeenCalledWith("p1");
   });
 
-  it("lets an editor ask the AI for ideas and clears the field afterwards", async () => {
-    const props = renderPanel({ proposals: [] });
-    const field = screen.getByLabelText("Pide ideas a la IA");
+  it("has no box to ask the AI: ideas are asked in the team chat with @IA", () => {
+    renderPanel({ proposals: [] });
 
-    fireEvent.change(field, { target: { value: "  Agrega pedidos  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Pedir ideas" }));
-
-    await waitFor(() => expect(props.onAsk).toHaveBeenCalledWith("Agrega pedidos"));
-    await waitFor(() => expect(field).toHaveValue(""));
-  });
-
-  it("does not ask with an empty prompt and keeps the text when asking fails", async () => {
-    const props = renderPanel({ proposals: [], onAsk: vi.fn().mockRejectedValue(new Error("fail")) });
-    const ask = screen.getByRole("button", { name: "Pedir ideas" });
-    expect(ask).toBeDisabled();
-
-    const field = screen.getByLabelText("Pide ideas a la IA");
-    fireEvent.change(field, { target: { value: "ideas" } });
-    fireEvent.click(ask);
-
-    await waitFor(() => expect(props.onAsk).toHaveBeenCalled());
-    expect(field).toHaveValue("ideas");
+    expect(screen.queryByLabelText("Pide ideas a la IA")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pedir ideas" })).not.toBeInTheDocument();
+    expect(screen.getByText(/chat del equipo/)).toBeInTheDocument();
+    expect(screen.getByText(/@IA/)).toBeInTheDocument();
   });
 
   it("gives a viewer a read-only list with no checkboxes and no way to ask, approve or reject", () => {
@@ -155,7 +138,6 @@ describe("AiProposalsPanel", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Aprobar/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Rechazar" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Pedir ideas" })).not.toBeInTheDocument();
     expect(screen.getByText(/Solo un editor puede aprobar/)).toBeInTheDocument();
   });
 
@@ -186,12 +168,11 @@ describe("AiProposalsPanel", () => {
     expect(props.onApprove).toHaveBeenCalledWith("p1", [0, 2]);
   });
 
-  it("disables the decision buttons of the proposal being processed and shows the asking state", () => {
-    renderPanel({ busyId: "p1", asking: true });
+  it("disables the decision buttons of the proposal being processed", () => {
+    renderPanel({ busyId: "p1" });
 
     expect(screen.getByRole("button", { name: "Aprobar todo (3)" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Rechazar" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Pensando..." })).toBeDisabled();
   });
 
   it("explains the empty state and surfaces an error", () => {

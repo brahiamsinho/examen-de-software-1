@@ -2,7 +2,7 @@ from ninja import Schema
 
 
 class LogEntryOut(Schema):
-    id: int
+    id: str
     session: int
     kind: str
     author: str

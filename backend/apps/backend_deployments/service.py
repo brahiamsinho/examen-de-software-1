@@ -8,7 +8,7 @@ client (`runner=`), so tests never need Docker or a network.
 from uuid import UUID
 
 from django.conf import settings
-from django.db import transaction
+from config.transactions import run_atomic, touch
 from django.http import Http404
 
 from apps.backend_deployments.models import ACTIVE_STATUSES, Deployment, DeploymentStatus
@@ -52,9 +52,11 @@ def start_deployment(
     archive = build_project_archive(document)
     runner = runner or get_runner_client()
 
-    with transaction.atomic():
-        # Serialize concurrent starts of one organization so the quota cannot be raced.
-        Organization.objects.select_for_update().get(pk=organization.pk)
+    def _reserve() -> tuple[Deployment, list[Deployment]]:
+        # Serialize concurrent starts of one organization so the quota cannot be
+        # raced: touching the organization makes competing starts conflict, and
+        # the loser re-counts against the winner's deployment.
+        touch(organization)
         active = _scoped(organization).filter(status__in=ACTIVE_STATUSES)
         replaced = list(active.filter(document_id=document.id))
         others = active.exclude(document_id=document.id).count()
@@ -69,6 +71,9 @@ def start_deployment(
         for old in replaced:
             old.status = DeploymentStatus.STOPPED
             old.save(update_fields=["status", "updated_at"])
+        return deployment, replaced
+
+    deployment, replaced = run_atomic(_reserve)
 
     for old in replaced:  # best effort: the runner's TTL reaper and startup sweep are the backstop
         try:

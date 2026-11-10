@@ -65,7 +65,7 @@ class ChatMessageIn(Schema):
 
 
 class ChatMessageOut(Schema):
-    id: int
+    id: str
     document_id: str
     author: str
     author_id: str | None

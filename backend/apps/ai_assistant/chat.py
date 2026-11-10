@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass
 from uuid import UUID
 
-from django.db import transaction
+from django_mongodb_backend import transaction
 
 from apps.ai_assistant import proposals, service, tools
 from apps.ai_assistant.errors import GeminiRequestError, MissingApiKeyError
@@ -85,7 +85,7 @@ def _label(user) -> str:
 def serialize_message(message: ChatMessage) -> dict:
     """JSON-safe shape shared by the HTTP API and the WebSocket event."""
     return {
-        "id": message.id,
+        "id": str(message.id),
         "document_id": str(message.document_id),
         "author": AI_LABEL if message.is_ai else _label(message.author),
         "author_id": str(message.author_id) if message.author_id else None,
@@ -113,7 +113,7 @@ def _store(organization: Organization, doc_id: UUID, *, author, content: str, is
             summary=content,
             actor=author,
             is_ai=is_ai,
-            data={"message_id": message.id},
+            data={"message_id": str(message.id)},
             now=message.created_at,
         )
         _broadcast(message)

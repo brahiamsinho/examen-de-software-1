@@ -7,7 +7,8 @@ class ChatMessage {
     required this.createdAt,
   });
 
-  final int id;
+  /// A MongoDB ObjectId: 24 lowercase hex characters, which sort in creation order.
+  final String id;
   final String author;
   final bool isAi;
   final String content;
@@ -19,7 +20,7 @@ class ChatMessage {
     final author = json['author'];
     final content = json['content'];
     final created = json['created_at'];
-    if (id is! int || author is! String || content is! String || created is! String) {
+    if (id is! String || author is! String || content is! String || created is! String) {
       throw const FormatException('message is missing a field');
     }
     return ChatMessage(

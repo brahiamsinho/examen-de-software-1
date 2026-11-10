@@ -270,7 +270,7 @@ def list_sessions(*, organization: Organization, doc_id: UUID) -> list[dict]:
 
 def serialize_entry(entry: LogEntry) -> dict:
     return {
-        "id": entry.id,
+        "id": str(entry.id),
         "session": entry.session,
         "kind": entry.kind,
         "author": entry.actor_label,

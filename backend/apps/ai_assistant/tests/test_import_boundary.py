@@ -35,6 +35,7 @@ _ALLOWED_PREFIXES = (
     "apps.organizations",
     "apps.session_log",  # issue #17: proposals append their decisions to the session log
     "apps.ai_assistant",  # self-package: these modules cross-import each other
+    "config.transactions",  # retries a transaction that loses a MongoDB write conflict
     "django",
     "ninja",
     "pydantic",

@@ -9,6 +9,6 @@ from django.apps import AppConfig
 
 
 class UmlModelingConfig(AppConfig):
-    default_auto_field = "django.db.models.BigAutoField"
+    default_auto_field = "django_mongodb_backend.fields.ObjectIdAutoField"
     name = "apps.uml_modeling"
     label = "uml_modeling"
