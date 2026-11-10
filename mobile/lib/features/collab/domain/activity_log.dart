@@ -10,7 +10,8 @@ class LogEntry {
     required this.createdAt,
   });
 
-  final int id;
+  /// A MongoDB ObjectId: 24 lowercase hex characters, which sort in creation order.
+  final String id;
   final String kind;
   final String author;
   final bool isAi;
@@ -37,7 +38,7 @@ class LogEntry {
     final author = json['author'];
     final summary = json['summary'];
     final created = json['created_at'];
-    if (id is! int || kind is! String || author is! String || summary is! String || created is! String) {
+    if (id is! String || kind is! String || author is! String || summary is! String || created is! String) {
       throw const FormatException('log entry is missing a field');
     }
     return LogEntry(

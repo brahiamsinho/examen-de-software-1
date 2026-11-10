@@ -6,7 +6,7 @@ import type { LogEntry, LogSession } from "@/lib/session_log";
 
 const entries: LogEntry[] = [
   {
-    id: 1,
+    id: "000000000000000000000001",
     session: 1,
     kind: "change",
     author: "Ana",
@@ -17,7 +17,7 @@ const entries: LogEntry[] = [
     created_at: "2026-11-07T10:00:00+00:00",
   },
   {
-    id: 2,
+    id: "000000000000000000000002",
     session: 1,
     kind: "proposal.created",
     author: "IA",
@@ -28,7 +28,7 @@ const entries: LogEntry[] = [
     created_at: "2026-11-07T10:05:00+00:00",
   },
   {
-    id: 3,
+    id: "000000000000000000000003",
     session: 2,
     kind: "chat.message",
     author: "Luis",

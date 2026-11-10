@@ -11,7 +11,7 @@ vi.mock("@/lib/session_log", async () => {
 
 const entries = [
   {
-    id: 1,
+    id: "000000000000000000000001",
     session: 1,
     kind: "change",
     author: "Ana",

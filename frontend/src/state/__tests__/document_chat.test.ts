@@ -31,13 +31,16 @@ const documentA = {
   updated_at: "2026-09-12T10:00:00Z",
 };
 
-const message = (id: number): chatLib.ChatMessage => ({
-  id,
+// ObjectIds are 24 hex characters; this builds a sortable one from a small number.
+const oid = (n: number) => n.toString(16).padStart(24, "0");
+
+const message = (n: number): chatLib.ChatMessage => ({
+  id: oid(n),
   document_id: "doc-a",
   author: "Ana",
   author_id: "u1",
   is_ai: false,
-  content: `m${id}`,
+  content: `m${n}`,
   created_at: "2026-11-07T10:00:00Z",
 });
 
@@ -63,7 +66,7 @@ describe("state/document useDocument() — group chat (issue #16)", () => {
 
     act(() => lastSocketHandlers().onOpen?.());
 
-    await waitFor(() => expect(result.current.chatMessages.map((m) => m.id)).toEqual([1, 2]));
+    await waitFor(() => expect(result.current.chatMessages.map((m) => m.id)).toEqual([oid(1), oid(2)]));
     expect(chatLib.listChat).toHaveBeenCalledWith("acme", "doc-a");
   });
 
@@ -75,7 +78,7 @@ describe("state/document useDocument() — group chat (issue #16)", () => {
     act(() => lastSocketHandlers().onChat?.(message(1)));
     act(() => lastSocketHandlers().onChat?.(message(2)));
 
-    expect(result.current.chatMessages.map((m) => m.id)).toEqual([1, 2]);
+    expect(result.current.chatMessages.map((m) => m.id)).toEqual([oid(1), oid(2)]);
   });
 
   it("does not lose a live message that arrives while the history is loading", async () => {
@@ -88,7 +91,7 @@ describe("state/document useDocument() — group chat (issue #16)", () => {
     act(() => lastSocketHandlers().onChat?.(message(3)));
     await act(async () => resolveHistory([message(1), message(2)]));
 
-    expect(result.current.chatMessages.map((m) => m.id)).toEqual([1, 2, 3]);
+    expect(result.current.chatMessages.map((m) => m.id)).toEqual([oid(1), oid(2), oid(3)]);
   });
 
   it("applies a message returned by an HTTP call without duplicating the socket copy", async () => {

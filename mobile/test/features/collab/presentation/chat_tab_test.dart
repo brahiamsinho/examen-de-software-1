@@ -11,7 +11,8 @@ import '../test_support.dart';
 const _chatPath = '/api/orgs/acme/documents/d1/chat';
 
 Map<String, Object?> _message(int id, String author, String content, {bool ai = false}) => {
-  'id': id,
+  // ObjectIds are 24 hex characters; this builds a sortable one from a small number.
+  'id': id.toRadixString(16).padLeft(24, '0'),
   'document_id': 'd1',
   'author': author,
   'author_id': ai ? null : 'u1',
