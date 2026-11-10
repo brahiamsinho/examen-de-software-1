@@ -81,7 +81,8 @@ def authenticate_user(*, email: str, password: str) -> User:
     an unknown email and a wrong password (user-authentication spec: no
     email enumeration).
     """
-    user = authenticate(username=email, password=password)
+    # Stored emails are lowercased (see `User.save`), so match the same way.
+    user = authenticate(username=email.strip().lower(), password=password)
     if user is None:
         raise InvalidCredentialsError("Invalid email or password.")
     return user
