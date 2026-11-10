@@ -50,6 +50,19 @@ Let's Encrypt certificate (needs 80/443 reachable and the DNS record already poi
 Register the first user in the app. Verification emails go to `docker compose ... logs backend`
 until you configure SMTP in the root `.env`.
 
+### Optional: push notifications for the mobile app
+
+Needs a Firebase project. Neither file below is in git; each has an `*.example.json` showing its shape.
+
+| File | Where it goes | Example |
+|---|---|---|
+| Service-account key (server) | `backend/secrets/firebase-credentials.json` on the VM | `deploy/firebase-credentials.example.json` |
+| `google-services.json` (Android app) | `mobile/android/app/google-services.json`, before building the APK | `mobile/android/app/google-services.example.json` |
+
+Then set `FIREBASE_CREDENTIALS_PATH=/app/secrets/firebase-credentials.json` in the root `.env` and
+`up -d --build`. Leave it empty to run without pushes. The `package_name` inside
+`google-services.json` must equal the app's `applicationId` or the Android build fails.
+
 ## 5. Operate
 
 Short alias for the commands below: `alias mc='docker compose -f docker-compose.prod.yml'`
