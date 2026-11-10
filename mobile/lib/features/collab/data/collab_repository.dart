@@ -1,6 +1,7 @@
 import '../domain/activity_log.dart';
 import '../domain/api_failure.dart';
 import '../domain/chat.dart';
+import '../domain/diagram_preview.dart';
 import '../domain/organization.dart';
 import '../domain/proposal.dart';
 import 'modelia_api_client.dart';
@@ -39,6 +40,17 @@ class CollabRepository {
   }
 
   /// The latest entries of the diagram's log, newest first.
+  /// The diagram itself, only to look at it (never to edit it from the phone).
+  Future<DiagramPreview> getDiagram(String orgSlug, String docId) async {
+    final body = await _api.getJson(_docPath(orgSlug, docId));
+    if (body is! Map) throw const ApiFailure(ApiFailureKind.unexpected);
+    try {
+      return DiagramPreview.fromJson(body.cast<String, Object?>());
+    } on TypeError {
+      throw const ApiFailure(ApiFailureKind.unexpected);
+    }
+  }
+
   Future<List<LogEntry>> listLog(String orgSlug, String docId, {int limit = 100}) async {
     final entries = _list(
       await _api.getJson('${_docPath(orgSlug, docId)}/log', query: {'limit': '$limit'}),
