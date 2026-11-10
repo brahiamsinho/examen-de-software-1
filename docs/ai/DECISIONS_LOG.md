@@ -1,5 +1,9 @@
 # Decisions Log
 
+## 2026-11-10 - Plain-text model answers become the chat reply
+- Bug found while trying the mentor: asked "@IA por que Pedido necesita un Cliente?", the AI stayed silent. The model answered with plain text and no tool call, and `OpenAiClient` (hosted and local) only read tool calls, so the text was dropped. Fix: when no tool was called and `reply_in_chat` is offered, the text becomes that reply. Tools without `reply_in_chat` (proposals, image import) are unaffected.
+- Not changed: the Gemini client has the same shape and was not touched (the project runs OpenAI or local).
+
 ## 2026-11-10 - The chat AI acts as a mentor
 - Requirement (teacher): the AI must know who asks, have memory, be visible to all and behave like a mentor, not a generic answer. Decision (user: "si, hacelo"): the chat instruction in `apps/ai_assistant/chat.py` now says teammate and mentor, addresses the asker by name, and explains why with an example from the team's own diagram, keeping simple requests to a sentence or two. The old "briefly" is gone.
 - Not done: memory across diagrams (it remembers the last 30 messages of each diagram's chat); it touches privacy and was left for the user to decide.
