@@ -105,7 +105,9 @@ def add_member(*, organization: Organization, email: str, role: str) -> Membersh
     Never invites unregistered addresses.
     """
     try:
-        user = User.objects.get(email__iexact=email)
+        # Exact match on the lowercased address: MongoDB's __iexact is an unescaped
+        # regular expression, so the . in an address would match any character.
+        user = User.objects.get(email=email.strip().lower())
     except User.DoesNotExist as exc:
         raise UserNotFoundError(f"No user registered with email '{email}'.") from exc
 

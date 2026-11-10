@@ -166,7 +166,7 @@ services:
       context: ./backend
       target: dev
     profiles: [jvm-verify]
-    # Skip entrypoint.sh (it waits for Postgres and migrates); the CLI needs
+    # Skip entrypoint.sh (it waits for MongoDB and migrates); the CLI needs
     # neither a database nor backend/.env.
     entrypoint: []
     # The generated tree is root-owned in the named volume; the Gradle

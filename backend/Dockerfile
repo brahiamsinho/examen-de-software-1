@@ -44,7 +44,7 @@ COPY . /app
 RUN chmod +x /app/entrypoint.sh
 
 # Settings read required vars at import time; these are throwaway build-only values.
-RUN SECRET_KEY=build-only POSTGRES_DB=build POSTGRES_USER=build POSTGRES_PASSWORD=build \
+RUN SECRET_KEY=build-only \
     python manage.py collectstatic --noinput
 
 CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

@@ -49,8 +49,8 @@ def register_user(*, email: str, password: str, full_name: str = "") -> User:
     """
     from django.contrib.auth.password_validation import validate_password
 
-    normalized_email = User.objects.normalize_email(email)
-    if User.objects.filter(email__iexact=normalized_email).exists():
+    normalized_email = User.objects.normalize_email(email).strip().lower()
+    if User.objects.filter(email=normalized_email).exists():
         raise DuplicateEmailError(f"A user with email '{email}' already exists.")
 
     try:
@@ -154,9 +154,9 @@ def request_password_reset(*, email: str) -> None:
     time of the hit path's real SMTP send (password-reset spec § "Fixed
     timing-parity delay").
     """
-    normalized_email = User.objects.normalize_email(email)
+    normalized_email = User.objects.normalize_email(email).strip().lower()
     try:
-        user = User.objects.get(email__iexact=normalized_email)
+        user = User.objects.get(email=normalized_email)
     except User.DoesNotExist:
         time.sleep(_RESET_ANTI_ENUMERATION_DELAY_SECONDS)
         return None

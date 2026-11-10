@@ -4,14 +4,14 @@ Docker Compose + Caddy (automatic HTTPS) + a free DuckDNS domain. Files:
 `docker-compose.prod.yml` (repo root), `deploy/Caddyfile`, `env.example` (repository root).
 
 What runs: `caddy` (only ports 80/443 published), `frontend`, `backend`, `runner`,
-`socket-proxy` (the only container with the Docker socket), `db`, `redis`.
+`socket-proxy` (the only container with the Docker socket), `mongo`, `redis`.
 Caddy routes `/gen/*` to the runner, `/api/*` and `/ws/*` to the backend, the rest to the frontend.
 
 ## 1. VM
 
 - Ubuntu 22.04/24.04, **4 GB RAM, 2 vCPU, 30 GB disk** (Gradle builds need the RAM; add 2 GB swap if you can).
 - Firewall / security group: allow **22, 80, 443 only** (443/udp optional, HTTP/3).
-  Ports **8090 (runner), 8000 (backend), 5432 (db), 6379 (redis), 2375 (docker proxy) must NOT be open.**
+  Ports **8090 (runner), 8000 (backend), 27017 (mongo), 6379 (redis), 2375 (docker proxy) must NOT be open.**
   With UFW: `sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable`.
   (Docker bypasses UFW for published ports, which is why the compose file publishes only 80/443.)
 

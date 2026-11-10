@@ -3,7 +3,7 @@
 #
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
-# Only Caddy publishes host ports (80/443). backend, runner, db, redis and the
+# Only Caddy publishes host ports (80/443). backend, runner, mongo, redis and the
 # docker-socket-proxy are reachable only on the private Compose networks.
 # See deploy/README.md.
 
