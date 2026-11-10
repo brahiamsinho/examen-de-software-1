@@ -48,17 +48,21 @@ class ProposalError(ValueError):
 
 class NoSuggestionsError(ProposalError):
     def __init__(self) -> None:
-        super().__init__("The AI had no suggestions for this diagram right now. Try asking in a different way.")
+        super().__init__("La IA no tuvo sugerencias para este diagrama por ahora. Prueba a pedirlo de otra forma.")
 
 
 class StaleProposalError(ProposalError):
     def __init__(self) -> None:
-        super().__init__("The diagram changed after this proposal was made. Ask the AI again.")
+        super().__init__("Este borrador quedó desactualizado porque el diagrama cambió. Pídele a la IA otra vez.")
+
+
+# Spanish wording of a decided proposal, keyed by the stored status value.
+_DECIDED_LABEL = {"approved": "aprobado", "rejected": "rechazado", "stale": "descartado por desactualizado"}
 
 
 class ProposalAlreadyDecidedError(ProposalError):
     def __init__(self, status: str) -> None:
-        super().__init__(f"This proposal was already {status}.")
+        super().__init__(f"Este borrador ya fue {_DECIDED_LABEL.get(status, status)}.")
 
 
 class InvalidSelectionError(ProposalError):
@@ -68,7 +72,7 @@ class InvalidSelectionError(ProposalError):
 
 class UnapplicableProposalError(ProposalError):
     def __init__(self) -> None:
-        super().__init__("This proposal contains changes that cannot be applied. Reject it and ask the AI again.")
+        super().__init__("Este borrador tiene cambios que no se pueden aplicar. Recházalo y pídele a la IA otra vez.")
 
 
 def _label(user) -> str | None:
@@ -291,7 +295,7 @@ def _decidable(proposal: AiProposal) -> None:
     if proposal.status == ProposalStatus.STALE:
         raise StaleProposalError()
     if proposal.status != ProposalStatus.PENDING:
-        raise ProposalAlreadyDecidedError(proposal.get_status_display().lower())
+        raise ProposalAlreadyDecidedError(proposal.status)
 
 
 def _normalize_selection(selected: Sequence[int] | None, total: int) -> list[int]:

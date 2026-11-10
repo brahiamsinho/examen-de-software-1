@@ -1,5 +1,9 @@
 # Decisions Log
 
+## 2026-11-10 - Outdated AI drafts disappear and their refusals speak Spanish
+- Problem (user, after asking the AI twice for the same change): two identical drafts appeared; approving one made the other outdated, and approving it showed an English error. Decision (user: "si hacelo"): (1) the web hides every draft whose `base_revision` differs from the diagram's current revision (`useDocument` filters `proposals`), so it also works when someone else approves; the backend already marked such drafts stale and refused them. (2) The four proposal refusals (no suggestions, outdated, already decided, cannot be applied) are in Spanish; the API still answers 409/422 as before.
+- Not changed: the change texts inside a draft (`Added attribute 'x' to 'Y'`) are still English; the backend writes them and the Flutter app shows them as is.
+
 ## 2026-11-10 - The AI is asked only from the team chat (web)
 - Decision (user: "como ya tenemos la ia en el chat del grupo tenerlo ahi no es de buen funcionamiento"): the web's "Pide ideas a la IA" box and its "Pedir ideas" button were removed, because the team chat (`@IA`) already does the same and two entries confused people. The card is now "Propuestas de la IA" and only lists the AI's drafts, where an editor approves or rejects them; its empty state points to the chat.
 - Kept on purpose: the backend endpoint `POST .../ai-proposals` (the chat uses its logic and it is an API others may call). The unused frontend helper `requestProposal` was deleted.

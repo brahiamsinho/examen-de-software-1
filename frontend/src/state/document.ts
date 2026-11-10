@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { listChat, upsertChatMessage, type ChatMessage } from "@/lib/ai_chat";
 import { listProposals, upsertProposal, type AiProposal } from "@/lib/ai_proposals";
@@ -420,6 +420,15 @@ export function useDocument(orgSlug: string | null, docId: string) {
     setChatMessages((prev) => upsertChatMessage(prev, message));
   }, []);
 
+  // A draft is only good for the revision it was made on (the backend marks the
+  // rest stale and refuses them). Once the diagram moves on, say because someone
+  // approved another draft, the outdated ones disappear instead of lingering as
+  // buttons that can only fail. This also covers other people's approvals.
+  const currentProposals = useMemo(
+    () => (document === null ? proposals : proposals.filter((proposal) => proposal.base_revision === document.revision)),
+    [proposals, document],
+  );
+
   return {
     document,
     applyDocument,
@@ -433,7 +442,7 @@ export function useDocument(orgSlug: string | null, docId: string) {
     isSubmitting,
     submitCommand,
     locks,
-    proposals,
+    proposals: currentProposals,
     positionListenerRef,
     claimRejectedListenerRef,
     sendClaim,

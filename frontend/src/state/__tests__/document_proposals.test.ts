@@ -78,6 +78,24 @@ describe("state/document useDocument() — AI proposals (issue #15)", () => {
     expect(result.current.proposals).toEqual([]);
   });
 
+  it("hides a draft once the diagram moves past the revision it was made on, and keeps one made on the new revision", async () => {
+    const { result } = renderHook(() => useDocument("acme", "doc-a"));
+    await waitFor(() => expect(result.current.document).toEqual(documentA));
+    await waitFor(() => expect(docsLib.openDocumentSocket).toHaveBeenCalledTimes(1));
+    const twin = { ...pendingProposal, id: "p2" };
+    act(() => lastSocketHandlers().onProposal?.(pendingProposal));
+    act(() => lastSocketHandlers().onProposal?.(twin));
+    expect(result.current.proposals).toHaveLength(2);
+
+    // Someone approves p1: the diagram is now at revision 2 and p2 (made on 1) is outdated.
+    act(() => lastSocketHandlers().onMessage?.({ ...documentA, revision: 2 }));
+    expect(result.current.proposals).toEqual([]);
+
+    const fresh = { ...pendingProposal, id: "p3", base_revision: 2 };
+    act(() => lastSocketHandlers().onProposal?.(fresh));
+    expect(result.current.proposals).toEqual([fresh]);
+  });
+
   it("keeps the document usable when the proposals request fails", async () => {
     vi.mocked(proposalsLib.listProposals).mockRejectedValue(new Error("boom"));
     const { result } = renderHook(() => useDocument("acme", "doc-a"));
