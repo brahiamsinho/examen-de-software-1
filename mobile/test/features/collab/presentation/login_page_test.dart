@@ -54,6 +54,31 @@ void main() {
     expect(find.text('Iniciar sesión'), findsOneWidget);
   });
 
+  testWidgets('the email and password start empty unless the build provides them', (tester) async {
+    await _pump(tester, _controller(MockClient((r) async => _json(_loginBody))));
+
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Correo electrónico')).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Contraseña')).controller!.text, isEmpty);
+  });
+
+  testWidgets('a build can prefill the email and password, and the password stays hidden', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: CollabGate(
+        controller: _controller(MockClient((r) async => _json(_loginBody))),
+        initialServerUrl: 'http://10.0.2.2:8000',
+        initialEmail: 'owner@demo.com',
+        initialPassword: 'DemoPass123!',
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final email = tester.widget<TextField>(find.widgetWithText(TextField, 'Correo electrónico'));
+    final password = tester.widget<TextField>(find.widgetWithText(TextField, 'Contraseña'));
+    expect(email.controller!.text, 'owner@demo.com');
+    expect(password.controller!.text, 'DemoPass123!');
+    expect(password.obscureText, isTrue);
+  });
+
   testWidgets('the password is hidden', (tester) async {
     await _pump(tester, _controller(MockClient((r) async => _json(_loginBody))));
 

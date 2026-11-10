@@ -203,11 +203,12 @@ void main() {
     expect(find.text('Tu rol no permite hacer esto.'), findsOneWidget);
   });
 
-  testWidgets('the diagram has three tabs: chat, proposals and changes', (tester) async {
+  testWidgets('the diagram has four tabs: chat, proposals, changes and a read-only preview', (tester) async {
     await _open(tester, {'GET $_proposalsPath': (r) => jsonResponse([])});
 
     expect(find.text('Chat'), findsOneWidget);
     expect(find.text('Propuestas'), findsOneWidget);
     expect(find.text('Cambios'), findsOneWidget);
+    expect(find.text('Diagrama'), findsOneWidget);
   });
 }

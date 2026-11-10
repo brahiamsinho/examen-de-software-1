@@ -1,5 +1,12 @@
 # Decisions Log
 
+## 2026-11-10 - Push notifications: backend half (GitHub #19)
+- Decision: new app `apps/notifications` with `DeviceToken` (one Firebase token per phone, owned by whoever logged in last), `POST/DELETE /api/devices` (bearer auth) and an FCM sender (`firebase-admin`). Credentials come from `FIREBASE_CREDENTIALS_PATH`; the file lives in `backend/secrets/` (git-ignored). Without the path every push is a no-op, so dev and tests need no Firebase.
+- Who is notified: members of the organization, read at send time (a removed member stops receiving), minus whoever caused the event. Failures retry up to 3 times only for the tokens that failed, dead tokens are deleted, and a push can never break the request that triggered it.
+- Triggers: a new AI draft, and a diagram change (at most one push per diagram per minute, in-process cache).
+- Architecture: `uml_documents` and `ai_assistant` may not import other apps (their boundary tests), so they emit Django signals (`signals.py`) and `notifications` subscribes in `ready()`.
+- Verified: credentials accepted by Firebase with a dry run. Pending: the mobile half. `google-services.json` is for package `com.example.mobile` while the app is `com.examen.software.mobile`; the user chose to leave it, but the Google services Gradle plugin fails the build on a mismatch, so it must be resolved before the app can register.
+
 ## 2026-11-10 - Plain-text model answers become the chat reply
 - Bug found while trying the mentor: asked "@IA por que Pedido necesita un Cliente?", the AI stayed silent. The model answered with plain text and no tool call, and `OpenAiClient` (hosted and local) only read tool calls, so the text was dropped. Fix: when no tool was called and `reply_in_chat` is offered, the text becomes that reply. Tools without `reply_in_chat` (proposals, image import) are unaffected.
 - Not changed: the Gemini client has the same shape and was not touched (the project runs OpenAI or local).

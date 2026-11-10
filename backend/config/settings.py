@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "apps.xmi_interop",
     "apps.users",
     "apps.organizations",
+    "apps.notifications",
 ]
 
 # --- Custom user model --------------------------------------------------
@@ -255,3 +256,7 @@ LOCAL_LLM_API_KEY = env("LOCAL_LLM_API_KEY", default="")
 LOCAL_LLM_TIMEOUT_SECONDS = env.float("LOCAL_LLM_TIMEOUT_SECONDS", default=120.0)
 # "gemini", "openai" or "local" â€” see apps/ai_assistant/llm_provider.py.
 LLM_PROVIDER = env("LLM_PROVIDER", default="gemini")
+
+# Firebase service-account file for push notifications (GitHub #19). Empty = pushes off.
+# Keep the file outside version control (e.g. backend/secrets/, which git ignores).
+FIREBASE_CREDENTIALS_PATH = env("FIREBASE_CREDENTIALS_PATH", default="")

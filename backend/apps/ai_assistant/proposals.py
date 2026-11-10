@@ -24,6 +24,7 @@ from apps.ai_assistant.gemini_client import GeminiClientProtocol, GeminiFunction
 from apps.ai_assistant.llm_provider import get_active_llm_client
 from apps.ai_assistant.models import AiProposal, ProposalStatus
 from apps.ai_assistant.translator import Translator
+from apps.ai_assistant.signals import proposal_created
 from apps.organizations.models import Organization
 from apps.session_log import services as session_log
 from apps.uml_documents import services
@@ -267,6 +268,12 @@ def propose_calls(
             },
         )
         _broadcast(proposal)
+        requester_id = getattr(requested_by, "id", None)
+        transaction.on_commit(
+            lambda: proposal_created.send_robust(
+                sender=AiProposal, organization=organization, document=document, requested_by_id=requester_id
+            )
+        )
     return proposal
 
 

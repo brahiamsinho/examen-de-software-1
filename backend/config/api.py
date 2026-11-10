@@ -22,6 +22,7 @@ from apps.ai_assistant.api import ai_assistant_router, register_exception_handle
 from apps.architecture_audit.api import architecture_audit_router
 from apps.backend_deployments.api import deployments_router
 from apps.generation_export.api import generation_router
+from apps.notifications.api import router as notifications_router
 from apps.organizations.api import (
     memberships_router,
     organizations_router,
@@ -45,6 +46,7 @@ def health(request):
 
 
 api.add_router("/auth", auth_router, tags=["auth"])
+api.add_router("/devices", notifications_router, tags=["notifications"])
 api.add_router("/orgs", organizations_router, tags=["organizations"])
 api.add_router("/orgs/{org_slug}/members", memberships_router, tags=["memberships"])
 # Registered BEFORE documents_router: its GET `/{doc_id}` would otherwise match the literal

@@ -30,3 +30,8 @@ Thumbs.db
 # Personal working files, not part of the project
 /*.pdf
 opencode.jsonc
+# Firebase credentials (never commit)
+backend/secrets/*
+!backend/secrets/*.example.json
+firebase-credentials.json
+**/google-services.json
