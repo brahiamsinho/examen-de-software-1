@@ -11,13 +11,16 @@ Branch: feature/mongodb-migration. Delivery: ask-on-risk. Test runner: `docker c
 - S5: Assumption: the chosen driver is `django-mongodb-backend` (official), which forces Django 5.2 and `ObjectIdAutoField` defaults.
 
 ## Tasks
-- T1 (S3,S5) spike: Django 5.2 + django-mongodb-backend + replica-set Mongo in compose; prove UUID pk, FK, unique, transactions, select_for_update behavior. route: inline. status: pending
-- T2 (S4) models: replace unsupported features (M2M, Lower constraint, BigAutoField ids, select_for_update). route: inline. status: pending
-- T3 (S4) concurrency: re-express row locking as transactions / optimistic revision checks. route: inline. status: pending
-- T4 (S3) compose, env, CI, docs. route: inline. status: pending
-- T5 (S1,S4) full suite + differential check of generator output + docs/ai. route: inline. status: pending
+- T1 (S3,S5) spike: Django 5.2 + django-mongodb-backend + replica-set Mongo in compose; UUID pk, FK, unique and transactions proven by the full suite; select_for_update is a no-op. route: inline. status: done, commit d40ed06
+- T2 (S4) models: M2M, Lower constraint, BigAutoField ids replaced; web and Flutter ids are strings. route: inline. status: done, commits d40ed06, 420b244, 33f8c5c
+- T3 (S4) concurrency: config/transactions.py; owner-rule and proposal-decision thread tests; mutation-checked. route: inline. status: done, commit d40ed06
+- T4 (S3) compose, env, docs (no CI exists). route: inline. status: done, commits d40ed06, b7651a2
+- T5 (S1,S4) full suite (backend 1700, web 554, Flutter 201), real stack run, generator logic files unchanged, docs/ai. route: inline. status: done except the independent verification and an EC2 rehearsal
 
 ## Log
 - L1 (user): "mira, surgieron unos problemas, primero que nada tenemos que migrar la base de datos a nosql osea mongodb, solo del proyecto, el backend  que se genere se mantendra asi, nose nada de nosql"
 - L2 (user): "no hay datos que quiera conservar ya que es un proyecto apra rpesentar a un docente"
 - L3 (finding): django-mongodb-backend 5.2.x needs Django 5.2 (repo pins 5.0). It has no select_for_update, no ManyToManyField, savepoints are no-ops, transactions need a replica set. Code uses select_for_update in organizations, uml_documents, ai_assistant, backend_deployments; ManyToMany in organizations.Organization.members; Lower() unique constraint on User.email; BigAutoField ids on ChatMessage and LogEntry that the web and the phone consume as integers.
+- L4 (decision): the user said they did not follow the id question (A: string ObjectIds, B: integer counter); the assistant chose A.
+- L5 (finding, fixed): the first real login with 'Owner@Demo.com' answered 401 because emails are now stored lowercased; the login now lowercases too (test first, commit 33f8c5c).
+- Risk: items 3 (ids in the API change from integers to strings), 4 (concurrency: locks replaced by retried transactions), 5 (dependencies, compose, environment). Independent verification pending.
