@@ -1,5 +1,13 @@
 # Decisions Log
 
+## 2026-11-10 - Plain-text model answers become the chat reply
+- Bug found while trying the mentor: asked "@IA por que Pedido necesita un Cliente?", the AI stayed silent. The model answered with plain text and no tool call, and `OpenAiClient` (hosted and local) only read tool calls, so the text was dropped. Fix: when no tool was called and `reply_in_chat` is offered, the text becomes that reply. Tools without `reply_in_chat` (proposals, image import) are unaffected.
+- Not changed: the Gemini client has the same shape and was not touched (the project runs OpenAI or local).
+
+## 2026-11-10 - The chat AI acts as a mentor
+- Requirement (teacher): the AI must know who asks, have memory, be visible to all and behave like a mentor, not a generic answer. Decision (user: "si, hacelo"): the chat instruction in `apps/ai_assistant/chat.py` now says teammate and mentor, addresses the asker by name, and explains why with an example from the team's own diagram, keeping simple requests to a sentence or two. The old "briefly" is gone.
+- Not done: memory across diagrams (it remembers the last 30 messages of each diagram's chat); it touches privacy and was left for the user to decide.
+
 ## 2026-11-10 - Outdated AI drafts disappear and their refusals speak Spanish
 - Problem (user, after asking the AI twice for the same change): two identical drafts appeared; approving one made the other outdated, and approving it showed an English error. Decision (user: "si hacelo"): (1) the web hides every draft whose `base_revision` differs from the diagram's current revision (`useDocument` filters `proposals`), so it also works when someone else approves; the backend already marked such drafts stale and refused them. (2) The four proposal refusals (no suggestions, outdated, already decided, cannot be applied) are in Spanish; the API still answers 409/422 as before.
 - Not changed: the change texts inside a draft (`Added attribute 'x' to 'Y'`) are still English; the backend writes them and the Flutter app shows them as is.

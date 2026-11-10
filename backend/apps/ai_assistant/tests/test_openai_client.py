@@ -122,6 +122,44 @@ class TestLocalProvider:
             )
 
 
+class TestPlainTextAnswers:
+    """A model may answer a question with plain text instead of calling the reply
+    tool; the chat would stay silent, so that text becomes the reply."""
+
+    CHAT_TOOLS = [{"name": "reply_in_chat", "description": "d", "parameters": {"type": "object", "properties": {}}}]
+
+    def _ask(self, monkeypatch, *, text, tool_calls, tools):
+        response = _fake_response(tool_calls)
+        response.choices[0].message.content = text
+        _install_fake_openai_module(monkeypatch, create=mock.Mock(return_value=response))
+        return OpenAiClient("a-key", "a-model").generate_function_calls(
+            system_instruction="system", transcript="hola", tools=tools
+        )
+
+    def test_plain_text_becomes_the_chat_reply_when_no_tool_was_called(self, monkeypatch):
+        calls = self._ask(monkeypatch, text="  Porque un pedido lo hace un cliente.  ", tool_calls=[], tools=self.CHAT_TOOLS)
+
+        assert [(call.name, call.args) for call in calls] == [
+            ("reply_in_chat", {"message": "Porque un pedido lo hace un cliente."})
+        ]
+
+    def test_a_real_tool_call_wins_over_the_text(self, monkeypatch):
+        calls = self._ask(
+            monkeypatch,
+            text="ignored",
+            tool_calls=[_fake_tool_call("reply_in_chat", json.dumps({"message": "desde la herramienta"}))],
+            tools=self.CHAT_TOOLS,
+        )
+
+        assert [call.args["message"] for call in calls] == ["desde la herramienta"]
+
+    def test_text_is_ignored_when_the_chat_reply_tool_is_not_offered(self, monkeypatch):
+        assert self._ask(monkeypatch, text="algo", tool_calls=[], tools=[]) == []
+
+    def test_empty_text_stays_silent(self, monkeypatch):
+        assert self._ask(monkeypatch, text="   ", tool_calls=[], tools=self.CHAT_TOOLS) == []
+
+
 def _fake_tool_call(name: str, arguments: str):
     function = mock.Mock()
     function.name = name

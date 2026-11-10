@@ -64,6 +64,22 @@ def test_mention_detection_boundaries(text, expected):
 
 
 @pytest.mark.django_db
+class TestMentorInstruction:
+    def test_the_model_is_told_to_mentor_the_person_who_asked_and_to_explain_why(self):
+        organization, owner, editor, *_ = make_org_with_roles()
+        document = _document(organization, owner)
+        model = _Model()
+
+        _post(organization, document, editor, "@IA por que Pedido necesita un Cliente?", model)
+
+        system = model.requests[0]["system"].lower()
+        assert "mentor" in system
+        assert "explain why" in system
+        assert "by name" in system  # answers the person who asked, not a generic audience
+        assert "briefly" not in system  # a short answer must not cut an explanation
+
+
+@pytest.mark.django_db
 class TestPostingMessages:
     def test_a_message_is_stored_with_its_author_and_the_model_stays_silent_without_a_mention(self):
         organization, owner, editor, *_ = make_org_with_roles()

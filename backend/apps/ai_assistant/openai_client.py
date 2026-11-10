@@ -91,7 +91,14 @@ class OpenAiClient:
         except Exception as exc:  # the SDK raises several exception types; all map to one domain error
             raise GeminiRequestError(f"{self._provider_label} request failed: {exc}") from exc
 
-        return _extract_function_calls(response)
+        calls = _extract_function_calls(response)
+        if not calls and any(tool.get("name") == "reply_in_chat" for tool in tools):
+            # A model often answers a plain question with text instead of calling the
+            # reply tool; dropping it would leave the chat silent.
+            text = _plain_text(response)
+            if text:
+                calls = [GeminiFunctionCall(name="reply_in_chat", args={"message": text})]
+        return calls
 
     def generate_function_calls_from_image(
         self,
@@ -138,6 +145,12 @@ class OpenAiClient:
             raise GeminiRequestError(f"{self._provider_label} request failed: {exc}") from exc
 
         return _extract_function_calls(response)
+
+
+def _plain_text(response: object) -> str:
+    choices = getattr(response, "choices", None) or []
+    content = getattr(getattr(choices[0], "message", None), "content", None) if choices else None
+    return content.strip() if isinstance(content, str) else ""
 
 
 def _extract_function_calls(response: object) -> list[GeminiFunctionCall]:
