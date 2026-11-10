@@ -91,6 +91,12 @@ services:
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-}
       LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
       LOCAL_LLM_TIMEOUT_SECONDS: ${LOCAL_LLM_TIMEOUT_SECONDS:-120}
+      # Push notifications (GitHub #19). Empty = off. The service-account file lives
+      # outside git in ./backend/secrets on the host; set this to
+      # /app/secrets/firebase-credentials.json to turn pushes on.
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
+    volumes:
+      - ./backend/secrets:/app/secrets:ro
     depends_on:
       mongo:
         condition: service_healthy

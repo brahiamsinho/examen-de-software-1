@@ -21,6 +21,7 @@ from django_mongodb_backend import transaction
 from config.transactions import atomic_retrying
 from django.http import Http404
 
+from apps.uml_documents.signals import document_changed
 from apps.organizations.models import Organization
 from apps.uml_commands import commands
 from apps.uml_commands.commands import UmlCommand
@@ -340,6 +341,8 @@ def broadcast_document(*, document: ProjectDocument) -> None:
         f"uml-doc-{document.id}",
         {"type": "document.update", "document": payload},
     )
+    # Other apps (e.g. phone pushes) listen; this app does not know them.
+    document_changed.send_robust(sender=type(document), document=document)
 
 
 def broadcast_event(*, document_id: UUID, payload: dict) -> None:

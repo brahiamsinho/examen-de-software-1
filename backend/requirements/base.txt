@@ -25,3 +25,6 @@ defusedxml>=0.7,<1.0
 # imported lazily inside apps/ai_assistant/gemini_client.py.
 google-genai>=1.0,<2.0
 openai>=1.0,<2.0
+# Push notifications through Firebase Cloud Messaging; imported lazily inside
+# apps/notifications/fcm.py, which is inert without FIREBASE_CREDENTIALS_PATH.
+firebase-admin>=6.5,<8.0
