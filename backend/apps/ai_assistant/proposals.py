@@ -13,7 +13,9 @@ import datetime
 from collections.abc import Sequence
 from uuid import UUID
 
-from django.db import transaction
+from django_mongodb_backend import transaction
+
+from config.transactions import run_atomic
 from django.http import Http404
 
 from apps.ai_assistant import service, tools
@@ -326,10 +328,12 @@ def approve_proposal(
     if not indices or any(not proposal.changes[index]["ok"] for index in indices):
         raise UnapplicableProposalError()
 
-    with transaction.atomic():
+    def _decide() -> AiProposal:
+        # Two people deciding at once both rewrite this row, so MongoDB aborts
+        # one and `run_atomic` runs it again: it then finds the proposal
+        # already decided and `_decidable` refuses it.
         locked = (
             AiProposal.objects.for_organization(organization)
-            .select_for_update(of=("self",))
             .select_related("requested_by", "decided_by")
             .get(id=proposal_id)
         )
@@ -375,7 +379,9 @@ def approve_proposal(
             now=now,
         )
         _broadcast(locked)
-    return locked
+        return locked
+
+    return run_atomic(_decide)
 
 
 def reject_proposal(
@@ -388,10 +394,9 @@ def reject_proposal(
 ) -> AiProposal:
     proposal = get_proposal(organization=organization, doc_id=doc_id, proposal_id=proposal_id)
     _decidable(proposal)
-    with transaction.atomic():
+    def _reject() -> AiProposal:
         locked = (
             AiProposal.objects.for_organization(organization)
-            .select_for_update(of=("self",))
             .select_related("requested_by", "decided_by")
             .get(id=proposal_id)
         )
@@ -410,4 +415,6 @@ def reject_proposal(
             now=now,
         )
         _broadcast(locked)
-    return locked
+        return locked
+
+    return run_atomic(_reject)

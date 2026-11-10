@@ -1,7 +1,7 @@
 """ORM models for the user-identity domain.
 
 The only file in `apps/users/` that defines DB tables. Business invariants
-(password policy, duplicate email, etc.) live in `services.py`, not here —
+(password policy, duplicate email, etc.) live in `services.py`, not here â€”
 this module only defines shape and constraints.
 """
 import uuid
@@ -9,7 +9,6 @@ import uuid
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
-from django.db.models.functions import Lower
 from django.utils import timezone
 
 
@@ -52,8 +51,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     full_name = models.CharField(max_length=150, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
-    # Informational only — never gates login, session creation, or access to
-    # any protected route (email-verification spec § "Non-Blocking Verification").
+    # Informational only â€” never gates login, session creation, or access to
+    # any protected route (email-verification spec Â§ "Non-Blocking Verification").
     is_verified = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 
@@ -63,10 +62,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     EMAIL_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(Lower("email"), name="users_user_email_ci_unique"),
-        ]
+    def save(self, *args, **kwargs):
+        # MongoDB has no unique index on an expression, so case-insensitive
+        # uniqueness is kept by storing every email lowercased: the plain
+        # `unique=True` on `email` then rejects "A@x.com" next to "a@x.com".
+        self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.email
@@ -101,7 +102,7 @@ class EmailToken(models.Model):
     and password reset, discriminated by `purpose` (design.md DD1/DD2).
 
     `token_hash` is the sha256 hex digest of the raw token, never the raw
-    value itself — see `apps/users/tokens.py`.
+    value itself â€” see `apps/users/tokens.py`.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -10,7 +10,6 @@ from unittest import mock
 
 import pytest
 from django.db import connection, transaction
-from django.db.transaction import TransactionManagementError
 from django.http import Http404
 
 from apps.organizations.tests.factories import make_org_with_roles
@@ -316,27 +315,11 @@ def test_submit_command_persists_invalid_result_with_diagnostics():
     assert len(persisted.model.relationships) == 1
 
 
-# --- DD1: locked row read (design.md DD1, tasks 2.1/2.2) --------------------
-
-
-@pytest.mark.django_db(transaction=True)
-def test_get_row_for_update_outside_transaction_raises_transaction_management_error():
-    """`select_for_update()` is only legal inside a transaction. `_get_row`
-    also backs `get_document`'s non-transactional GET view, so calling it
-    with `for_update=True` outside any transaction must raise rather than
-    silently locking nothing.
-    """
-    organization, owner, *_rest = make_org_with_roles()
-    document = services.create_document(
-        organization=organization, owner_id=str(owner.id), name="Locked", now=_NOW
-    )
-
-    with pytest.raises(TransactionManagementError):
-        services._get_row(organization=organization, doc_id=document.id, for_update=True)
+# --- DD1: scoped row read (design.md DD1, tasks 2.1/2.2) --------------------
 
 
 @pytest.mark.django_db
-def test_get_row_for_update_inside_submit_command_does_not_raise():
+def test_submit_command_bumps_the_revision_by_one():
     organization, owner, *_rest = make_org_with_roles()
     document = services.create_document(
         organization=organization, owner_id=str(owner.id), name="Locked", now=_NOW
@@ -353,7 +336,7 @@ def test_get_row_for_update_inside_submit_command_does_not_raise():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_get_row_for_update_still_enforces_tenant_scoping():
+def test_get_row_still_enforces_tenant_scoping():
     """The lock never bypasses `for_organization` — org B's lookup on org
     A's `doc_id` still 404s, because `.select_for_update()` chains AFTER
     the tenant filter, not instead of it.
@@ -366,7 +349,7 @@ def test_get_row_for_update_still_enforces_tenant_scoping():
 
     with transaction.atomic():
         with pytest.raises(Http404):
-            services._get_row(organization=other_organization, doc_id=document.id, for_update=True)
+            services._get_row(organization=other_organization, doc_id=document.id)
 
 
 # --- DD2/DD7: broadcast after commit (design.md DD2, task 2.6) -------------
@@ -456,9 +439,10 @@ def test_submit_command_does_not_broadcast_when_apply_raises(django_capture_on_c
 @pytest.mark.django_db(transaction=True)
 def test_submit_command_concurrent_calls_do_not_lose_updates():
     """Two concurrent `submit_command` calls on one document both persist;
-    the final `revision` is exactly `n + 2` — the row lock (DD1) serializes
-    the second call behind the first's commit instead of both reading the
-    same starting revision and one write clobbering the other.
+    the final `revision` is exactly `n + 2` — MongoDB aborts the
+    transaction that loses the write conflict and tomic_retrying runs it
+    again against the winner's result, instead of both reading the same
+    starting revision and one write clobbering the other.
     """
     organization, owner, *_rest = make_org_with_roles()
     document = services.create_document(
@@ -510,8 +494,8 @@ def test_submit_command_concurrent_calls_do_not_lose_updates():
         thread_a.start()
         assert a_holds_lock.wait(timeout=2)
         thread_b.start()
-        # Give thread B a moment to reach `_get_row(for_update=True)` and
-        # actually block on Postgres' row lock before releasing thread A.
+        # Give thread B time to finish (and commit) while A is still paused,
+        # so A then loses the write conflict and has to run again.
         time.sleep(0.2)
         b_attempted.set()
         release_a.set()

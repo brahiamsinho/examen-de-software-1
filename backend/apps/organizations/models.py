@@ -2,11 +2,11 @@
 
 The only file in `apps/organizations/` that defines DB tables. Business
 invariants (last-owner, duplicate slug, etc.) live in `services.py`, not
-here — this module only defines shape, constraints, and tenant-scoping
+here â€” this module only defines shape, constraints, and tenant-scoping
 mechanics (DD1).
 
 `TenantScopedModel` (and its manager/queryset) is the reusable abstract
-base for tenant-scoped tables — it lives here because tenancy is this
+base for tenant-scoped tables â€” it lives here because tenancy is this
 domain's concern; future apps needing tenant scoping import it from here.
 """
 import uuid
@@ -27,9 +27,6 @@ class Organization(models.Model):
     plan = models.CharField(max_length=16, choices=Plan.choices, default=Plan.STARTER)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    members = models.ManyToManyField(
-        settings.AUTH_USER_MODEL, through="organizations.Membership", related_name="organizations"
-    )
 
     def __str__(self) -> str:
         return self.slug
@@ -43,7 +40,7 @@ class TenantScopedQuerySet(models.QuerySet):
 class TenantScopedManager(models.Manager.from_queryset(TenantScopedQuerySet)):
     """Raises on any unscoped default access, except reverse related
     access (which is already org-bound because Django binds `instance`
-    on the related manager) — see design.md DD1.
+    on the related manager) â€” see design.md DD1.
     """
 
     def get_queryset(self):

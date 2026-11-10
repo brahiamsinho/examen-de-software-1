@@ -5,19 +5,29 @@
 # time), and supply production-appropriate env values.
 
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  # Modelia's OWN database (the code it generates for users keeps its own,
+  # separate one). MongoDB runs as a single-node replica set because the
+  # backend uses transactions, and MongoDB only offers those on a replica set.
+  # The healthcheck also initiates the set the first time, so nothing manual
+  # is needed: the service is "healthy" only once it accepts writes.
+  mongo:
+    image: mongo:7
+    # No user/password and no published port: only containers on this compose
+    # network can reach it. (MongoDB demands a key file to combine
+    # authentication with a replica set; add one before ever exposing it.)
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongo_data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval
+          "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"
+          | grep -q 1
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 10s
+      retries: 20
 
   # Channels' CHANNEL_LAYERS backend (design.md DD8) — group_send/group_add
   # for the realtime document consumer. Purely additive: nothing calls
@@ -53,7 +63,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8090}
       DEPLOYMENT_MAX_ACTIVE_PER_ORG: ${DEPLOYMENT_MAX_ACTIVE_PER_ORG:-2}
     depends_on:
-      db:
+      mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -272,6 +282,6 @@ services:
     command: ["python", "-m", "apps.domain_manifest.cli", "--out-dir", "/generated/project/docs"]
 
 volumes:
-  postgres_data:
+  mongo_data:
   generated_project:
   ollama_models:

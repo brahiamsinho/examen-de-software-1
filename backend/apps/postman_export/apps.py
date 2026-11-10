@@ -9,6 +9,6 @@ from django.apps import AppConfig
 
 
 class PostmanExportConfig(AppConfig):
-    default_auto_field = "django.db.models.BigAutoField"
+    default_auto_field = "django_mongodb_backend.fields.ObjectIdAutoField"
     name = "apps.postman_export"
     label = "postman_export"

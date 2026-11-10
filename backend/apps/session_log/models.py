@@ -10,6 +10,7 @@ diagram and has no meaning without it.
 """
 from django.conf import settings
 from django.db import models
+from django_mongodb_backend.fields import ObjectIdAutoField
 
 from apps.organizations.models import TenantScopedManager, TenantScopedModel, TenantScopedQuerySet
 
@@ -66,7 +67,7 @@ class UnscopedLogManager(models.Manager):
 
 
 class LogEntry(TenantScopedModel):
-    id = models.BigAutoField(primary_key=True)
+    id = ObjectIdAutoField(primary_key=True)
     document = models.ForeignKey(
         "uml_documents.UmlDocument", on_delete=models.CASCADE, related_name="log_entries"
     )

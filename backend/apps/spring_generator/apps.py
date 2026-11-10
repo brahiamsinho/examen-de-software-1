@@ -11,6 +11,6 @@ from django.apps import AppConfig
 
 
 class SpringGeneratorConfig(AppConfig):
-    default_auto_field = "django.db.models.BigAutoField"
+    default_auto_field = "django_mongodb_backend.fields.ObjectIdAutoField"
     name = "apps.spring_generator"
     label = "spring_generator"

@@ -7,7 +7,10 @@ management command can call these functions directly.
 import secrets
 from uuid import UUID
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
+
+from config.transactions import atomic_retrying, touch
 from django.db.models import QuerySet
 from django.utils.text import slugify
 
@@ -115,13 +118,13 @@ def add_member(*, organization: Organization, email: str, role: str) -> Membersh
         raise DuplicateMembershipError("This user is already a member of the organization.") from exc
 
 
-@transaction.atomic
+@atomic_retrying
 def change_member_role(*, organization: Organization, target_user_id: UUID, new_role: str) -> Membership:
-    membership = (
-        Membership.objects.for_organization(organization)
-        .select_for_update()
-        .get(user_id=target_user_id)
-    )
+    # The "at least one OWNER" rule reads other memberships, so two owners
+    # demoting each other at once would both pass it. Touching the organization
+    # makes such transactions conflict, and the loser re-runs against the result.
+    touch(organization)
+    membership = Membership.objects.for_organization(organization).get(user_id=target_user_id)
 
     if new_role != membership.role:
         _assert_not_last_owner(organization=organization, membership=membership)
@@ -131,13 +134,10 @@ def change_member_role(*, organization: Organization, target_user_id: UUID, new_
     return membership
 
 
-@transaction.atomic
+@atomic_retrying
 def remove_member(*, organization: Organization, target_user_id: UUID) -> None:
-    membership = (
-        Membership.objects.for_organization(organization)
-        .select_for_update()
-        .get(user_id=target_user_id)
-    )
+    touch(organization)  # see change_member_role
+    membership = Membership.objects.for_organization(organization).get(user_id=target_user_id)
 
     _assert_not_last_owner(organization=organization, membership=membership)
     membership.delete()
@@ -158,7 +158,6 @@ def _assert_not_last_owner(*, organization: Organization, membership: Membership
         Membership.objects.for_organization(organization)
         .filter(role=Role.OWNER)
         .exclude(pk=membership.pk)
-        .select_for_update()
         .count()
     )
     if remaining == 0:

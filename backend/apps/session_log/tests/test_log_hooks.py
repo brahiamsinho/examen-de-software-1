@@ -269,7 +269,7 @@ class TestChatMessagesAreRecorded:
 
         (entry,) = _entries(organization, document)
         assert entry.kind == "chat.message" and entry.actor_id == editor.id
-        assert entry.summary == "Yo hago Cliente" and entry.data == {"message_id": result.message.id}
+        assert entry.summary == "Yo hago Cliente" and entry.data == {"message_id": str(result.message.id)}
 
     def test_the_ais_reply_is_recorded_as_the_ai(self):
         organization, owner, editor, *_ = make_org_with_roles()

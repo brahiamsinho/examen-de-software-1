@@ -15,7 +15,10 @@ from uuid import UUID
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.db import transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
+
+from config.transactions import atomic_retrying
 from django.http import Http404
 
 from apps.organizations.models import Organization
@@ -67,19 +70,12 @@ def _save(row: UmlDocument, document: ProjectDocument) -> None:
     row.save()
 
 
-def _get_row(
-    *, organization: Organization, doc_id: UUID, for_update: bool = False
-) -> UmlDocument:
-    """`for_update=True` chains `.select_for_update()` AFTER the tenant
-    filter (design.md DD1) — the lock is taken on the already-scoped row,
-    it never widens the queryset. `for_update` defaults to `False` because
-    this function also backs `get_document`, whose GET view runs outside
-    any transaction; an unconditional lock there would raise
-    `TransactionManagementError`.
+def _get_row(*, organization: Organization, doc_id: UUID) -> UmlDocument:
+    """The document row, scoped to the organization (404 otherwise). Writers that
+    rewrite it (every command bumps `revision`) are serialised by MongoDB's
+    write conflict detection plus `atomic_retrying`, not by a row lock.
     """
     qs = UmlDocument.objects.for_organization(organization)
-    if for_update:
-        qs = qs.select_for_update()
     try:
         return qs.get(id=doc_id)
     except UmlDocument.DoesNotExist as exc:
@@ -260,11 +256,11 @@ def _diff_label(item: dict) -> dict:
     return {key: item[key] for key in ("id", "name", "class_id", "class_name") if key in item}
 
 
-@transaction.atomic
+@atomic_retrying(also_retry=(IntegrityError,))
 def create_version(
     *, organization: Organization, doc_id: UUID, created_by, description: str, expected_revision: int
 ) -> UmlVersion:
-    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    row = _get_row(organization=organization, doc_id=doc_id)
     if row.revision != expected_revision:
         raise ValueError("The diagram changed before this version could be saved. Reload and try again.")
     latest = (
@@ -284,7 +280,7 @@ def create_version(
     )
 
 
-@transaction.atomic
+@atomic_retrying
 def restore_version(
     *,
     organization: Organization,
@@ -294,7 +290,7 @@ def restore_version(
     now: datetime.datetime,
     actor=None,
 ) -> ProjectDocument:
-    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    row = _get_row(organization=organization, doc_id=doc_id)
     if row.revision != expected_revision:
         raise ValueError("The diagram changed before this version could be restored. Reload and try again.")
     version = _get_version(organization=organization, doc_id=doc_id, version_id=version_id)
@@ -391,7 +387,7 @@ def create_document_from_model(
     return _to_project_document(row)
 
 
-@transaction.atomic
+@atomic_retrying
 def replace_document_content(
     *,
     organization: Organization,
@@ -414,7 +410,7 @@ def replace_document_content(
     revision is bumped once and the result is broadcast on commit so other
     connected clients see the new content.
     """
-    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    row = _get_row(organization=organization, doc_id=doc_id)
     document = _to_project_document(row)
     updated = dataclasses.replace(
         document, model=model, layout=layout, revision=document.revision + 1, updated_at=now
@@ -452,18 +448,19 @@ def list_documents(*, organization: Organization) -> list[ProjectDocument]:
     return [_to_project_document(row) for row in rows]
 
 
-@transaction.atomic
+@atomic_retrying
 def submit_command(
     *, organization: Organization, doc_id: UUID, command: UmlCommand, now: datetime.datetime, actor=None
 ) -> CommandResult:
     """Serialized under a per-document row lock (design.md DD1): the
-    decorator opens the transaction `select_for_update()` needs, matching
+    decorator opens the transaction (and runs it again if another writer
+    wins the conflict, see `config/transactions.py`), matching
     `users/services.py:40`/`organizations/services.py:68` style. On
     success, the resulting document is broadcast to the document's group
     once the transaction actually commits (DD2) — never inline, which
     would publish a revision no reader can yet `SELECT`.
     """
-    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    row = _get_row(organization=organization, doc_id=doc_id)
     document = _to_project_document(row)
     if isinstance(command, commands.SetGenerationProfile):
         _validate_generation_profile(document.model, command)
@@ -484,7 +481,7 @@ def submit_command(
     return result
 
 
-@transaction.atomic
+@atomic_retrying
 def submit_commands(
     *,
     organization: Organization,
@@ -502,7 +499,7 @@ def submit_commands(
     `actor` is who made the change, for the session log; a change without a
     known author is still logged (as the system), never skipped.
     """
-    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    row = _get_row(organization=organization, doc_id=doc_id)
     document = _to_project_document(row)
     model_before = document.model
     if expected_revision is not None and document.revision != expected_revision:
@@ -625,7 +622,7 @@ def _validate_generation_profile(
         )
 
 
-@transaction.atomic
+@atomic_retrying
 def save_layout_position(
     *,
     organization: Organization,
@@ -638,9 +635,9 @@ def save_layout_position(
     `dispatcher.apply()` or any `UmlCommand` variant (design.md DD8):
     ephemeral node claims never touch Postgres or `revision`, but a
     released drag's final position is durable, and this is that write.
-    Takes the same `@transaction.atomic` + `_get_row(for_update=True)`
-    row lock `submit_command` already takes, so the two write paths can
-    never race each other on the same document.
+    Uses the same `@atomic_retrying` + `_get_row` as `submit_command`, and
+    both rewrite the document row, so the two write paths can never race
+    each other on the same document.
 
     A `class_id` absent from the document's current model (removed by a
     `RemoveClass` mid-drag) returns the document UNCHANGED — no write, no
@@ -648,7 +645,7 @@ def save_layout_position(
     whose class id is no longer live is pruned on every successful call,
     which is self-healing and needs no migration.
     """
-    row = _get_row(organization=organization, doc_id=doc_id, for_update=True)
+    row = _get_row(organization=organization, doc_id=doc_id)
     document = _to_project_document(row)
     live = {c.id for c in document.model.classes}
     target = ElementId(class_id)

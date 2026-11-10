@@ -9,7 +9,8 @@ from datetime import timedelta
 
 from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django_mongodb_backend import transaction
 from django.utils import timezone
 
 from apps.organizations.services import create_organization, derive_workspace_name, generate_unique_slug

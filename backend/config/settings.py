@@ -38,9 +38,11 @@ if env.bool("TRUST_X_FORWARDED_PROTO", default=False):
 # --- Applications -------------------------------------------------------
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
+    # admin/auth/contenttypes are swapped for subclasses whose primary keys are
+    # MongoDB ObjectIds (see config/mongo_apps.py).
+    "config.mongo_apps.MongoAdminConfig",
+    "config.mongo_apps.MongoAuthConfig",
+    "config.mongo_apps.MongoContentTypesConfig",
     "django.contrib.sessions",
     "django.contrib.messages",
     # daphne must be listed before django.contrib.staticfiles per Channels docs.
@@ -70,7 +72,7 @@ INSTALLED_APPS = [
 # --- Custom user model --------------------------------------------------
 # The project's first persisted domain (Cycle 2) supplies a custom,
 # email-identified User model. This MUST be set before any migration for
-# "users" is generated — see backend/apps/users/migrations/.
+# "users" is generated â€” see backend/apps/users/migrations/.
 
 AUTH_USER_MODEL = "users.User"
 # Days a mobile bearer token stays valid (GitHub #19); logout revokes it sooner.
@@ -112,7 +114,7 @@ ASGI_APPLICATION = "config.asgi.application"
 
 # --- Realtime channel layer (design.md DD8) -------------------------------
 # Discrete host/port env vars defaulting to the Compose service name, matching
-# DATABASES' shape immediately below — never a `localhost` fallback.
+# DATABASES' shape immediately below â€” never a `localhost` fallback.
 REDIS_HOST = env("REDIS_HOST", default="redis")
 REDIS_PORT = env.int("REDIS_PORT", default=6379)
 
@@ -124,22 +126,31 @@ CHANNEL_LAYERS = {
 }
 
 # --- Database -------------------------------------------------------------
-# Built from discrete POSTGRES_* env vars (matching the docker-compose `db`
-# service) rather than a single DATABASE_URL, so the same variable names are
-# shared with the `db` service definition in docker-compose.yml.
+# Modelia's own data lives in MongoDB (official django-mongodb-backend). The
+# connection is built from discrete env vars, with the compose service name
+# as the default host, never a `localhost` fallback. `replicaSet=rs0` matches
+# the `mongo` service, which MongoDB requires for transactions.
+
+MONGO_HOST = env("MONGO_HOST", default="mongo")
+MONGO_PORT = env.int("MONGO_PORT", default=27017)
+MONGO_DB = env("MONGO_DB", default="modelia")
+MONGO_REPLICA_SET = env("MONGO_REPLICA_SET", default="rs0")
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB"),
-        "USER": env("POSTGRES_USER"),
-        "PASSWORD": env("POSTGRES_PASSWORD"),
-        # "db" is the docker-compose service name for Postgres, NEVER localhost.
-        "HOST": env("POSTGRES_HOST", default="db"),
-        "PORT": env("POSTGRES_PORT", default="5432"),
+        "ENGINE": "django_mongodb_backend",
+        "HOST": f"mongodb://{MONGO_HOST}:{MONGO_PORT}/?replicaSet={MONGO_REPLICA_SET}",
+        "NAME": MONGO_DB,
     }
 }
 
+# Django's own apps ship integer-id migrations; MongoDB needs ObjectId ones,
+# which live in backend/mongo_migrations/ (generated with makemigrations).
+MIGRATION_MODULES = {
+    "admin": "mongo_migrations.admin",
+    "auth": "mongo_migrations.auth",
+    "contenttypes": "mongo_migrations.contenttypes",
+}
 # --- Password validation ----------------------------------------------
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -168,7 +179,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DEFAULT_AUTO_FIELD = "django_mongodb_backend.fields.ObjectIdAutoField"
 
 # --- CORS -------------------------------------------------------------
 # The Next.js frontend runs on a different origin, so its URL(s) must be
@@ -179,7 +190,7 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 # --- Session / CSRF (cross-origin cookie session with the Next.js frontend) ---
 # design.md DD2. Local dev (different ports, same site) needs SameSite=Lax
 # and no HTTPS; a deployed, different-domain frontend needs SameSite=None,
-# which browsers reject without Secure — both flip together via env vars.
+# which browsers reject without Secure â€” both flip together via env vars.
 # Nothing here is hardcoded, per this file's stated convention.
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = env.bool("CORS_ALLOW_CREDENTIALS", default=True)
@@ -195,8 +206,8 @@ CSRF_COOKIE_HTTPONLY = False     # the frontend MUST read csrftoken to echo it b
 # --- Transactional email (email-verification / password-reset) -----------
 # Every value below defaults to Django's own built-in default, so an
 # environment with no EMAIL_* vars set falls back to unchanged Django
-# behavior (transactional-email spec § "Missing EMAIL_* falls back safely").
-# No Mailpit-specific literal is hardcoded here (design.md DD5) — Mailpit is
+# behavior (transactional-email spec Â§ "Missing EMAIL_* falls back safely").
+# No Mailpit-specific literal is hardcoded here (design.md DD5) â€” Mailpit is
 # only ever reached by setting EMAIL_HOST/EMAIL_PORT in the environment.
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
@@ -242,5 +253,5 @@ LOCAL_LLM_API_KEY = env("LOCAL_LLM_API_KEY", default="")
 # Seconds to wait for one local-model answer. Generous by default because a
 # CPU-only instance is slow; lower it on a GPU instance.
 LOCAL_LLM_TIMEOUT_SECONDS = env.float("LOCAL_LLM_TIMEOUT_SECONDS", default=120.0)
-# "gemini", "openai" or "local" — see apps/ai_assistant/llm_provider.py.
+# "gemini", "openai" or "local" â€” see apps/ai_assistant/llm_provider.py.
 LLM_PROVIDER = env("LLM_PROVIDER", default="gemini")

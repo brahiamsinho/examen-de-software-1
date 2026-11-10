@@ -4,7 +4,7 @@ the database layer (DD7 in design.md).
 """
 import pytest
 from django.db import IntegrityError
-from django.db import transaction
+from django_mongodb_backend import transaction
 
 from apps.users.models import User
 
