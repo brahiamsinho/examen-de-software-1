@@ -91,6 +91,9 @@ services:
       LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-}
       LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
       LOCAL_LLM_TIMEOUT_SECONDS: ${LOCAL_LLM_TIMEOUT_SECONDS:-120}
+      # Models behind the chat's semantic memory (see env.example).
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
       # Push notifications (GitHub #19). Empty = off. The service-account file lives
       # outside git in ./backend/secrets on the host; set this to
       # /app/secrets/firebase-credentials.json to turn pushes on.

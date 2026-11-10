@@ -37,6 +37,11 @@ class ChatMessage(TenantScopedModel):
     is_ai = models.BooleanField(default=False)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    # The semantic memory: a vector of the message's meaning and the model that
+    # made it. Empty until the (background) embedding finishes, or for providers
+    # without embeddings; such a message is simply never recalled.
+    embedding = models.JSONField(null=True, blank=True)
+    embedding_model = models.CharField(max_length=64, blank=True, default="")
 
     objects = TenantScopedManager()
     all_objects = models.Manager()
