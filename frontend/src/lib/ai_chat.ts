@@ -34,8 +34,9 @@ export type ChatPostResult = {
 const base = (orgSlug: string, docId: string) =>
   `/api/orgs/${encodeURIComponent(orgSlug)}/documents/${encodeURIComponent(docId)}/chat`;
 
-// A mention waits for the model to answer; mirrors the other AI calls' generous timeout.
-const POST_TIMEOUT_MS = 60_000;
+// A mention waits for the model to answer. A local CPU-only model can take
+// minutes, so this stays above the backend's LOCAL_LLM_TIMEOUT_SECONDS.
+const POST_TIMEOUT_MS = 600_000;
 
 /** Most messages kept in memory; the server only ever sends the latest ones anyway. */
 export const MAX_CHAT_MESSAGES = 200;
