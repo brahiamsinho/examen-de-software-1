@@ -10,9 +10,11 @@ import type { VoiceCommandResult } from "@/lib/voice_command";
  * input modality (image instead of transcript) differs.
  */
 
-// A little longer than `voice_command.ts`'s own timeout: an image upload +
-// vision call has more to transfer/process than a short transcript.
-const IMAGE_COMMAND_TIMEOUT_MS = 60_000;
+// Much longer than `voice_command.ts`'s own timeout: an image upload + vision
+// call has more to process than a short transcript, and a local CPU-only model
+// (LLM_PROVIDER=local) needs minutes. Matches LOCAL_LLM_TIMEOUT_SECONDS's
+// suggested ceiling so the browser never gives up before the backend does.
+const IMAGE_COMMAND_TIMEOUT_MS = 600_000;
 
 export function postImageCommand(
   orgSlug: string,
